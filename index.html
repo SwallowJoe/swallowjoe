@@ -148,6 +148,63 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/26/Vulkan%E5%85%A5%E9%97%A8-2-%E5%88%9B%E5%BB%BAVulkan%E7%A4%BA%E4%BE%8B%E5%8F%8A%E9%AA%8C%E8%AF%81%E5%B1%82/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/26/Vulkan%E5%85%A5%E9%97%A8-2-%E5%88%9B%E5%BB%BAVulkan%E7%A4%BA%E4%BE%8B%E5%8F%8A%E9%AA%8C%E8%AF%81%E5%B1%82/" class="post-title-link" itemprop="url">Vulkan入门(2)-创建Vulkan示例及验证层</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-02-26 22:24:59" itemprop="dateCreated datePublished" datetime="2022-02-26T22:24:59+08:00">2022-02-26</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/26/Vulkan%E5%85%A5%E9%97%A8-1-%E7%8E%AF%E5%A2%83%E9%85%8D%E7%BD%AE/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -173,7 +230,7 @@
               <span class="post-meta-item-text">发表于</span>
               
 
-              <time title="创建时间：2022-02-26 21:13:24 / 修改时间：22:20:03" itemprop="dateCreated datePublished" datetime="2022-02-26T21:13:24+08:00">2022-02-26</time>
+              <time title="创建时间：2022-02-26 21:13:24 / 修改时间：22:30:21" itemprop="dateCreated datePublished" datetime="2022-02-26T21:13:24+08:00">2022-02-26</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -282,7 +339,7 @@
 </tbody></table>
 <h2 id="1-3-安装SDK"><a href="#1-3-安装SDK" class="headerlink" title="1.3 安装SDK"></a>1.3 安装SDK</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">source ~/Program/vulkan/1.2.170.0/setup-env.sh</span><br><span class="line"></span><br><span class="line">export VULKAN_SDK=~/vulkan/1.2.170.0/x86_64</span><br><span class="line">export PATH=$VULKAN_SDK/bin:$PATH</span><br><span class="line">export LD_LIBRARY_PATH=$VULKAN_SDK/lib:$LD_LIBRARY_PATH</span><br><span class="line">export VK_LAYER_PATH=$VULKAN_SDK/etc/explicit_layer.d</span><br></pre></td></tr></table></figure>
 
-<p>大功告成，检查一下：输入vulkaninfo<br><a href="mailto:&#117;&#98;&#117;&#x6e;&#x74;&#117;&#x40;&#x31;&#x38;&#x2e;&#x30;&#x34;&#76;">&#117;&#98;&#117;&#x6e;&#x74;&#117;&#x40;&#x31;&#x38;&#x2e;&#x30;&#x34;&#76;</a> ~  vulkaninfo<br>Cannot create Vulkan instance.<br>&#x2F;home&#x2F;lunarg&#x2F;sdk-build&#x2F;Vulkan-Tools&#x2F;vulkaninfo&#x2F;vulkaninfo.c:921: failed with VK_ERROR_INCOMPATIBLE_DRIVER</p>
+<p>大功告成，检查一下：输入vulkaninfo<br><a href="mailto:&#117;&#98;&#x75;&#110;&#x74;&#x75;&#x40;&#49;&#56;&#x2e;&#48;&#52;&#x4c;">&#117;&#98;&#x75;&#110;&#x74;&#x75;&#x40;&#49;&#56;&#x2e;&#48;&#52;&#x4c;</a> ~  vulkaninfo<br>Cannot create Vulkan instance.<br>&#x2F;home&#x2F;lunarg&#x2F;sdk-build&#x2F;Vulkan-Tools&#x2F;vulkaninfo&#x2F;vulkaninfo.c:921: failed with VK_ERROR_INCOMPATIBLE_DRIVER</p>
 <p>wtf, 发生了什么？等等，貌似我们没有检查是否安装了驱动。。。</p>
 <h2 id="1-4-安装驱动"><a href="#1-4-安装驱动" class="headerlink" title="1.4 安装驱动"></a>1.4 安装驱动</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">sudo add-apt-repository ppa:oibaf/graphics-drivers</span><br><span class="line">sudo apt update</span><br><span class="line">sudo apt upgrade</span><br><span class="line">apt install libvulkan1 mesa-vulkan-drivers vulkan-utils</span><br><span class="line"></span><br><span class="line">// 或者试试：</span><br><span class="line">sudo add-apt-repository ppa:graphics-drivers/ppa</span><br><span class="line">sudo apt upgrade</span><br><span class="line">sudo apt install nvidia-graphics-drivers-396 nvidia-settings vulkan vulkan-utils</span><br></pre></td></tr></table></figure>
 <p>检查一下：输入vulkaninfo</p>
@@ -412,7 +469,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-count">2</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
