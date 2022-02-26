@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述本文主要介绍VkImageView以及着色器的创建，并且我们将学习到如何编写一个渐变颜色的三角形着色器。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vulkan入门(5)-图像视图及Pipeline简述">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述本文主要介绍VkImageView以及着色器的创建，并且我们将学习到如何编写一个渐变颜色的三角形着色器。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_1.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_2.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_3.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_4.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_5.png">
+<meta property="article:published_time" content="2022-02-26T19:21:47.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:29:03.055Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Vulkan">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vulkan入门(5)-图像视图及Pipeline简述 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vulkan入门(5)-图像视图及Pipeline简述
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:21:47 / 修改时间：03:29:03" itemprop="dateCreated datePublished" datetime="2022-02-27T03:21:47+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(5)-图像视图及Pipeline简述" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>本文主要介绍VkImageView以及着色器的创建，并且我们将学习到如何编写一个渐变颜色的三角形着色器。</p>
+<span id="more"></span>
+
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>[SPIR-V] <a target="_blank" rel="noopener" href="https://www.khronos.org/spir/">https://www.khronos.org/spir/</a></li>
+<li>[SPIR-V doc] <a target="_blank" rel="noopener" href="https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html">https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html</a></li>
+<li>[GLSL开发手册] <a target="_blank" rel="noopener" href="https://github.com/wshxbqq/GLSL-Card">https://github.com/wshxbqq/GLSL-Card</a></li>
+</ol>
+<h1 id="一-Image-views"><a href="#一-Image-views" class="headerlink" title="一. Image views"></a>一. Image views</h1><p>在Render pipeline中使用VkImage, 包括在交换链中，需要创建一个VkImageView的对象。<br>VkImageView实际上就是图像的视图。它描述了如何访问图像以及要访问的图像部分，例如，如果它应被视为2D纹理深度纹理而没有任何mipmapping级别。<br>接下来我们试试为交换链中的每个图像创建一个基本VkImageView。<br>创建VkImageView的方式也是通过一个结构体：VkImageViewCreateInfo, 来指明细节.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkImageViewCreateInfo</span> &#123;</span><br><span class="line">    VkStructureType            sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*                pNext;</span><br><span class="line">    VkImageViewCreateFlags     flags;</span><br><span class="line">    VkImage                    image;</span><br><span class="line">    VkImageViewType            viewType;</span><br><span class="line">    VkFormat                   format;</span><br><span class="line">    VkComponentMapping         components;</span><br><span class="line">    VkImageSubresourceRange    subresourceRange;</span><br><span class="line">&#125; VkImageViewCreateInfo;</span><br></pre></td></tr></table></figure>
+<p>参数说明：</p>
+<ul>
+<li>VkImage: 绑定对应图像</li>
+<li>VkImageViewType: 图像视图类型<ul>
+<li>一维纹理: VK_IMAGE_VIEW_TYPE_1D、VK_IMAGE_VIEW_TYPE_1D_ARRAY</li>
+<li>二维纹理: VK_IMAGE_VIEW_TYPE_2D、VK_IMAGE_VIEW_TYPE_2D_ARRAY</li>
+<li>三维纹理: VK_IMAGE_VIEW_TYPE_3D</li>
+<li>立方体贴图: VK_IMAGE_VIEW_TYPE_CUBE、VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</li>
+</ul>
+</li>
+<li>VkFormat: 图像格式</li>
+<li>VkComponentMapping: 图像颜色通道，即RGB和Alpha通道</li>
+<li>VkImageSubresourceRange:描述了图像的目的以及应该访问图像的哪个部分</li>
+</ul>
+<p>特别的，如果是3D应用程序, 那应该创建一个带有多个layer的交换链。这样可以通过访问不同的图层为每个图像创建多个图像视图，以表示左右视图。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createImageViews</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 设置集合大小</span></span><br><span class="line">    swapChainImageViews.<span class="built_in">resize</span>(swapChainImages.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; swapChainImageViews.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        VkImageViewCreateInfo createInfo = &#123;&#125;;</span><br><span class="line">        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;</span><br><span class="line">        createInfo.image = swapChainImages[i]; <span class="comment">// 绑定 VkImage</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// viewType和format字段指定应如何解释图像数据</span></span><br><span class="line">        <span class="comment">// viewType参数指定图像为一维纹理，二维纹理，三维纹理或立方体贴图</span></span><br><span class="line">        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;</span><br><span class="line">        <span class="comment">// 图像格式</span></span><br><span class="line">        createInfo.format = swapChainImageFormat;</span><br><span class="line">        <span class="comment">// 图像颜色通道，即RGB和Alpha通道。比如将所有通道映射到红色通道以获得单色纹理，或者将常量值0和1映射到通道。这里选择默认映射:</span></span><br><span class="line">        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;</span><br><span class="line">        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;</span><br><span class="line">        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;</span><br><span class="line">        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// subresourceRange字段描述了图像的目的是什么以及应该访问图像的哪个部分。</span></span><br><span class="line">        <span class="comment">// 这里图像将用作颜色目标，没有任何mipmapping级别或多个层。</span></span><br><span class="line">        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;</span><br><span class="line">        createInfo.subresourceRange.baseMipLevel = <span class="number">0</span>;</span><br><span class="line">        createInfo.subresourceRange.levelCount = <span class="number">1</span>;</span><br><span class="line">        createInfo.subresourceRange.baseArrayLayer = <span class="number">0</span>;</span><br><span class="line">        createInfo.subresourceRange.layerCount = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 注意，通过vkCreateXXX创建的对象，都需要我们主动去释放</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">vkCreateImageView</span>(device, &amp;createInfo, <span class="literal">nullptr</span>, &amp;swapChainImageViews[i]) != VK_SUCCESS) &#123;</span><br><span class="line">            <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create image views!&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 释放交换链对应的图像视图</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">auto</span> imageView : swapChainImageViews) &#123;</span><br><span class="line">        <span class="built_in">vkDestroyImageView</span>(device, imageView, <span class="literal">nullptr</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    .....</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>有了图像视图足以开始将图像用作纹理，但还不能直接用作渲染目标。需要一个间接步骤，称为帧缓冲，但首先我们必须设置图形管道。</p>
+<h1 id="二-图形管道-Pipeline-简介"><a href="#二-图形管道-Pipeline-简介" class="headerlink" title="二. 图形管道 Pipeline 简介"></a>二. 图形管道 Pipeline 简介</h1><p>所谓图形管道就是一系列操作，它们将网格的顶点和纹理一直带到渲染目标中的像素。简化概述如下所示：</p>
+<ol>
+<li>输入汇编程序(input assembler): 从指定的缓冲区收集原始顶点数据，也可以使用索引缓冲区重复某些元素，而不必复制顶点数据本身。</li>
+<li>顶点着色器(vertex shader): 针对每个顶点运行，并且通常应用变换以将顶点位置从模型空间转换到屏幕空间。它还沿着管道传递每顶点数据。</li>
+<li>曲面细分着色器(tessellation shaders): 根据特定规则细分几何体以提高网格质量。通常用于使砖墙和楼梯等表面在附近时看起来不那么平坦。</li>
+<li>几何着色器(geometry shader): 在每个基元(三角形，直线，点)上运行，并且可以丢弃它或输出比原来更多的基元。类似于曲面细分着色器，但更灵活。但没有得到太多应用，因为大多数显卡的性能都不是很好。</li>
+<li>光栅化阶段(rasterization stage): 将基元离散化为片段。这些是它们填充在帧缓冲区上的像素元素。在屏幕之外的片段都将被丢弃，顶点着色器输出的属性将在片段之间进行插值。由于深度测试，通常在这里也丢弃其他原始片段后面的片段。</li>
+<li>片段着色器(fragment shader): 为存活的每个片段调用片段着色器，并确定片段写入哪些帧缓冲区以及使用哪些颜色和深度值。它可以使用来自顶点着色器的插值数据来完成此操作，其中可以包括纹理坐标和法线照明等内容。</li>
+<li>颜色混合阶段(color blending stage): 应用操作来混合映射到帧缓冲区中的相同像素的不同片段。 碎片可以简单地相互覆盖，加起来或根据透明度进行混合。<ol>
+<li>绿色的阶段被称为固定功能阶段。这些阶段允许使用参数调整其操作，但它们的工作方式是预定义的。</li>
+<li>橙色的阶段是可编程的，这意味着可以将代码上传到图形卡，以完全应用想要的操作。 </li>
+<li>例如，实现从纹理和光照到光线跟踪器的任何内容。这些程序同时在许多GPU内核上运行，以并行处理许多对象，如顶点和片段。，可以使用片段着色器</li>
+</ol>
+</li>
+</ol>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_1.png" alt="图片"></p>
+<p>在OpenGL和Direct3D中，可以使用glBlendFunc和OMSetBlendState等调用随意更改任何管道设置。<br>但Vulkan中的图形管道几乎完全不可变，因此如果要更改着色器，绑定不同的帧缓冲区或更改混合函数，则必须从头开始重新创建管道。<br>缺点是您必须创建许多管道，这些管道代表您要在渲染操作中使用的所有状态组合。但是，因为您将在管道中执行的所有操作都是事先知道的，所以驱动程序可以更好地优化它。</p>
+<p>根据您的目的，某些可编程阶段是可选的。例如，如果您只是绘制简单几何体，则可以禁用曲面细分和几何体阶段。<br>如果您只对深度值感兴趣，则可以禁用片段着色器阶段，这对阴影贴图生成很有用。</p>
+<p>记住<strong>创建管道需要在创建VkImageView之后</strong>。</p>
+<p>具体的创建需要依赖上述各个着色器，我们先熟悉一下这些着色器。</p>
+<h1 id="三-着色器-Shader-modules"><a href="#三-着色器-Shader-modules" class="headerlink" title="三. 着色器(Shader modules)"></a>三. 着色器(Shader modules)</h1><p>Vulkan中的着色器代码必须以字节码格式指定，而不是像GLSL和HLSL这样的人类可读语法。</p>
+<ul>
+<li>GLSL是一种具有C风格语法的着色语言。写在其中的程序具有为每个对象调用的主函数。</li>
+<li>GLSL使用全局变量来处理输入和输出，而不是使用输入参数和返回值作为输出。该语言包括许多有助于图形编程的功能，如内置向量和矩阵基元。包括交叉积，矩阵向量积和向量周围反射等操作的函数。</li>
+</ul>
+<p>而Vulkan中的这种字节码格式称为<strong>SPIR-V</strong>，旨在与Vulkan和OpenCL（两种Khronos API）一起使用。<br>SPIR-V是一种用于图形着色器和计算内核的简单二进制中间语言。 更多信息可以参考 <a target="_blank" rel="noopener" href="https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html">https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html</a></p>
+<p>使用字节码格式的优点是比GPU供应商编写的将着色器代码转换为本机代码的编译器要简单的得多。<br>过去已经表明，使用像GLSL这样的人类可读语法，一些GPU供应商对标准的解释相当灵活。<br>如果碰巧使用其中一个供应商编写的不标准GPU着色器，那么由于语法错误，可能其他供应商的驱动程序会拒绝我们的代码，或者更糟糕的，由于编译器错误，着色器运行方式不同。而使用简单的字节码格式，如SPIR-V，则可以避免此类问题。</p>
+<p>但是，这并不意味着我们需要手动编写这个字节码。 Khronos发布了自己独立于供应商的编译器，将GLSL编译为SPIR-V。<br>此编译器旨在验证着色器代码是否完全符合标准，并生成一个可与程序一起提供的SPIR-V二进制文件。<br>我们还可以将此编译器作为库包含在运行时生成SPIR-V。<br>这个编译器已经包含在LunarG SDK中作为glslangValidator.exe，无需额外下载。</p>
+<p>接下来我们使用GLSL语言(详细参考: <a target="_blank" rel="noopener" href="https://github.com/wshxbqq/GLSL-Card)%E7%BC%96%E5%86%99%E7%9D%80%E8%89%B2%E5%99%A8%E3%80%82">https://github.com/wshxbqq/GLSL-Card)编写着色器。</a></p>
+<h2 id="3-1-顶点着色器-Vertex-Shader"><a href="#3-1-顶点着色器-Vertex-Shader" class="headerlink" title="3.1 顶点着色器 Vertex Shader"></a>3.1 顶点着色器 Vertex Shader</h2><p>矢量类型称为vec，其数字表示元素的数量。 例如，3D位置将存储在vec3中。<br>可以通过.x等成员访问单个组件，但也可以同时从多个组件创建新的向量。 例如，表达式vec3（1.0,2.0,3.0）.xy将导致vec2。<br>向量的构造函数也可以采用向量对象和标量值的组合。 例如，vec3可以用vec3（vec2（1.0,2.0），3.0）构建。</p>
+<p>顶点着色器处理每个传入的顶点。 它将其属性（如世界位置，颜色，法线和纹理坐标）作为输入。<br>输出是剪辑坐标中的最终位置以及需要传递到片段着色器的属性，如颜色和纹理坐标。<br>然后，光栅化器将这些值插入片段上以产生平滑的梯度。<br>剪辑坐标是来自顶点着色器的四维矢量，其随后通过将整个矢量除以其最后一个分量而变为标准化设备坐标。 这些标准化的设备坐标是齐次坐标，它将帧缓冲区映射到[-1,1]乘[-1,1]坐标系，如下所示：</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_2.png" alt="图片"></p>
+<p>注意xy轴的方向，类似Android中的坐标轴，而不是OpenGL中的坐标轴方向。<br>接下来我们通过顶点着色器和片段着色器以在屏幕上呈现一个三角形,如下图：</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_3.png" alt="图片"></p>
+<p>我们可以直接输出归一化设备坐标，方法是将它们作为顶点着色器的剪辑坐标输出，最后一个组件设置为1.<br>这样，将剪辑坐标转换为规范化设备坐标的划分不会改变任何东西。<br>通常这些坐标将存储在顶点缓冲区中，但在Vulkan中创建顶点缓冲区并用数据填充它并不简单。<br>如果我们直接在顶点着色器中包含坐标，那么可以这样写：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#version 450</span></span><br><span class="line"></span><br><span class="line"><span class="type">vec2</span> positions[<span class="number">3</span>] = <span class="type">vec2</span>[](</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">0.0</span>, <span class="number">-0.5</span>),</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">0.5</span>, <span class="number">0.5</span>),</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">-0.5</span>, <span class="number">0.5</span>)</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    <span class="built_in">gl_Position</span> = <span class="type">vec4</span>(positions[gl_VertexIndex], <span class="number">0.0</span>, <span class="number">1.0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>每个顶点的生成都需要调用main函数。<br>内置的<strong>gl_VertexIndex</strong>变量包含当前顶点的索引，一般是顶点缓冲区的索引。在这里，它是顶点数据的硬编码数组的索引。<br>从着色器中的常量数组访问每个顶点的位置，并与虚拟z和w组件组合以在剪辑坐标中生成位置，内置变量gl_Position用作输出。</p>
+<h2 id="3-2-片段着色器-Fragment-Shader"><a href="#3-2-片段着色器-Fragment-Shader" class="headerlink" title="3.2 片段着色器 Fragment Shader"></a>3.2 片段着色器 Fragment Shader</h2><p>由顶点着色器的位置形成的三角形用片段填充屏幕上的区域。<br>在这些片段上调用片段着色器以生成帧缓冲区（或帧缓冲区）的颜色和深度。<br>为整个三角形输出红色的简单片段着色器如下所示：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#version 450</span></span><br><span class="line"><span class="meta">#extension GL_ARB_separate_shader_objects : enable</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 帧缓冲区的索引为0</span></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">out</span> <span class="type">vec4</span> outColor;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    outColor = <span class="type">vec4</span>(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>GLSL中的颜色是4分量矢量，其中R，G，B和α通道在[0,1]范围内。<br>与顶点着色器中的gl_Position不同，没有内置变量来输出当前片段的颜色。 所以必须为每个帧缓冲区指定自己的输出变量，其中layout（location &#x3D; 0）修饰符指定帧缓冲区的索引。<br>红色将写入此outColor变量，该变量链接到索引0处的第一个（也是唯一的）帧缓冲区。</p>
+<h2 id="3-3-为每个顶点着色"><a href="#3-3-为每个顶点着色" class="headerlink" title="3.3 为每个顶点着色"></a>3.3 为每个顶点着色</h2><p>如果我们想要实现渐变颜色的三角形，如下：</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_4.png" alt="图片"></p>
+<p>这就需要我们为三个顶点中的每一个指定不同的颜色。 顶点着色器现在应该包含一个颜色的数组，就像它对位置一样.</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">vec3</span> colors[<span class="number">3</span>] = <span class="type">vec3</span>[](</span><br><span class="line">    <span class="comment">// vec3(r,g,b)</span></span><br><span class="line">    <span class="type">vec3</span>(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">0.0</span>),</span><br><span class="line">    <span class="type">vec3</span>(<span class="number">0.0</span>, <span class="number">1.0</span>, <span class="number">0.0</span>),</span><br><span class="line">    <span class="type">vec3</span>(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>)</span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+<p>每一个vec3对应一个顶点。现在我们只需要将这些顶点颜色传递给片段着色器，这样就可以将它们的插值输出到帧缓冲区。<br>将颜色输出添加到顶点着色器并在main函数中写入：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#version 450</span></span><br><span class="line"></span><br><span class="line"><span class="type">vec2</span> positions[<span class="number">3</span>] = <span class="type">vec2</span>[](</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">0.0</span>, <span class="number">-0.5</span>),</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">0.5</span>, <span class="number">0.5</span>),</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">-0.5</span>, <span class="number">0.5</span>)</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">out</span> <span class="type">vec3</span> fragColor;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    <span class="built_in">gl_Position</span> = <span class="type">vec4</span>(positions[gl_VertexIndex], <span class="number">0.0</span>, <span class="number">1.0</span>);</span><br><span class="line">    fragColor = colors[gl_VertexIndex];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>接下来，我们需要在片段着色器中添加匹配的输入：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#version 450</span></span><br><span class="line"><span class="meta">#extension GL_ARB_separate_shader_objects : enable</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 帧缓冲区的索引为0</span></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">in</span> <span class="type">vec3</span> fragColor;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    outColor = <span class="type">vec4</span>(fragColor, <span class="number">1.0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>输入变量不一定必须使用相同的名称，因为我们使用location指令指定的索引讲它们链接在一起。<br>如上图所示，fragColor的值将自动插入三个顶点之间的片段，从而产生平滑的渐变。</p>
+<h2 id="3-4-编译着色器"><a href="#3-4-编译着色器" class="headerlink" title="3.4 编译着色器"></a>3.4 编译着色器</h2><p>首先在我们的工程目录下创建一个 shaders 的目录，用于保存我们的着色器。<br>首先是 shader.vert 文件：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#version 450</span></span><br><span class="line"><span class="meta">#extension GL_ARB_separate_shader_objects : enable</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 输出为fragColor</span></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">out</span> <span class="type">vec3</span> fragColor;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 三角形顶点坐标</span></span><br><span class="line"><span class="type">vec2</span> positions[<span class="number">3</span>] = <span class="type">vec2</span>[](</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">0.0</span>, <span class="number">-0.5</span>),</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">0.5</span>, <span class="number">0.5</span>),</span><br><span class="line">    <span class="type">vec2</span>(<span class="number">-0.5</span>, <span class="number">0.5</span>)</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 渐变颜色</span></span><br><span class="line"><span class="type">vec3</span> colors[<span class="number">3</span>] = <span class="type">vec3</span>[](</span><br><span class="line">    <span class="type">vec3</span>(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">0.0</span>),</span><br><span class="line">    <span class="type">vec3</span>(<span class="number">0.0</span>, <span class="number">1.0</span>, <span class="number">0.0</span>),</span><br><span class="line">    <span class="type">vec3</span>(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>)</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    <span class="built_in">gl_Position</span> = <span class="type">vec4</span>(positions[gl_VertexIndex], <span class="number">0.0</span>, <span class="number">1.0</span>);</span><br><span class="line">    fragColor = colors[gl_VertexIndex];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>还有 shader.frag 文件:</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#version 450</span></span><br><span class="line"><span class="meta">#extension GL_ARB_separate_shader_objects : enable</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">in</span> <span class="type">vec3</span> fragColor;</span><br><span class="line"></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">out</span> <span class="type">vec4</span> outColor;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    outColor = <span class="type">vec4</span>(fragColor, <span class="number">1.0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-4-1-Linux平台下编译方式"><a href="#3-4-1-Linux平台下编译方式" class="headerlink" title="3.4.1 Linux平台下编译方式"></a>3.4.1 Linux平台下编译方式</h3><p>使用 vulkan SDK中的glslangValidator来编译shader文件:</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#/home/user/VulkanSDK/x.x.x.x/x86_64/bin/glslangValidator -V shader.vert</span></span><br><span class="line"><span class="comment">#/home/user/VulkanSDK/x.x.x.x/x86_64/bin/glslangValidator -V shader.frag</span></span><br><span class="line">/home/jh/Program/vulkan/1.1.106.0/x86_64/bin/glslangValidator -V shader.vert</span><br><span class="line">/home/jh/Program/vulkan/1.1.106.0/x86_64/bin/glslangValidator -V shader.frag</span><br></pre></td></tr></table></figure>
+<p>执行上面的脚本后，会在当前目录生成对应的: frag.spv和vert.spv文件<br><img src="/images/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/Vulkan_5_5.png" alt="Vulkan_5_5.png"></p>
+<h3 id="3-4-2-Windows平台编译方式"><a href="#3-4-2-Windows平台编译方式" class="headerlink" title="3.4.2 Windows平台编译方式"></a>3.4.2 Windows平台编译方式</h3><p>类似，不赘述</p>
+<p>另外Vulkan SDK包含libshaderc库，用于从程序中将GLSL代码编译为SPIR-V。</p>
+<h2 id="3-5-加载着色器"><a href="#3-5-加载着色器" class="headerlink" title="3.5 加载着色器"></a>3.5 加载着色器</h2><p>加载着色器就是读取我们编译好的shader文件:frag.spv和vert.spv.<br>c++中读取文件如下：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;fstream&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">static</span> std::vector&lt;<span class="type">char</span>&gt; <span class="title">readFile</span><span class="params">(<span class="type">const</span> std::string&amp; filename)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// ate: 从文件末尾开始阅读</span></span><br><span class="line">    <span class="comment">// binary: 二进制流形式</span></span><br><span class="line">    <span class="function">std::ifstream <span class="title">file</span><span class="params">(filename, std::ios::ate | std::ios::binary)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!file.<span class="built_in">is_open</span>()) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to open file!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="type">size_t</span> fileSize = (<span class="type">size_t</span>) file.<span class="built_in">tellg</span>();</span><br><span class="line">    <span class="function">std::vector&lt;<span class="type">char</span>&gt; <span class="title">buffer</span><span class="params">(fileSize)</span></span>;</span><br><span class="line"></span><br><span class="line">    file.<span class="built_in">seekg</span>(<span class="number">0</span>);</span><br><span class="line">    file.<span class="built_in">read</span>(buffer.<span class="built_in">data</span>(), fileSize);</span><br><span class="line"></span><br><span class="line">    file.<span class="built_in">close</span>();</span><br><span class="line">    <span class="keyword">return</span> buffer;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>比如读取 vert.spv:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> vertShaderCode = <span class="built_in">readFile</span>(<span class="string">&quot;shaders/vert.spv&quot;</span>);</span><br></pre></td></tr></table></figure>
+<p>读取成功后，记得check一下文件大小是否匹配。</p>
+<h2 id="3-6-创建着色器模块-shader-modules-VkShaderModule"><a href="#3-6-创建着色器模块-shader-modules-VkShaderModule" class="headerlink" title="3.6 创建着色器模块(shader modules - VkShaderModule)"></a>3.6 创建着色器模块(shader modules - VkShaderModule)</h2><p>在Vulkan中使用VkShaderModule存储着色器. 使用结构体：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkShaderModuleCreateInfo</span> &#123;</span><br><span class="line">    VkStructureType              sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*                  pNext;</span><br><span class="line">    VkShaderModuleCreateFlags    flags;</span><br><span class="line">    <span class="type">size_t</span>                       codeSize;</span><br><span class="line">    <span class="type">const</span> <span class="type">uint32_t</span>*              pCode;</span><br><span class="line">&#125; VkShaderModuleCreateInfo;</span><br></pre></td></tr></table></figure>
+<p>封装成createShaderModule方法,方便后续调用.<br>其实VkShaderModule只是一个对着色器文件的封装而已。使用方法：vkCreateShaderModule</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkShaderModule <span class="title">createShaderModule</span><span class="params">(<span class="type">const</span> std::vector&lt;<span class="type">char</span>&gt;&amp; code)</span> </span>&#123;</span><br><span class="line">    VkShaderModuleCreateInfo createInfo = &#123;&#125;;</span><br><span class="line">    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;</span><br><span class="line">    createInfo.codeSize = code.<span class="built_in">size</span>();</span><br><span class="line">    createInfo.pCode = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">const</span> <span class="type">uint32_t</span>*&gt;(code.<span class="built_in">data</span>());</span><br><span class="line"></span><br><span class="line">    VkShaderModule shaderModule;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// vkResult device, const  *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkShaderModule *pShaderModule)</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateShaderModule</span>(device, &amp;createInfo, <span class="literal">nullptr</span>, &amp;shaderModule) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create shader module!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> shaderModule;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-7-着色器阶段创建-shader-stage"><a href="#3-7-着色器阶段创建-shader-stage" class="headerlink" title="3.7 着色器阶段创建(shader stage)"></a>3.7 着色器阶段创建(shader stage)</h2><p>只是有 VkShaderModule，还不够。要使用着色器，还需要在创建管道(Pipeline)时，使用VkPipelineShaderStageCreateInfo结构讲其分配到特定的管道阶段。<br>比如在管道中填充顶点着色器: vert.spv</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">VkPipelineShaderStageCreateInfo vertShaderStageInfo = &#123;&#125;;</span><br><span class="line">vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;</span><br><span class="line">vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT; <span class="comment">// 指明当前是顶点阶段 (3.7.1)</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 指定包含代码的着色器模块</span></span><br><span class="line">vertShaderStageInfo.<span class="keyword">module</span> = vertShaderModule;</span><br><span class="line"><span class="comment">// 指定要调用的着色器模块函数（称为入口点）</span></span><br><span class="line">vertShaderStageInfo.pName = <span class="string">&quot;main&quot;</span>;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>还有一个（可选的）成员pSpecializationInfo，这里不会在这里使用。它允许您指定着色器常量的值。<br>当使用单个着色器模块，通过为其中使用的常量指定不同的值，就可以在创建管道时配置其行为。<br>这比在渲染时使用变量配置着色器更有效，因为编译器可以执行优化，例如消除依赖于这些值的if语句。<br>默认为nullptr，struct初始化会自动执行。</p>
+<h3 id="3-7-1-Shader-Stage"><a href="#3-7-1-Shader-Stage" class="headerlink" title="3.7.1 Shader Stage"></a>3.7.1 Shader Stage</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkShaderStageFlagBits</span> &#123;</span><br><span class="line">    VK_SHADER_STAGE_VERTEX_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_SHADER_STAGE_GEOMETRY_BIT = <span class="number">0x00000008</span>,</span><br><span class="line">    VK_SHADER_STAGE_FRAGMENT_BIT = <span class="number">0x00000010</span>,</span><br><span class="line">    VK_SHADER_STAGE_COMPUTE_BIT = <span class="number">0x00000020</span>,</span><br><span class="line">    VK_SHADER_STAGE_ALL_GRAPHICS = <span class="number">0x0000001F</span>,</span><br><span class="line">    VK_SHADER_STAGE_ALL = <span class="number">0x7FFFFFFF</span>,</span><br><span class="line">    VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkShaderStageFlagBits;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>VK_SHADER_STAGE_VERTEX_BIT: 顶点阶段</li>
+<li>VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT: 曲面细分控制阶段</li>
+<li>VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT: 曲面细分评估阶段</li>
+<li>VK_SHADER_STAGE_GEOMETRY_BIT: 几何阶段</li>
+<li>VK_SHADER_STAGE_FRAGMENT_BIT: 片段阶段</li>
+<li>VK_SHADER_STAGE_COMPUTE_BIT: 计算阶段</li>
+<li>VK_SHADER_STAGE_ALL_GRAPHICS: 用作速记的位组合，用于指定上面定义的所有图形阶段（不包括计算阶段）。</li>
+<li>VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM: 用作速记的位组合，用于指定设备支持的所有着色器阶段，包括扩展引入的所有其他阶段。</li>
+</ul>
+<h3 id="3-7-2-为着色器指定管道"><a href="#3-7-2-为着色器指定管道" class="headerlink" title="3.7.2 为着色器指定管道"></a>3.7.2 为着色器指定管道</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createGraphicsPipeline</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> vertShaderCode = <span class="built_in">readFile</span>(<span class="string">&quot;shaders/vert.spv&quot;</span>);</span><br><span class="line">    <span class="keyword">auto</span> fragShaderCode = <span class="built_in">readFile</span>(<span class="string">&quot;shaders/frag.spv&quot;</span>);</span><br><span class="line"></span><br><span class="line">    VkShaderModule vertShaderModule = <span class="built_in">createShaderModule</span>(vertShaderCode);</span><br><span class="line">    VkShaderModule fragShaderModule = <span class="built_in">createShaderModule</span>(fragShaderCode);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这里为管道指定着色器</span></span><br><span class="line">    VkPipelineShaderStageCreateInfo shaderStages[] =  &#123;vertShaderStageInfo, fragShaderStageInfo&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 记得销毁shader</span></span><br><span class="line">    <span class="built_in">vkDestroyShaderModule</span>(device, vertShaderModule, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkDestroyShaderModule</span>(device, fragShaderModule, <span class="literal">nullptr</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>图形管道 其他部分设置在下个文章中讨论。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/" title="Vulkan入门(5)-图像视图及Pipeline简述">https://swallowjoe.github.io/2022/02/27/Vulkan入门-5-图像视图及Pipeline简述/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Vulkan/" rel="tag"># Vulkan</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/" rel="prev" title="Vulkan入门(4)-Surface和交换链">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(4)-Surface和交换链
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-6-%E5%88%9B%E5%BB%BA%E7%AE%A1%E9%81%93%E7%9A%84%E5%87%A0%E4%B8%AA%E5%9B%BA%E5%AE%9A%E6%93%8D%E4%BD%9C/" rel="next" title="Vulkan入门(6)-创建管道的几个固定操作">
+      Vulkan入门(6)-创建管道的几个固定操作 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-Image-views"><span class="nav-text">一. Image views</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93-Pipeline-%E7%AE%80%E4%BB%8B"><span class="nav-text">二. 图形管道 Pipeline 简介</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-%E7%9D%80%E8%89%B2%E5%99%A8-Shader-modules"><span class="nav-text">三. 着色器(Shader modules)</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-%E9%A1%B6%E7%82%B9%E7%9D%80%E8%89%B2%E5%99%A8-Vertex-Shader"><span class="nav-text">3.1 顶点着色器 Vertex Shader</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-%E7%89%87%E6%AE%B5%E7%9D%80%E8%89%B2%E5%99%A8-Fragment-Shader"><span class="nav-text">3.2 片段着色器 Fragment Shader</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-%E4%B8%BA%E6%AF%8F%E4%B8%AA%E9%A1%B6%E7%82%B9%E7%9D%80%E8%89%B2"><span class="nav-text">3.3 为每个顶点着色</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-%E7%BC%96%E8%AF%91%E7%9D%80%E8%89%B2%E5%99%A8"><span class="nav-text">3.4 编译着色器</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-4-1-Linux%E5%B9%B3%E5%8F%B0%E4%B8%8B%E7%BC%96%E8%AF%91%E6%96%B9%E5%BC%8F"><span class="nav-text">3.4.1 Linux平台下编译方式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-4-2-Windows%E5%B9%B3%E5%8F%B0%E7%BC%96%E8%AF%91%E6%96%B9%E5%BC%8F"><span class="nav-text">3.4.2 Windows平台编译方式</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-5-%E5%8A%A0%E8%BD%BD%E7%9D%80%E8%89%B2%E5%99%A8"><span class="nav-text">3.5 加载着色器</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-6-%E5%88%9B%E5%BB%BA%E7%9D%80%E8%89%B2%E5%99%A8%E6%A8%A1%E5%9D%97-shader-modules-VkShaderModule"><span class="nav-text">3.6 创建着色器模块(shader modules - VkShaderModule)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-7-%E7%9D%80%E8%89%B2%E5%99%A8%E9%98%B6%E6%AE%B5%E5%88%9B%E5%BB%BA-shader-stage"><span class="nav-text">3.7 着色器阶段创建(shader stage)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-7-1-Shader-Stage"><span class="nav-text">3.7.1 Shader Stage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-7-2-%E4%B8%BA%E7%9D%80%E8%89%B2%E5%99%A8%E6%8C%87%E5%AE%9A%E7%AE%A1%E9%81%93"><span class="nav-text">3.7.2 为着色器指定管道</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">15</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

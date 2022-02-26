@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述本文主要是学习Vulkan Tutorial.pdf文档中的Window Surface和Swap Chain的部分。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vulkan入门(4)-Surface和交换链">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述本文主要是学习Vulkan Tutorial.pdf文档中的Window Surface和Swap Chain的部分。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-02-26T19:21:25.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:25:56.402Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Vulkan">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vulkan入门(4)-Surface和交换链 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vulkan入门(4)-Surface和交换链
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:21:25 / 修改时间：03:25:56" itemprop="dateCreated datePublished" datetime="2022-02-27T03:21:25+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(4)-Surface和交换链" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>本文主要是学习Vulkan Tutorial.pdf文档中的Window Surface和Swap Chain的部分。</p>
+<span id="more"></span>
+
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>[Vulkan-文档]<a target="_blank" rel="noopener" href="https://github.com/KhronosGroup/Vulkan-Docs">https://github.com/KhronosGroup/Vulkan-Docs</a></li>
+</ol>
+<h1 id="一-Window-Surface"><a href="#一-Window-Surface" class="headerlink" title="一. Window Surface"></a>一. Window Surface</h1><p>由于Vulkan是一个与平台无关的API，因此无法直接与窗口系统进行交互。<br>要在Vulkan和窗口系统之间建立连接以向屏幕显示结果，我们需要使用WSI（窗口系统集成）扩展。<br>这就需要使用到VK_KHR_surface，它公开了一个VkSurfaceKHR对象，表示一个抽象类型的Surface，以呈现渲染图像。<br>我们程序中的Surface将由我们已经使用GLFW打开的窗口支持。VK_KHR_surface扩展是一个实例级扩展，我们实际上已经启用它，因为它包含在glfwGetRequiredInstanceExtensions返回的列表中。</p>
+<p>一般需要在创建实例后立即创建窗口Surface，因为它实际上可以影响物理设备选择。<br>但如果你只需要离屏渲染，窗口Surface是Vulkan中完全可选的组件。 Vulkan允许这样做，而不是像OpenGL一样必须创建一个不可见的窗口。</p>
+<h2 id="1-1-创建窗口Surface"><a href="#1-1-创建窗口Surface" class="headerlink" title="1.1 创建窗口Surface"></a>1.1 创建窗口Surface</h2><p>在Vulkan中使用VkSurfaceKHR表示窗口Surface：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">VkSurfaceKHR surface;</span><br></pre></td></tr></table></figure>
+<p>虽然VkSurfaceKHR对象及其用法与平台无关，但它的创建并不是因为它取决于窗口系统的细节。例如，它需要Windows上的HWND和HMODULE句柄。因此，扩展中有一个特定于平台的添加，在Windows上称为VK_KHR_win32_surface，并且还自动包含在glfwGetRequiredInstanceExtensions的列表中。<br>但使用像GLFW这样的库然后继续使用特定于平台的代码没有任何意义。<br>GLFW实际上有glfwCreateWindowSurface来帮我们处理平台的差异。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"> <span class="comment">// 使用glfw创建WindowSurface</span></span><br><span class="line"> <span class="function"><span class="type">void</span> <span class="title">createWindowSurface</span><span class="params">()</span> </span>&#123;</span><br><span class="line">     <span class="keyword">if</span> (<span class="built_in">glfwCreateWindowSurface</span>(instance, window, <span class="literal">nullptr</span>, &amp;surface) != VK_SUCCESS) &#123;</span><br><span class="line">         <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create window surface!&quot;</span>);</span><br><span class="line">     &#125;</span><br><span class="line"> &#125;</span><br><span class="line"></span><br><span class="line"> <span class="comment">// 记得释放</span></span><br><span class="line"> <span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">     <span class="comment">// 释放WindowSurface</span></span><br><span class="line">     <span class="built_in">vkDestroySurfaceKHR</span>(instance, surface, <span class="literal">nullptr</span>);</span><br><span class="line">     ......    </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="二-Swap-Chain-交换链"><a href="#二-Swap-Chain-交换链" class="headerlink" title="二. Swap Chain-交换链"></a>二. Swap Chain-交换链</h1><p>Vulkan没有“默认帧缓冲区”的概念，取而代之的是名为 “swap chain” 即交换链，也就是渲染的缓冲区，必须在Vulkan中明确创建。<br>交换链本质上是一个等待呈现给屏幕的图像队列。应用程序将获取这样的图像以绘制它，然后将其返回到队列中。<br>队列的工作原理以及从队列中显示图像的条件取决于交换链的设置方式，但交换链的一般用途是将图像的显示与屏幕的刷新率同步。</p>
+<h2 id="2-1-检查GPU是否支持交换链"><a href="#2-1-检查GPU是否支持交换链" class="headerlink" title="2.1 检查GPU是否支持交换链"></a>2.1 检查GPU是否支持交换链</h2><p>并不是所有的GPU都支持图像显示(比如专为服务器设计的)，其次，由于图像显示严重依赖于窗口系统和与窗口相关的Surface，因此它实际上不是Vulkan核心的一部分。<br>所以必须在查询其支持后才能启用K_KHR_swapchain设备扩展。</p>
+<p>可以扩展isDeviceSuitable函数以检查是否支持此扩展。<br>之前已经实现过如何列出VkPhysicalDevice支持的扩展，这样做法其实一样。值得注意的是，Vulkan头文件提供了一个很好的宏VK_KHR_SWAPCHAIN_EXTENSION_NAME，定义为VK_KHR_swapchain。<br>使用此宏的优点是编译器将捕获拼写错误。首先声明所需设备扩展的列表，类似于要启用的验证层列表。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> std::vector&lt;<span class="type">const</span> <span class="type">char</span>*&gt; deviceExtensions = &#123;</span><br><span class="line">    VK_KHR_SWAPCHAIN_EXTENSION_NAME</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">bool</span> <span class="title">isDeviceSuitable</span><span class="params">(VkPhysicalDevice device)</span> </span>&#123;</span><br><span class="line">    QueueFamilyIndices indices = <span class="built_in">findQueueFamilies</span>(device);</span><br><span class="line"></span><br><span class="line">    <span class="type">bool</span> extensionsSupported = <span class="built_in">checkDeviceExtensionSupport</span>(device);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> indices.<span class="built_in">isComplete</span>() &amp;&amp; extensionsSupported;    </span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">bool</span> <span class="title">checkDeviceExtensionSupport</span><span class="params">(VkPhysicalDevice device)</span> </span>&#123;</span><br><span class="line">    <span class="type">uint32_t</span> extensionCount;</span><br><span class="line">    <span class="built_in">vkEnumerateDeviceExtensionProperties</span>(device, <span class="literal">nullptr</span>, &amp;extensionCount, <span class="literal">nullptr</span>);</span><br><span class="line"></span><br><span class="line">    <span class="function">std::vector&lt;VkExtensionProperties&gt; <span class="title">availableExtensions</span><span class="params">(extensionCount)</span></span>;</span><br><span class="line">    <span class="built_in">vkEnumerateDeviceExtensionProperties</span>(device, <span class="literal">nullptr</span>, &amp;extensionCount, availableExtensions.<span class="built_in">data</span>());</span><br><span class="line"></span><br><span class="line">    <span class="function">std::set&lt;std::string&gt; <span class="title">requiredExtensions</span><span class="params">(deviceExtensions.begin(), deviceExtensions.end())</span></span>;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 遍历当前所有可支持的扩展，并逐步移除也存在于deviceExtensions中的</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; extension : availableExtensions) &#123;</span><br><span class="line">        requiredExtensions.<span class="built_in">erase</span>(extension.extensionName);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 为empty时，表示所有deviceExtensions中的扩展均支持</span></span><br><span class="line">    <span class="keyword">return</span> requiredExtensions.<span class="built_in">empty</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-2-使能设备扩展"><a href="#2-2-使能设备扩展" class="headerlink" title="2.2 使能设备扩展"></a>2.2 使能设备扩展</h2><p>使用交换链需要首先使能VK_KHR_swapchain扩展。<br>方法也很简单，只需要在创建逻辑设备的时候声明一下即可：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">createInfo.enabledExtensionCount = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(deviceExtensions.<span class="built_in">size</span>());</span><br><span class="line">createInfo.ppEnabledExtensionNames = deviceExtensions.<span class="built_in">data</span>();</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-3-获取关于swap-chain更多支持细节"><a href="#2-3-获取关于swap-chain更多支持细节" class="headerlink" title="2.3 获取关于swap chain更多支持细节"></a>2.3 获取关于swap chain更多支持细节</h2><p>只检查交换链是否可用是不够的，因为它实际上可能与我们创建的窗口Surface不兼容（有点坑）。<br>创建交换链还涉及比vulkan实例和设备创建时更多的设置，因此我们需要在能够继续之前查明更多的细节。<br>需要检查的基本上有以下三种属性：</p>
+<ul>
+<li>基本Surface功能（交换链中的最小&#x2F;最大图像数，图像的最小&#x2F;最大宽度和高度）</li>
+<li>Surface的格式（像素格式，色彩空间）</li>
+<li>可用的呈现模式</li>
+</ul>
+<p>与创建队列类似，同样可以使用一个结构体来存储传递这些细节部分：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">SwapChainSupportDetails</span> &#123;</span><br><span class="line">    VkSurfaceCapabilitiesKHR capabilities; <span class="comment">// 基本Surface功能</span></span><br><span class="line">    std::vector&lt;VkSurfaceFormatKHR&gt; formats; <span class="comment">// Surface格式</span></span><br><span class="line">    std::vector&lt;VkPresentModeKHR&gt; presentModes; <span class="comment">// 可用的呈现模式(presentation modes)</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>接来下是查询细节部分：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">SwapChainSupportDetails <span class="title">querySwapChainSupport</span><span class="params">(VkPhysicalDevice device)</span> </span>&#123;</span><br><span class="line">    SwapChainSupportDetails details;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 1. 查询基本Surface功能</span></span><br><span class="line">    <span class="comment">// 需要使用到本机物理设备(GPU), 以及创建的逻辑设备对应的Surface，结果保存在VkSurfaceCapabilitiesKHR结构体中</span></span><br><span class="line">    <span class="comment">// VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR *pSurfaceCapabilities)</span></span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceSurfaceCapabilitiesKHR</span>(device, surface, &amp;details.capabilities);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 2. 查询可支持的Surface格式</span></span><br><span class="line">    <span class="comment">// 类似扩展，按例先查询一下数量，然后更新细节到VkSurfaceFormatKHR的队列中</span></span><br><span class="line">    <span class="type">uint32_t</span> formatCount;</span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceSurfaceFormatsKHR</span>(device, surface, &amp;formatCount, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="keyword">if</span> (formatCount != <span class="number">0</span>) &#123;</span><br><span class="line">        details.formats.<span class="built_in">resize</span>(formatCount);</span><br><span class="line">        <span class="built_in">vkGetPhysicalDeviceSurfaceFormatsKHR</span>(device, surface, &amp;formatCount, details.formats.<span class="built_in">data</span>());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3. 查询可用的呈现模式(presentation modes)</span></span><br><span class="line">    <span class="type">uint32_t</span> presentModeCount;</span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceSurfacePresentModesKHR</span>(device, surface, &amp;presentModeCount, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="keyword">if</span> (presentModeCount != <span class="number">0</span>) &#123;</span><br><span class="line">        details.presentModes.<span class="built_in">resize</span>(presentModeCount);</span><br><span class="line">        <span class="built_in">vkGetPhysicalDeviceSurfacePresentModesKHR</span>(device, surface, &amp;presentModeCount, details.presentModes.<span class="built_in">data</span>());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> details;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-4-为swap-chain-交换链选择合适的设置"><a href="#2-4-为swap-chain-交换链选择合适的设置" class="headerlink" title="2.4 为swap chain-交换链选择合适的设置"></a>2.4 为swap chain-交换链选择合适的设置</h2><p>满足了swapChainAnequate条件，那么物理设备肯定是支持我们的应用程序的，但还可以有许多不同的最优性模式。<br>有三种类型的设置可以选择：</p>
+<ul>
+<li>Surface格式（颜色深度）</li>
+<li>呈现模式（将图像“交换”到屏幕的条件）</li>
+<li>交换范围（交换链中图像的分辨率）</li>
+</ul>
+<h3 id="2-4-1-Surface格式"><a href="#2-4-1-Surface格式" class="headerlink" title="2.4.1 Surface格式"></a>2.4.1 Surface格式</h3><p>在Vulkan中，Surface格式使用结构体 VkSurfaceFormatKHR 来表示:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkSurfaceFormatKHR</span> &#123;</span><br><span class="line">    VkFormat           format; <span class="comment">// 格式</span></span><br><span class="line">    VkColorSpaceKHR    colorSpace; <span class="comment">// 色彩空间</span></span><br><span class="line">&#125; VkSurfaceFormatKHR;</span><br></pre></td></tr></table></figure>
+<p>如上每个VkSurfaceFormatKHR条目都包含一个格式和一个colorSpace成员。</p>
+<ol>
+<li>格式成员指定颜色通道和类型。例如，VK_FORMAT_B8G8R8A8_UNORM意味着我们以8位无符号整数的顺序存储B，G，R和alpha通道，每个像素总共32位。</li>
+<li>colorSpace成员使用VK_COLOR_SPACE_SRGB_NONLINEAR_KHR标志指示是否支持SRGB色彩空间。请注意，在旧版本的规范中，此标志曾被称为VK_COLORSPACE_SRGB_NONLINEAR_KHR。对于色彩空间，我们将使用SRGB（如果可用），因为它会产生更准确的感知色彩。直接使用SRGB颜色有点挑战，因此我们将使用标准RGB作为颜色格式，其中最常见的一种是VK_FORMAT_B8G8R8A8_UNORM。</li>
+</ol>
+<p>最好的情况是 Surface 没有首选格式，Vulkan只通过返回一个格式成员设置为VK_FORMAT_UNDEFINED的VkSurfaceFormatKHR条目来指示。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 选择合适交换链和Surface的格式</span></span><br><span class="line"><span class="function">VkSurfaceFormatKHR <span class="title">chooseSwapSurfaceFormat</span><span class="params">(<span class="type">const</span> std::vector&lt;VkSurfaceFormatKHR&gt;&amp; availableFormats)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (availableFormats.<span class="built_in">size</span>() == <span class="number">1</span> &amp;&amp; availableFormats[<span class="number">0</span>].format == VK_FORMAT_UNDEFINED) &#123;</span><br><span class="line">        <span class="keyword">return</span> &#123;VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR&#125;;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; availableFormat : availableFormats) &#123;</span><br><span class="line">        <span class="keyword">if</span> (availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM &amp;&amp;</span><br><span class="line">            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) &#123;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">return</span> availableFormat;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果没有找到合适的，保险起见，直接使用第一个就好了</span></span><br><span class="line">    <span class="keyword">return</span> availableFormats[<span class="number">0</span>];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-4-2-呈现模式-Presentation-Mode"><a href="#2-4-2-呈现模式-Presentation-Mode" class="headerlink" title="2.4.2 呈现模式(Presentation Mode)"></a>2.4.2 呈现模式(Presentation Mode)</h3><p>呈现模式可以说是交换链中最重要的设置，因为它代表了向屏幕显示图像的实际条件。<br>Vulkan有四种可用的模式：</p>
+<ul>
+<li>VK_PRESENT_MODE_IMMEDIATE_KHR：应用程序提交的图像会立即传输到屏幕上，这可能会导致撕裂现象(上下或者左右图像不匹配，前后两帧合成)。</li>
+<li>VK_PRESENT_MODE_FIFO_KHR：交换链是一个队列，当刷新显示并且程序在队列的后面插入渲染图像时，显示从队列前面获取图像。如果队列已满，则程序必须等待。这与现代游戏中的垂直同步最相似。刷新显示的那一刻被称为“垂直空白”。</li>
+<li>VK_PRESENT_MODE_FIFO_RELAXED_KHR：如果应用程序延迟且队列在最后一个垂直空白处为空，则此模式仅与前一个模式不同。而不是等待下一个垂直空白，图像最终到达时立即传输。这可能会导致明显的撕裂。</li>
+<li>VK_PRESENT_MODE_MAILBOX_KHR：这是第二种模式的另一种变体。当队列已满时，已排队的图像将被替换为较新的图像，而不是阻塞应用程序。此模式可用于实现三重缓冲，与使用双缓冲的标准垂直同步相比，可以避免使用明显更少的延迟问题进行撕裂。</li>
+</ul>
+<p>比如我们试试机器是否支持三重缓冲, 即允许我们通过渲染尽可能最新的新图像直到垂直空白来避免撕裂，同时仍保持相当低的延迟:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkPresentModeKHR <span class="title">chooseSwapPresentMode</span><span class="params">(<span class="type">const</span> std::vector&lt;VkPresentModeKHR&gt;&amp; availablePresentModes)</span> </span>&#123;</span><br><span class="line">    VkPresentModeKHR bestMode = VK_PRESENT_MODE_FIFO_KHR;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; availablePresentMode : availablePresentModes) &#123;</span><br><span class="line">        <span class="keyword">if</span> (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) &#123;</span><br><span class="line">            <span class="keyword">return</span> availablePresentMode;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) &#123;</span><br><span class="line">            bestMode = availablePresentMode;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> bestMode;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-4-3-交换范围-Swap-extent"><a href="#2-4-3-交换范围-Swap-extent" class="headerlink" title="2.4.3 交换范围(Swap extent)"></a>2.4.3 交换范围(Swap extent)</h3><p>交换范围是交换链图像的分辨率，它几乎总是完全等于绘制的窗口的分辨率。<br>可能的分辨率范围在 VkSurfaceCapabilitiesKHR 结构中定义。</p>
+<p>Vulkan通过在currentExtent成员中设置宽度和高度来匹配窗口的分辨率。<br>但是，一些窗口管理器允许在这里有所不同, 通过将currentExtent中的宽度和高度设置为特殊值来表示：uint32_t的最大值。在这种情况下，要选择与minImageExtent和maxImageExtent范围内的窗口最匹配的分辨率。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 选择交换链分辨率</span></span><br><span class="line"><span class="function">VkExtent2D <span class="title">chooseSwapExtent</span><span class="params">(<span class="type">const</span> VkSurfaceCapabilitiesKHR&amp; capabilities)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (capabilities.currentExtent.width != std::numeric_limits&lt;<span class="type">uint32_t</span>&gt;::<span class="built_in">max</span>()) &#123;</span><br><span class="line">        <span class="keyword">return</span> capabilities.currentExtent;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        VkExtent2D actualExtent = &#123;WIDTH, HEIGHT&#125;;</span><br><span class="line">        actualExtent.width = std::<span class="built_in">max</span>(capabilities.minImageExtent.width, std::<span class="built_in">min</span>(capabilities.maxImageExtent.width, actualExtent.width));</span><br><span class="line">        actualExtent.height = std::<span class="built_in">max</span>(capabilities.minImageExtent.height, std::<span class="built_in">min</span>(capabilities.maxImageExtent.height, actualExtent.height));</span><br><span class="line">        <span class="keyword">return</span> actualExtent;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-5-创建交换链"><a href="#2-5-创建交换链" class="headerlink" title="2.5 创建交换链"></a>2.5 创建交换链</h2><p>上述步骤已经把创建交换链的三个主要属性设置了，接下来就是创建交换链对象：VkSwapchainKHR swapChain;<br>除了上述的三个主要属性，其实还需要做的是：</p>
+<ul>
+<li>绑定窗口Surface</li>
+<li>设置交换链图像细节，包括最小图像数量、图像图层数量</li>
+<li>处理将在多个队列系列中使用的交换链图像。如果图形队列系列与呈现队列不同，需要从图形队列中绘制交换链中的图像，然后在呈现队列中提交它们。 有两种方法可以处理从多个队列访问的图像：<ul>
+<li>VK_SHARING_MODE_EXCLUSIVE：映像一次由一个队列系列拥有，并且必须在将其用于另一个队列系列之前显式转移所有权。 此选项提供最佳性能。</li>
+<li>VK_SHARING_MODE_CONCURRENT：可以跨多个队列系列使用映像，而无需显式所有权传输。</li>
+</ul>
+</li>
+</ul>
+<p>类似创建其他对象，交换链的创建依赖结构体：VkSwapchainCreateInfoKHR</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createSwapChain</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 获取物理设备可支持的交换链细节部分</span></span><br><span class="line">    SwapChainSupportDetails swapChainSupport = <span class="built_in">querySwapChainSupport</span>(physicalDevice);</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 选择合适的Surface格式</span></span><br><span class="line">    VkSurfaceFormatKHR surfaceFormat = <span class="built_in">chooseSwapSurfaceFormat</span>(swapChainSupport.formats);</span><br><span class="line">    <span class="comment">// 选择合适的呈现模式</span></span><br><span class="line">    VkPresentModeKHR presentMode = <span class="built_in">chooseSwapPresentMode</span>(swapChainSupport.presentModes);</span><br><span class="line">    <span class="comment">// 选择合适的分辨率</span></span><br><span class="line">    VkExtent2D extent = <span class="built_in">chooseSwapExtent</span>(swapChainSupport.capabilities);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 必须设置交换链运行所需的最小图像数量：</span></span><br><span class="line">    <span class="comment">// 有时可能必须等待驱动程序完成内部操作才能获取另一个要渲染的图像。 因此，建议最小值加1：</span></span><br><span class="line">    <span class="type">uint32_t</span> imageCount = swapChainSupport.capabilities.minImageCount + <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 边界检查，防止越界，超出交换链可支持的最大图像数量</span></span><br><span class="line">    <span class="keyword">if</span> (swapChainSupport.capabilities.maxImageCount &gt; <span class="number">0</span> &amp;&amp;</span><br><span class="line">        imageCount &gt; swapChainSupport.capabilities.maxImageCount) &#123;</span><br><span class="line">        imageCount = swapChainSupport.capabilities.maxImageCount;</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 创建交换链对象</span></span><br><span class="line">    VkSwapchainCreateInfoKHR createInfo = &#123;&#125;;</span><br><span class="line">    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;</span><br><span class="line">    createInfo.surface = surface; <span class="comment">// 绑定窗口Surface</span></span><br><span class="line"></span><br><span class="line">    createInfo.minImageCount = imageCount; <span class="comment">// 设置最小图像数量</span></span><br><span class="line">    createInfo.imageFormat = surfaceFormat.format; <span class="comment">// 设置图像格式</span></span><br><span class="line">    createInfo.imageColorSpace = surfaceFormat.colorSpace; <span class="comment">// 设置图像颜色空间</span></span><br><span class="line"></span><br><span class="line">    createInfo.imageExtent = extent; <span class="comment">// 设置分辨率</span></span><br><span class="line">    createInfo.imageArrayLayers = <span class="number">1</span>; <span class="comment">// 指定每个图像所包含的图层数量, 除非是立体3D应用程序，否则始终为1。 </span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// imageUsage 是 VkImageUsageFlags 类型, 指定将使用交换链中的图像进行哪种操作</span></span><br><span class="line">    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; <span class="comment">// 指定该图像可用于创建适合用作颜色的VkImageView或解析VkFramebuffer中的附件。</span></span><br><span class="line"></span><br><span class="line">    QueueFamilyIndices indices = <span class="built_in">findQueueFamilies</span>(physicalDevice);</span><br><span class="line">    <span class="type">uint32_t</span> queueFamilyIndices[] = &#123;indices.graphicsFamily.<span class="built_in">value</span>(), indices.presentFamily.<span class="built_in">value</span>()&#125;;</span><br><span class="line">    <span class="keyword">if</span> (indices.graphicsFamily != indices.presentFamily) &#123;</span><br><span class="line">        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;</span><br><span class="line">        createInfo.queueFamilyIndexCount = <span class="number">2</span>;</span><br><span class="line">        createInfo.pQueueFamilyIndices = queueFamilyIndices;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;</span><br><span class="line">        createInfo.queueFamilyIndexCount = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line">        createInfo.pQueueFamilyIndices = <span class="literal">nullptr</span>; <span class="comment">// Optional</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 可以指定某个变换应该应用于交换链中的图像（支持变换功能），如顺时针旋转90度或水平翻转。 要指定您不需要任何转换，只需指定当前转换。</span></span><br><span class="line">    createInfo.preTransform = swapChainSupport.capabilities.currentTransform;</span><br><span class="line">    <span class="comment">// compositeAlpha字段指定是否应该使用alpha通道与窗口系统中的其他窗口进行混合。 一般都是忽略alpha通道，因此设置为VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR。</span></span><br><span class="line">    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 设置呈现模式</span></span><br><span class="line">    createInfo.presentMode = presentMode;</span><br><span class="line">    <span class="comment">// 如果剪裁的成员设置为VK_TRUE，那么这意味着我们不关心被遮挡的像素的颜色</span></span><br><span class="line">    <span class="comment">// 例如因为另一个窗口位于它们前面。 除非真的需要能够读回这些像素并获得可预测的结果，否则可以通过启用剪辑获得最佳性能。</span></span><br><span class="line">    createInfo.clipped = VK_TRUE;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 使用Vulkan时，交换链可能会在应用程序运行时变为无效或未优化，例如因为窗口已调整大小。</span></span><br><span class="line">    <span class="comment">// 在这种情况下，交换链实际上需要从头开始重新创建，并且必须在此字段中指定对旧交换链的引用, 后续在研究。</span></span><br><span class="line">    <span class="comment">// 假设我们只会创建一个交换链</span></span><br><span class="line">    createInfo.oldSwapchain = VK_NULL_HANDLE;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateSwapchainKHR</span>(device, &amp;createInfo, <span class="literal">nullptr</span>, &amp;swapChain) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create swap chain!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-5-1-VkImageUsageFlags"><a href="#2-5-1-VkImageUsageFlags" class="headerlink" title="2.5.1 VkImageUsageFlags"></a>2.5.1 VkImageUsageFlags</h3><p>VkImageUsageFlags是一个位掩码类型，用于设置零或更多VkImageUsageFlagBits的掩码。<br>用于指定图像进行的操作类型, 有如下</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkImageUsageFlagBits</span> &#123;</span><br><span class="line">    VK_IMAGE_USAGE_TRANSFER_SRC_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_IMAGE_USAGE_TRANSFER_DST_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_IMAGE_USAGE_SAMPLED_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_IMAGE_USAGE_STORAGE_BIT = <span class="number">0x00000008</span>,</span><br><span class="line">    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT = <span class="number">0x00000010</span>,</span><br><span class="line">    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT = <span class="number">0x00000020</span>,</span><br><span class="line">    VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT = <span class="number">0x00000040</span>,</span><br><span class="line">    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT = <span class="number">0x00000080</span>,</span><br><span class="line">    VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkImageUsageFlagBits;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>VK_IMAGE_USAGE_TRANSFER_SRC_BIT: 指定图像可用作传输命令的源。</li>
+<li>VK_IMAGE_USAGE_TRANSFER_DST_BIT: 指定图像可用作传输命令的目标。</li>
+<li>VK_IMAGE_USAGE_SAMPLED_BIT: 指定该图像可用于创建适合占用VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE或VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER类型的VkDescriptorSet槽的VkImageView，并由着色器进行采样。</li>
+<li>VK_IMAGE_USAGE_STORAGE_BIT: 指定该图像可用于创建适合占用VK_DESCRIPTOR_TYPE_STORAGE_IMAGE类型的VkDescriptorSet插槽的VkImageView。</li>
+<li>VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT: 指定该图像可用于创建适合用作颜色的VkImageView或解析VkFramebuffer中的附件。</li>
+<li>VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT: 指定该图像可用于创建适合用作VkFramebuffer中的深度&#x2F;模板附件的VkImageView。</li>
+<li>VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT: 指定绑定到此映像的内存将使用VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT进行分配。可以为任何可用于创建适合用作颜色，分辨率，深度&#x2F;模板或输入附件的VkImageView的图像设置此位。</li>
+<li>VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT: 指定该图像可用于创建适合占用VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT类型的VkDescriptorSet槽的VkImageView; 从着色器读取作为输入附件; 并用作帧缓冲区中的输入附件。</li>
+</ul>
+<h3 id="2-5-2-处理将在多个队列系列中使用的交换链图像"><a href="#2-5-2-处理将在多个队列系列中使用的交换链图像" class="headerlink" title="2.5.2 处理将在多个队列系列中使用的交换链图像"></a>2.5.2 处理将在多个队列系列中使用的交换链图像</h3><p>如果队列系列不同，那么需要使用并发模式来避免必须执行所有权。<br>并发模式要求使用queueFamilyIndexCount和pQueueFamilyIndices参数预先指定将共享哪些队列系列所有权。<br>如果图形队列系列和表示队列系列是相同的（大多数硬件都是这种情况），那么我们应该坚持独占模式，因为并发模式要求指定至少两个不同的队列系列。</p>
+<h2 id="2-6-检索交换链图像"><a href="#2-6-检索交换链图像" class="headerlink" title="2.6 检索交换链图像"></a>2.6 检索交换链图像</h2><p>创建了交换链对象后，就可以检索其中的VkImages的句柄，这些VkImages是用于后续渲染操作的。<br>我们可以使用一个Set集合存储这些VkImages:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">std::vector&lt;VkImage&gt; swapChainImages;</span><br></pre></td></tr></table></figure>
+<p>类似于Surface, 这些VkImage是不需要我们主动销毁的。在交换链被销毁时，Vulkan自动就会销毁这些VkImage了。</p>
+<p>一般在vkCreateSwapchainKHR调用之后立即检索createSwapChain函数末尾的句柄。<br>在交换链中只是指定了最少数量的图像，Vulkan允许实现创建更多的图像。创建后记得调整容器大小，最后再次调用它来检索VkImage。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 先获取交换链中图像数量</span></span><br><span class="line"><span class="built_in">vkGetSwapchainImagesKHR</span>(device, swapChain, &amp;imageCount, <span class="literal">nullptr</span>);</span><br><span class="line"><span class="comment">// 调整set集合大小</span></span><br><span class="line">swapChainImages.<span class="built_in">resize</span>(imageCount);</span><br><span class="line"><span class="comment">// 获取VkImage对象</span></span><br><span class="line"><span class="built_in">vkGetSwapchainImagesKHR</span>(device, swapChain, &amp;imageCount, swapChainImages.<span class="built_in">data</span>());</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-7-小结"><a href="#2-7-小结" class="headerlink" title="2.7 小结"></a>2.7 小结</h2><p>这部分内容比较多，小结一下：</p>
+<h3 id="2-7-1-什么是交换链？"><a href="#2-7-1-什么是交换链？" class="headerlink" title="2.7.1 什么是交换链？"></a>2.7.1 什么是交换链？</h3><p>交换链本质上是一个等待呈现给屏幕的图像队列。应用程序将获取这样的图像以绘制它，然后将其返回到队列中。</p>
+<h3 id="2-7-2-创建交换链的一般步骤"><a href="#2-7-2-创建交换链的一般步骤" class="headerlink" title="2.7.2 创建交换链的一般步骤"></a>2.7.2 创建交换链的一般步骤</h3><ol>
+<li>确认当前物理设备(GPU)是否支持交换链</li>
+<li>创建逻辑设备时，使能交换链扩展(ppEnabledExtensionNames)</li>
+<li>获取当前设备支持swap chain的更多细节</li>
+<li>创建swap chain对象<ol>
+<li>绑定窗口Surface</li>
+<li>设置最小图像数量 minImageCount</li>
+<li>选择合适的图像格式 imageFormat </li>
+<li>选择合适的图像颜色空间 imageColorSpace</li>
+<li>选择合适的图像分辨率 imageExtent</li>
+<li>设置图像图层 imageArrayLayers</li>
+<li>设置图像操作方式 imageUsage</li>
+<li>选择图像呈现模式 presentMode</li>
+<li>是否需要裁剪功能 clipped(VK_TRUE, VK_FALSE)</li>
+<li>设置旧交换链的引用 oldSwapchain</li>
+</ol>
+</li>
+<li>获取交换链图像(VkImage)对象集合</li>
+</ol>
+<p>虽然到目前为止，我们编出来的程序还只是一个800*600的黑窗口。但是已经万事具备了，下一步就可以把图像内容呈现到窗口里了。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/" title="Vulkan入门(4)-Surface和交换链">https://swallowjoe.github.io/2022/02/27/Vulkan入门-4-Surface和交换链/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Vulkan/" rel="tag"># Vulkan</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/" rel="prev" title="Vulkan入门(3)-设置物理设备和逻辑设备">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(3)-设置物理设备和逻辑设备
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-5-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%8F%8APipeline%E7%AE%80%E8%BF%B0/" rel="next" title="Vulkan入门(5)-图像视图及Pipeline简述">
+      Vulkan入门(5)-图像视图及Pipeline简述 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-Window-Surface"><span class="nav-text">一. Window Surface</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-%E5%88%9B%E5%BB%BA%E7%AA%97%E5%8F%A3Surface"><span class="nav-text">1.1 创建窗口Surface</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-Swap-Chain-%E4%BA%A4%E6%8D%A2%E9%93%BE"><span class="nav-text">二. Swap Chain-交换链</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-%E6%A3%80%E6%9F%A5GPU%E6%98%AF%E5%90%A6%E6%94%AF%E6%8C%81%E4%BA%A4%E6%8D%A2%E9%93%BE"><span class="nav-text">2.1 检查GPU是否支持交换链</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-%E4%BD%BF%E8%83%BD%E8%AE%BE%E5%A4%87%E6%89%A9%E5%B1%95"><span class="nav-text">2.2 使能设备扩展</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-%E8%8E%B7%E5%8F%96%E5%85%B3%E4%BA%8Eswap-chain%E6%9B%B4%E5%A4%9A%E6%94%AF%E6%8C%81%E7%BB%86%E8%8A%82"><span class="nav-text">2.3 获取关于swap chain更多支持细节</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-%E4%B8%BAswap-chain-%E4%BA%A4%E6%8D%A2%E9%93%BE%E9%80%89%E6%8B%A9%E5%90%88%E9%80%82%E7%9A%84%E8%AE%BE%E7%BD%AE"><span class="nav-text">2.4 为swap chain-交换链选择合适的设置</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-1-Surface%E6%A0%BC%E5%BC%8F"><span class="nav-text">2.4.1 Surface格式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-2-%E5%91%88%E7%8E%B0%E6%A8%A1%E5%BC%8F-Presentation-Mode"><span class="nav-text">2.4.2 呈现模式(Presentation Mode)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-3-%E4%BA%A4%E6%8D%A2%E8%8C%83%E5%9B%B4-Swap-extent"><span class="nav-text">2.4.3 交换范围(Swap extent)</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-%E5%88%9B%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE"><span class="nav-text">2.5 创建交换链</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-5-1-VkImageUsageFlags"><span class="nav-text">2.5.1 VkImageUsageFlags</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-5-2-%E5%A4%84%E7%90%86%E5%B0%86%E5%9C%A8%E5%A4%9A%E4%B8%AA%E9%98%9F%E5%88%97%E7%B3%BB%E5%88%97%E4%B8%AD%E4%BD%BF%E7%94%A8%E7%9A%84%E4%BA%A4%E6%8D%A2%E9%93%BE%E5%9B%BE%E5%83%8F"><span class="nav-text">2.5.2 处理将在多个队列系列中使用的交换链图像</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-6-%E6%A3%80%E7%B4%A2%E4%BA%A4%E6%8D%A2%E9%93%BE%E5%9B%BE%E5%83%8F"><span class="nav-text">2.6 检索交换链图像</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-7-%E5%B0%8F%E7%BB%93"><span class="nav-text">2.7 小结</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-7-1-%E4%BB%80%E4%B9%88%E6%98%AF%E4%BA%A4%E6%8D%A2%E9%93%BE%EF%BC%9F"><span class="nav-text">2.7.1 什么是交换链？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-7-2-%E5%88%9B%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE%E7%9A%84%E4%B8%80%E8%88%AC%E6%AD%A5%E9%AA%A4"><span class="nav-text">2.7.2 创建交换链的一般步骤</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">15</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

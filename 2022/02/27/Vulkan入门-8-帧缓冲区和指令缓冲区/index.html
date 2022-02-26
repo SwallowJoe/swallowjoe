@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述Framebuffers, 帧缓冲区。之前我们在学习’Swap Chain-交换链’时提到Vulkan没有“默认帧缓冲区”的概念，取而代之的是名为 “swap chain” 即交换链，也就是渲染的缓冲区，必须在Vulkan中明确创建。 现在我们已经设置了渲染过程，以期望使用与交换链图像相同格式的单个帧缓冲区，但实际上我们还没有创建任何帧缓冲区。 通过将渲染过程创建期间指定的附件包装到VkFra">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vulkan入门(8)-帧缓冲区和指令缓冲区">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述Framebuffers, 帧缓冲区。之前我们在学习’Swap Chain-交换链’时提到Vulkan没有“默认帧缓冲区”的概念，取而代之的是名为 “swap chain” 即交换链，也就是渲染的缓冲区，必须在Vulkan中明确创建。 现在我们已经设置了渲染过程，以期望使用与交换链图像相同格式的单个帧缓冲区，但实际上我们还没有创建任何帧缓冲区。 通过将渲染过程创建期间指定的附件包装到VkFra">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/Vulkan_8_1.png">
+<meta property="article:published_time" content="2022-02-26T19:33:45.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:39:14.149Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Vulkan">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/Vulkan_8_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vulkan入门(8)-帧缓冲区和指令缓冲区 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vulkan入门(8)-帧缓冲区和指令缓冲区
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:33:45 / 修改时间：03:39:14" itemprop="dateCreated datePublished" datetime="2022-02-27T03:33:45+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(8)-帧缓冲区和指令缓冲区" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>Framebuffers, 帧缓冲区。之前我们在学习’Swap Chain-交换链’时提到Vulkan没有“默认帧缓冲区”的概念，取而代之的是名为 “swap chain” 即交换链，也就是渲染的缓冲区，必须在Vulkan中明确创建。 现在我们已经设置了渲染过程，以期望使用与交换链图像相同格式的单个帧缓冲区，但实际上我们还没有创建任何帧缓冲区。</p>
+<p>通过将渲染过程创建期间指定的附件包装到VkFramebuffer对象中来绑定附件。</p>
+<p>帧缓冲区对象引用表示附件的所有VkImageView对象。在我们的情况下，这将只是一个单一的：颜色附件。但是，我们必须用于附件的图像取决于在检索用于表示的图像时交换链返回的图像。这意味着我们必须为交换链中的所有图像创建一个帧缓冲区，并使用与绘制时检索到的图像相对应的帧缓冲区。</p>
+<span id="more"></span>
+
+<h1 id="一-VkFramebuffer-创建帧缓冲区"><a href="#一-VkFramebuffer-创建帧缓冲区" class="headerlink" title="一. VkFramebuffer 创建帧缓冲区"></a>一. VkFramebuffer 创建帧缓冲区</h1><p>帧缓冲区由VkFramebuffer句柄表示： VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkFramebuffer)</p>
+<p>通过调用vkCreateFramebuffer来创建：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkResult <span class="title">vkCreateFramebuffer</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDevice                                    device,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkFramebufferCreateInfo*              pCreateInfo,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkAllocationCallbacks*                pAllocator,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkFramebuffer*                              pFramebuffer)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>device: 创建帧缓冲区的逻辑设备</li>
+<li>pCreateInfo: 指向VkFramebufferCreateInfo结构，该结构描述有关帧缓冲区创建的附加信息。</li>
+<li>pAllocator: 控制主机内存分配</li>
+<li>pFramebuffer: 指向返回结果帧缓冲区对象的VkFramebuffer句柄。</li>
+</ol>
+<p>我们创建一个VkFramebuffer的集合来保存所有帧缓冲:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">std::vector&lt;VkFramebuffer&gt; swapChainFramebuffers;</span><br></pre></td></tr></table></figure>
+
+<p>在一个新函数createFramebuffers中为该数组创建对象，该函数在创建图形管道之后立即从initVulkan调用：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">createInstance</span>();</span><br><span class="line">    <span class="built_in">setupDebugCallback</span>();</span><br><span class="line">    <span class="built_in">createSurface</span>();</span><br><span class="line">    <span class="built_in">pickPhysicalDevice</span>();</span><br><span class="line">    <span class="built_in">createLogicalDevice</span>();</span><br><span class="line">    <span class="built_in">createSwapChain</span>();</span><br><span class="line">    <span class="built_in">createImageViews</span>();</span><br><span class="line">    <span class="built_in">createRenderPass</span>();</span><br><span class="line">    <span class="built_in">createGraphicsPipeline</span>();</span><br><span class="line">    <span class="built_in">createFramebuffers</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在createFramebuffers最开始，调整帧缓冲区容器的大小以容纳所有交换链图像视图, 然后遍历图像视图并从它们创建帧缓冲区：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createFramebuffers</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    swapChainFramebuffers.<span class="built_in">resize</span>(swapChainImageViews.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; swapChainImageViews.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        VkImageView attachments[] = &#123;</span><br><span class="line">        swapChainImageViews[i]</span><br><span class="line">    &#125;;</span><br><span class="line">    VkFramebufferCreateInfo framebufferInfo = &#123;&#125;;</span><br><span class="line">    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;</span><br><span class="line">    framebufferInfo.renderPass = renderPass;</span><br><span class="line">    framebufferInfo.attachmentCount = <span class="number">1</span>;</span><br><span class="line">    framebufferInfo.pAttachments = attachments;</span><br><span class="line">    framebufferInfo.width = swapChainExtent.width;</span><br><span class="line">    framebufferInfo.height = swapChainExtent.height;</span><br><span class="line">    framebufferInfo.layers = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateFramebuffer</span>(device, &amp;framebufferInfo, <span class="literal">nullptr</span>,</span><br><span class="line">            &amp;swapChainFramebuffers[i]) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create framebuffer!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如上，帧缓冲区的创建非常简单:</p>
+<ol>
+<li>首先需要指定帧缓冲区需要与哪个renderPass兼容。只能对与之兼容的渲染过程使用帧缓冲区，这意味着它们使用相同数量和类型的附件。</li>
+<li>attachmentCount和pAttachments参数指定应绑定到渲染过程pAttachment数组中相应附件描述的VkImageView对象。</li>
+<li>宽度和高度参数是交换链中获取的宽高</li>
+<li>layers是指图像数组中的层数。我们的交换链图像是单个图像，因此层的数量是1。</li>
+</ol>
+<p>我们应该先删除帧缓冲区，然后再删除它们所基于的图像视图和渲染过程，但必须在完成渲染之后：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">auto</span> framebuffer : swapChainFramebuffers) &#123;</span><br><span class="line">        <span class="built_in">vkDestroyFramebuffer</span>(device, framebuffer, <span class="literal">nullptr</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>现在我们已经到达了一个里程碑–拥有了渲染所需的所有对象。接下来，我们将编写第一个实际的绘图指令。</p>
+<h1 id="二-Command-buffers-指令缓冲区"><a href="#二-Command-buffers-指令缓冲区" class="headerlink" title="二. Command buffers 指令缓冲区"></a>二. Command buffers 指令缓冲区</h1><p>Vulkan中的指令，比如绘图操作和内存传输，不是直接使用函数调用来执行的。必须在指令缓冲区对象中记录想要执行的所有操作。这样做的好处是，所有设置绘图指令的工作都可以提前在多个线程中完成。之后，只需告诉Vulkan在主循环中执行指令。</p>
+<p>指令缓冲区是用来记录指令的对象，这些指令可以随后提交到设备队列中执行。指令缓冲区有两级:一级指令缓冲区，它可以执行二级指令缓冲区，并提交给队列;二级指令缓冲区，它可以由一级指令缓冲区执行，但不直接提交给队列。</p>
+<h2 id="2-1-Command-pools-指令池"><a href="#2-1-Command-pools-指令池" class="headerlink" title="2.1 Command pools 指令池"></a>2.1 Command pools 指令池</h2><p>在创建指令缓冲区之前必须先创建指令池。指令池管理用于存储缓冲区的内存，并从它们中分配指令缓冲区。</p>
+<p>指令池通过允许不同的线程使用不同的分配器来提高多线程性能，而不需要每次使用都进行内部同步。</p>
+<p>由VkCommandPool对象表示： VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkCommandPool)</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">VkCommandPool commandPool;</span><br></pre></td></tr></table></figure>
+
+<p>创建指令池函数:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkResult <span class="title">vkCreateCommandPool</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDevice                                    device,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkCommandPoolCreateInfo*              pCreateInfo,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkAllocationCallbacks*                pAllocator,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandPool*                              pCommandPool)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>device: 创建指令池的逻辑设备</li>
+<li>pCreateInfo: 一个指向VkCommandPoolCreateInfo结构实例的指针，该结构指定指令池对象的状态。</li>
+<li>pAllocator: 控制内存分配</li>
+<li>pCommandPool: 指向一个VkCommandPool句柄，创建的池返回该句柄。</li>
+</ol>
+<h3 id="2-1-1-创建指令池"><a href="#2-1-1-创建指令池" class="headerlink" title="2.1.1 创建指令池"></a>2.1.1 创建指令池</h3><p>我们创建一个新的函数：createCommandPool, 来执行创建指令池：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// checkAvailableExtensions();</span></span><br><span class="line">    <span class="built_in">createInstance</span>();</span><br><span class="line">    <span class="comment">// 创建DEBUG消息回调</span></span><br><span class="line">    <span class="built_in">setupDebugMessenger</span>();</span><br><span class="line">    <span class="comment">// 创建surface</span></span><br><span class="line">    <span class="built_in">createSurface</span>();</span><br><span class="line">    <span class="comment">// 选择物理设备</span></span><br><span class="line">    <span class="built_in">pickPhysicalDevice</span>();</span><br><span class="line">    <span class="comment">// 创建逻辑设备</span></span><br><span class="line">    <span class="built_in">createLogicalDevice</span>();</span><br><span class="line">    <span class="comment">// 创建交换链</span></span><br><span class="line">    <span class="built_in">createSwapChain</span>();</span><br><span class="line">    <span class="comment">// 创建交换链图像的VkImageView</span></span><br><span class="line">    <span class="built_in">createImageViews</span>();</span><br><span class="line">    <span class="comment">// 创建渲染通道</span></span><br><span class="line">    <span class="built_in">createRenderPass</span>();</span><br><span class="line">    <span class="comment">// 创建管道</span></span><br><span class="line">    <span class="built_in">createGraphicsPipeline</span>();</span><br><span class="line">    <span class="comment">// 创建帧缓冲区</span></span><br><span class="line">    <span class="built_in">createFramebuffers</span>();</span><br><span class="line">    <span class="comment">// 创建指令缓冲池</span></span><br><span class="line">    <span class="built_in">createCommandPool</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createCommandPool</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    QueueFamilyIndices queueFamilyIndices = <span class="built_in">findQueueFamilies</span>(physicalDevice);</span><br><span class="line">    VkCommandPoolCreateInfo poolInfo = &#123;&#125;;</span><br><span class="line">    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;</span><br><span class="line">    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.<span class="built_in">value</span>();</span><br><span class="line">    poolInfo.flags = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateCommandPool</span>(device, &amp;poolInfo, <span class="literal">nullptr</span>, &amp;commandPool) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create command pool!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>指令缓冲区是通过将它们提交到设备队列(比如我们检索到的图形和展示队列)上来执行的。</p>
+<p>每个指令池只能分配提交到单一类型队列上的指令缓冲区。我们将记录绘图的指令，这就是我们选择图形队列家族的原因。</p>
+<h3 id="2-1-2-VkCommandPoolCreateInfo"><a href="#2-1-2-VkCommandPoolCreateInfo" class="headerlink" title="2.1.2 VkCommandPoolCreateInfo"></a>2.1.2 VkCommandPoolCreateInfo</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkCommandPoolCreateInfo</span> &#123;</span><br><span class="line">    VkStructureType             sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*                 pNext;</span><br><span class="line">    VkCommandPoolCreateFlags    flags;</span><br><span class="line">    <span class="type">uint32_t</span>                    queueFamilyIndex;</span><br><span class="line">&#125; VkCommandPoolCreateInfo;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>sType: 此结构的类型，VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO</li>
+<li>pNext: 为空或指向特定于扩展的结构的指针。</li>
+<li>flags: 是VkCommandPoolCreateFlagBits的位掩码, 指示指令池和从中分配的指令缓冲区的使用行为。</li>
+<li>queueFamilyIndex: 指定队列族。从这个指令池分配的所有指令缓冲区必须在来自相同队列族的队列上提交。</li>
+</ol>
+<h3 id="2-1-3-VkCommandPoolCreateFlags"><a href="#2-1-3-VkCommandPoolCreateFlags" class="headerlink" title="2.1.3 VkCommandPoolCreateFlags"></a>2.1.3 VkCommandPoolCreateFlags</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkCommandPoolCreateFlagBits</span> &#123;</span><br><span class="line">    VK_COMMAND_POOL_CREATE_TRANSIENT_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_COMMAND_POOL_CREATE_PROTECTED_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_COMMAND_POOL_CREATE_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkCommandPoolCreateFlagBits;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>VK_COMMAND_POOL_CREATE_TRANSIENT_BIT:指定从池中分配的指令缓冲区将是短暂的，这意味着它们将在相对较短的时间内被重置或释放。这个标志可以被实现用来控制池内的内存分配行为。</li>
+<li>VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT:允许从池中分配的任何指令缓冲区被单独重置到初始状态;或者通过调用vkResetCommandBuffer，或者在调用vkBeginCommandBuffer时通过隐式重置。如果在池中没有设置这个标志，那么vkResetCommandBuffer绝对不能被从池中分配的任何指令缓冲区调用。</li>
+<li>VK_COMMAND_POOL_CREATE_PROTECTED_BIT:指定从池中分配的指令缓冲区为受保护的指令缓冲区。如果未启用受保护的内存特性，则不能设置VK_COMMAND_POOL_CREATE_PROTECTED_BIT标志位。</li>
+</ol>
+<p>鉴于我们将只在程序开始时记录指令缓冲区，然后在主循环中多次执行它们，因此我们不会使用这这些标志。</p>
+<h3 id="2-1-4-vkDestroyCommandPool"><a href="#2-1-4-vkDestroyCommandPool" class="headerlink" title="2.1.4 vkDestroyCommandPool"></a>2.1.4 vkDestroyCommandPool</h3><p>使用vkCreateCommandPool功能完成指令池的创建，指令将在整个程序中使用来绘制屏幕上的东西，所以池应该只在结束时销毁:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 释放指令池</span></span><br><span class="line">    <span class="built_in">vkDestroyCommandPool</span>(device, commandPool, <span class="literal">nullptr</span>);</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-2-Command-buffer-allocation-指令缓冲区分配"><a href="#2-2-Command-buffer-allocation-指令缓冲区分配" class="headerlink" title="2.2 Command buffer allocation 指令缓冲区分配"></a>2.2 Command buffer allocation 指令缓冲区分配</h2><p>现在我们可以开始分配指令缓冲区并在其中记录绘图指令。因为其中一个绘图指令涉及到绑定正确的VkFramebuffer，所以我们实际上必须再次为交换链中的每个图像记录一个指令缓冲区。</p>
+<p>为此，创建一个VkCommandBuffer对象列表作为类成员。当它们的指令池被销毁时，指令缓冲区将被自动释放，所以我们不需要显式的清理。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">std::vector&lt;VkCommandBuffer&gt; commandBuffers;</span><br></pre></td></tr></table></figure>
+<p>现在开始使用createCommandBuffers函数，为每个交换链图像(VkImageView)分配和记录指令。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="built_in">createCommandBuffers</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createCommandBuffers</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    commandBuffers.<span class="built_in">resize</span>(swapChainFramebuffers.<span class="built_in">size</span>());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-1-vkAllocateCommandBuffers"><a href="#2-2-1-vkAllocateCommandBuffers" class="headerlink" title="2.2.1 vkAllocateCommandBuffers"></a>2.2.1 vkAllocateCommandBuffers</h3><p>指令缓冲区是通过vkAllocateCommandBuffers函数分配的，该函数以VkCommandBufferAllocateInfo结构体作为参数，指定指令池和要分配的缓冲区数量:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkResult <span class="title">vkAllocateCommandBuffers</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDevice                                    device,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkCommandBufferAllocateInfo*          pAllocateInfo,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer*                            pCommandBuffers)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>device: 指令池所属的逻辑设备。</li>
+<li>pAllocateInfo: 指向VkCommandBufferAllocateInfo结构实例的指针，该结构描述了分配的参数。</li>
+<li>pCommandBuffers: 指向VkCommandBuffer句柄数组的指针，在该数组中返回生成的指令缓冲区对象。数组必须至少为pAllocateInfo的commandBufferCount成员指定的长度commandBufferCount。每个分配的指令缓冲区都从初始状态开始。(就是commandBuffers集的首个元素的地址)</li>
+</ol>
+<h3 id="2-2-2-VkCommandBufferAllocateInfo"><a href="#2-2-2-VkCommandBufferAllocateInfo" class="headerlink" title="2.2.2 VkCommandBufferAllocateInfo"></a>2.2.2 VkCommandBufferAllocateInfo</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkCommandBufferAllocateInfo</span> &#123;</span><br><span class="line">    VkStructureType         sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*             pNext;</span><br><span class="line">    VkCommandPool           commandPool;</span><br><span class="line">    VkCommandBufferLevel    level;</span><br><span class="line">    <span class="type">uint32_t</span>                commandBufferCount;</span><br><span class="line">&#125; VkCommandBufferAllocateInfo;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>sType: 结构体类型</li>
+<li>pNext: 为空或指向特定于扩展的结构的指针</li>
+<li>commandPool: 分配此指令缓冲区的指令池</li>
+<li>level: VkCommandBufferLevel值，指定指令缓冲区级别</li>
+<li>commandBufferCount: 从池中分配的指令缓冲区的数量</li>
+</ol>
+<p>VkCommandBufferLevel, 指定指令缓冲区级别:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkCommandBufferLevel</span> &#123;</span><br><span class="line">    VK_COMMAND_BUFFER_LEVEL_PRIMARY = <span class="number">0</span>,</span><br><span class="line">    VK_COMMAND_BUFFER_LEVEL_SECONDARY = <span class="number">1</span>,</span><br><span class="line">    VK_COMMAND_BUFFER_LEVEL_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkCommandBufferLevel;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>VK_COMMAND_BUFFER_LEVEL_PRIMARY:指定主指令缓冲区，可以提交到队列执行，但不能从其他指令缓冲区调用。</li>
+<li>VK_COMMAND_BUFFER_LEVEL_SECONDARY:指定次要指令缓冲区，不能直接提交，但可以从主指令缓冲区调用。</li>
+</ol>
+<h3 id="2-2-3-createCommandBuffers"><a href="#2-2-3-createCommandBuffers" class="headerlink" title="2.2.3 createCommandBuffers"></a>2.2.3 createCommandBuffers</h3><p>接下来就是完成指令缓冲区集的创建：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createCommandBuffers</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    commandBuffers.<span class="built_in">resize</span>(swapChainFramebuffers.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    VkCommandBufferAllocateInfo allocInfo = &#123;&#125;;</span><br><span class="line">    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;</span><br><span class="line">    allocInfo.commandPool = commandPool;</span><br><span class="line">    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;</span><br><span class="line">    allocInfo.commandBufferCount = (<span class="type">uint32_t</span>) commandBuffers.<span class="built_in">size</span>();</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkAllocateCommandBuffers</span>(device, &amp;allocInfo, commandBuffers.<span class="built_in">data</span>()) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to allocate command buffers!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在这里不使用辅助指令缓冲区功能，但是可以想象，重用来自主要指令缓冲区的常用操作是很有帮助的</p>
+<h2 id="2-3-启动指令缓冲区记录"><a href="#2-3-启动指令缓冲区记录" class="headerlink" title="2.3 启动指令缓冲区记录"></a>2.3 启动指令缓冲区记录</h2><p>记录的指令包括将管道和描述符集绑定到指令缓冲区的指令、修改动态状态的指令、绘制指令(用于图形渲染)、调度指令(用于计算)、执行次要指令缓冲区的指令(仅用于主要指令缓冲区)、复制缓冲区和图像的指令，以及其他指令。</p>
+<p>为什么需要记录指令？ 先看一下指令缓冲区的生命周期。</p>
+<h3 id="2-3-1-指令缓冲区的生命周期"><a href="#2-3-1-指令缓冲区的生命周期" class="headerlink" title="2.3.1 指令缓冲区的生命周期"></a>2.3.1 指令缓冲区的生命周期</h3><p>每个指令缓冲区总是处于以下状态之一:</p>
+<ol>
+<li>Initial(初始状态): 当一个指令缓冲区被分配时，它处于初始状态。一些指令能够将一个指令缓冲区或一组指令缓冲区从任何可执行状态、记录状态或无效状态重置回该状态。处于初始状态的指令缓冲区只能移动到记录状态或释放。</li>
+<li>Recording(记录状态): vkBeginCommandBuffer改变指令缓冲区的状态从初始状态到记录状态。一旦指令缓冲区处于记录状态，可以使用vkCmd*指令记录到指令缓冲区。</li>
+<li>Executable(可执行状态): vkEndCommandBuffer结束指令缓冲区的记录，并将其从记录状态移动到可执行状态。可执行指令缓冲区可以提交、重置或记录到另一个指令缓冲区。</li>
+<li>Pending(挂起状态): 指令缓冲区的队列提交将指令缓冲区的状态从可执行状态更改为挂起状态。在挂起状态下，应用程序不能试图以任何方式修改指令缓冲区-因为设备可能正在处理记录到它的指令。一旦指令缓冲区的执行完成，指令缓冲区将返回到可执行状态，或者返回无效状态(如果它是通过VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT记录的)。应该使用一个同步指令来检测何时发生这种情况。</li>
+<li>Invalid(无效状态):某些操作，如修改或删除记录到指令缓冲区的指令中使用的资源，将把该指令缓冲区的状态转换为无效状态。处于无效状态的指令缓冲区只能被重置或释放。</li>
+</ol>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/Vulkan_8_1.png" alt="生命周期"></p>
+<p>所以记录状态可以理解为记录绘制操作，然后记录完毕就转为可执行状态，等待被执行。</p>
+<h3 id="2-3-2-记录指令缓冲区"><a href="#2-3-2-记录指令缓冲区" class="headerlink" title="2.3.2 记录指令缓冲区"></a>2.3.2 记录指令缓冲区</h3><p>通过调用vkBeginCommandBuffer开始记录指令缓冲区，并使用一个小的VkCommandBufferBeginInfo结构作为参数，指定关于这个特定指令缓冲区使用的一些细节。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkResult <span class="title">vkBeginCommandBuffer</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkCommandBufferBeginInfo*             pBeginInfo)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer: 待放入记录状态的指令缓冲区的句柄。</li>
+<li>pBeginInfo: VkCommandBufferBeginInfo结构的一个实例，它定义了关于指令缓冲区如何开始记录的附加信息。</li>
+</ol>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkCommandBufferBeginInfo</span> &#123;</span><br><span class="line">    VkStructureType                          sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*                              pNext;</span><br><span class="line">    VkCommandBufferUsageFlags                flags;</span><br><span class="line">    <span class="type">const</span> VkCommandBufferInheritanceInfo*    pInheritanceInfo;</span><br><span class="line">&#125; VkCommandBufferBeginInfo;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>sType: 结构体类型</li>
+<li>pNext: 为空或指向特定于扩展的结构的指针</li>
+<li>flags: 是VkCommandBufferUsageFlagBits的位掩码，指定命令缓冲区的使用行为。</li>
+<li>pInheritanceInfo: 是一个指向VkCommandBufferInheritanceInfo结构的指针，如果commandBuffer是一个次要命令缓冲区，就会使用这个结构。如果这是一个主命令缓冲区，那么这个值将被忽略。</li>
+</ol>
+<p>在VkCommandBufferBeginInfo::flags中设置位来指定命令缓冲区的使用行为:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkCommandBufferUsageFlagBits</span> &#123;</span><br><span class="line">    VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_COMMAND_BUFFER_USAGE_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkCommandBufferUsageFlagBits;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT:指定命令缓冲区的每个记录将只提交一次，命令缓冲区将被重置并在每次提交之间再次记录。</li>
+<li>VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT:指定次要命令缓冲区被认为完全位于渲染通道内。如果这是一个主命令缓冲区，那么这个位会被忽略。</li>
+<li>VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT:指定当命令缓冲区处于挂起状态时，可以重新提交给队列，并记录到多个主要命令缓冲区中。</li>
+</ol>
+<p>开始指令缓冲区记录:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; commandBuffers.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">    VkCommandBufferBeginInfo beginInfo = &#123;&#125;;</span><br><span class="line">    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;</span><br><span class="line">    <span class="comment">// 标记该指令缓冲区可重复追加指令</span></span><br><span class="line">    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;</span><br><span class="line">    beginInfo.pInheritanceInfo = <span class="literal">nullptr</span>; <span class="comment">// Optional</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkBeginCommandBuffer</span>(commandBuffers[i], &amp;beginInfo) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to begin recording command buffer!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>我们使用VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT标志是因为我们可能已经在为下一帧调度绘图命令，而最后一帧还没有完成。pInheritanceInfo参数仅与辅助命令缓冲区相关。它指定从调用的主命令缓冲区继承哪个状态。</p>
+<p>如果命令缓冲区已经被记录过一次，那么调用vkBeginCommandBuffer将隐式重置它。以后不可能向缓冲区追加命令。</p>
+<h2 id="2-4-启动渲染通道"><a href="#2-4-启动渲染通道" class="headerlink" title="2.4 启动渲染通道"></a>2.4 启动渲染通道</h2><p>通过vkCmdBeginRenderPass开始绘制。渲染通道是使用VkRenderPassBeginInfo结构中的一些参数来配置的。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdBeginRenderPass</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkRenderPassBeginInfo*                pRenderPassBegin,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkSubpassContents                           contents)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer: 指令缓冲区</li>
+<li>VkRenderPassBeginInfo: 是一个指向VkRenderPassBeginInfo结构的指针，提供的渲染通道的详细信息</li>
+<li>contents: 是一个VkSubpassContents值，控制渲染通道内的绘图命令将如何提供,可以有两个值:<ol>
+<li>VK_SUBPASS_CONTENTS_INLINE:render pass命令将被嵌入到主命令缓冲区中，而不会执行次要命令缓冲区。</li>
+<li>VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS:render pass命令将从次要命令缓冲区执行。</li>
+</ol>
+</li>
+</ol>
+<p>在开始渲染通道实例之后，命令缓冲区准备好记录该渲染通道的第一个子通道的命令。</p>
+<h3 id="2-4-1-VkRenderPassBeginInfo"><a href="#2-4-1-VkRenderPassBeginInfo" class="headerlink" title="2.4.1 VkRenderPassBeginInfo"></a>2.4.1 VkRenderPassBeginInfo</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkRenderPassBeginInfo</span> &#123;</span><br><span class="line">    VkStructureType        sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*            pNext;</span><br><span class="line">    VkRenderPass           renderPass;</span><br><span class="line">    VkFramebuffer          framebuffer;</span><br><span class="line">    VkRect2D               renderArea;</span><br><span class="line">    <span class="type">uint32_t</span>               clearValueCount;</span><br><span class="line">    <span class="type">const</span> VkClearValue*    pClearValues;</span><br><span class="line">&#125; VkRenderPassBeginInfo;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>sType: 结构体类型</li>
+<li>pNext: 为空或指向特定于扩展的结构的指针</li>
+<li>renderPass: 渲染通道</li>
+<li>framebuffer: 指令缓冲区</li>
+<li>renderArea: 渲染通道实例影响的渲染区域</li>
+<li>clearValueCount: pClearValues中的元素数量</li>
+<li>pClearValues: 是一个VkClearValue结构的数组，它包含每个附件的清除值，如果附件使用的loadOp值是VK_ATTACHMENT_LOAD_OP_CLEAR，或者附件具有深度&#x2F;模板格式并使用的stencilLoadOp值是VK_ATTACHMENT_LOAD_OP_CLEAR。数组按附件号索引。只使用与已清除附件对应的元素。pClearValues的其他元素将被忽略。</li>
+</ol>
+<p>renderArea渲染区域是受渲染通道实例影响的渲染区域。附件加载、存储和多样本解析操作的影响仅限于x和y坐标落在所有附件渲染区域内的像素。渲染区域扩展到framebuffer的所有层。应用程序必须确保(必要时使用scissor)所有的渲染都包含在渲染区域内。渲染区域必须包含在framebuffer尺寸内。</p>
+<h3 id="2-4-2-start-a-Render-Pass"><a href="#2-4-2-start-a-Render-Pass" class="headerlink" title="2.4.2 start a Render Pass"></a>2.4.2 start a Render Pass</h3><p>应用程序一次记录一个render pass实例的命令，方法是开始一个render pass实例，遍历子通道(subpass)来记录该子通道的命令，然后结束render pass实例。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">VkRenderPassBeginInfo renderPassInfo = &#123;&#125;;</span><br><span class="line">renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;</span><br><span class="line"><span class="comment">// 渲染通道本身和要绑定的附件</span></span><br><span class="line">renderPassInfo.renderPass = renderPass;</span><br><span class="line"><span class="comment">// 每个交换链图像创建了一个framebuffer，将其指定为颜色附件。</span></span><br><span class="line">renderPassInfo.framebuffer = swapChainFramebuffers[i];</span><br><span class="line"></span><br><span class="line"><span class="comment">// 渲染区域定义着色器加载和存储的位置。该区域之外的像素将具有未定义的值。它应该与附件的大小相匹配，以获得最佳性能。</span></span><br><span class="line">renderPassInfo.renderArea.offset = &#123;<span class="number">0</span>, <span class="number">0</span>&#125;;</span><br><span class="line">renderPassInfo.renderArea.extent = swapChainExtent;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 定义用于VK_ATTACHMENT_LOAD_OP_CLEAR的清除值，我们将其用作颜色附件的加载操作。将透明颜色定义为100%不透明度的黑色。</span></span><br><span class="line">VkClearValue clearColor = &#123;<span class="number">0.0f</span>, <span class="number">0.0f</span>, <span class="number">0.0f</span>, <span class="number">1.0f</span>&#125;;</span><br><span class="line">renderPassInfo.clearValueCount = <span class="number">1</span>;</span><br><span class="line">renderPassInfo.pClearValues = &amp;clearColor;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-4-3-基本绘制指令"><a href="#2-4-3-基本绘制指令" class="headerlink" title="2.4.3 基本绘制指令"></a>2.4.3 基本绘制指令</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 渲染通道现在可以开始了。所有记录命令的函数都可以通过它们的vkCmd前缀来识别。它们都返回void，所以在完成记录之前不会有错误处理。</span></span><br><span class="line"><span class="built_in">vkCmdBeginRenderPass</span>(commandBuffers[i], &amp;renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);</span><br><span class="line"><span class="built_in">vkCmdBindPipeline</span>(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);</span><br><span class="line"><span class="built_in">vkCmdDraw</span>(commandBuffers[i], <span class="number">3</span>, <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line"><span class="built_in">vkCmdEndRenderPass</span>(commandBuffers[i]);</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (<span class="built_in">vkEndCommandBuffer</span>(commandBuffers[i]) != VK_SUCCESS) &#123;</span><br><span class="line">    <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to record command buffer!&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="2-4-3-1-vkCmdBindPipeline"><a href="#2-4-3-1-vkCmdBindPipeline" class="headerlink" title="2.4.3.1 vkCmdBindPipeline"></a>2.4.3.1 vkCmdBindPipeline</h4><p>管道被创建后，可以使用以下命令将其绑定到指令缓冲区:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdBindPipeline</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkPipelineBindPoint                         pipelineBindPoint,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkPipeline                                  pipeline)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer: 是即将绑定到管道的命令缓冲区</li>
+<li>pipelineBindPoint:是一个VkPipelineBindPoint值，指定管道对象是图形管道还是计算管道。<ol>
+<li>VK_PIPELINE_BIND_POINT_COMPUTE: 管道控制vkCmdDispatch和vkCmdDispatchIndirect的行为。</li>
+<li>VK_PIPELINE_BIND_POINT_GRAPHICS: 管道控制所有绘制命令的行为。其他命令不受管道状态的影响。</li>
+</ol>
+</li>
+<li>pipeline: 即将绑定的管道</li>
+</ol>
+<p>一旦绑定，管道绑定将影响命令缓冲区中的后续图形或计算命令，直到另一个管道绑定到绑定点。</p>
+<h4 id="2-4-3-2-vkCmdDraw"><a href="#2-4-3-2-vkCmdDraw" class="headerlink" title="2.4.3.2 vkCmdDraw"></a>2.4.3.2 vkCmdDraw</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDraw</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    vertexCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    instanceCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    firstVertex,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    firstInstance)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer: 绘制指令记录到的指令缓冲区</li>
+<li>vertexCount: 要绘制的顶点数</li>
+<li>instanceCount: 要绘制的实例数</li>
+<li>firstVertex: 要绘制的第一个顶点的索引</li>
+<li>firstInstance: 要绘制的第一个实例的索引</li>
+</ol>
+<p>当执行该命令时，将使用当前基元拓扑和vertexCount连续顶点索引(第一个vertexIndex值等于firstVertex)组装基元。这些原语是用从firstInstance开始的instanceIndex绘制的instanceCount时间，并按顺序增加每个实例。组装的原语执行绑定的图形管道。</p>
+<h4 id="2-4-3-3-vkCmdEndRenderPass"><a href="#2-4-3-3-vkCmdEndRenderPass" class="headerlink" title="2.4.3.3 vkCmdEndRenderPass"></a>2.4.3.3 vkCmdEndRenderPass</h4><p>在记录了最后一个子过程的指令之后，结束渲染通道实例调用:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdEndRenderPass</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer)</span></span>;</span><br></pre></td></tr></table></figure>
+<p>结束渲染通道实例在最终子通道上执行一切多样本解析操作。</p>
+<h4 id="2-4-3-4-vkEndCommandBuffer"><a href="#2-4-3-4-vkEndCommandBuffer" class="headerlink" title="2.4.3.4 vkEndCommandBuffer"></a>2.4.3.4 vkEndCommandBuffer</h4><p>一旦开始记录，应用程序将记录指令序列(vkCmd*)，以在指令缓冲区、绘制、调度和其他指令中设置状态。调用完成vkEndCommandBuffer命令缓冲区的记录:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkResult <span class="title">vkEndCommandBuffer</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>如果在记录过程中发生了错误，vkEndCommandBuffer将返回一个不成功的返回码来通知应用程序。</p>
+<p>如果应用程序希望进一步使用指令缓冲区，则必须重置指令缓冲区。指令缓冲区必须处于记录状态，并被移动到可执行状态。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/" title="Vulkan入门(8)-帧缓冲区和指令缓冲区">https://swallowjoe.github.io/2022/02/27/Vulkan入门-8-帧缓冲区和指令缓冲区/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Vulkan/" rel="tag"># Vulkan</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-7-%E6%B8%B2%E6%9F%93%E8%BF%87%E7%A8%8B%E5%8F%8A%E5%88%9B%E5%BB%BA%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93/" rel="prev" title="Vulkan入门(7)-渲染过程及创建图形管道">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(7)-渲染过程及创建图形管道
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-9-%E6%B8%B2%E6%9F%93%E5%92%8C%E6%98%BE%E7%A4%BA/" rel="next" title="Vulkan入门(9)-渲染和显示">
+      Vulkan入门(9)-渲染和显示 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-VkFramebuffer-%E5%88%9B%E5%BB%BA%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="nav-text">一. VkFramebuffer 创建帧缓冲区</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-Command-buffers-%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="nav-text">二. Command buffers 指令缓冲区</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-Command-pools-%E6%8C%87%E4%BB%A4%E6%B1%A0"><span class="nav-text">2.1 Command pools 指令池</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-1-%E5%88%9B%E5%BB%BA%E6%8C%87%E4%BB%A4%E6%B1%A0"><span class="nav-text">2.1.1 创建指令池</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-2-VkCommandPoolCreateInfo"><span class="nav-text">2.1.2 VkCommandPoolCreateInfo</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-3-VkCommandPoolCreateFlags"><span class="nav-text">2.1.3 VkCommandPoolCreateFlags</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-4-vkDestroyCommandPool"><span class="nav-text">2.1.4 vkDestroyCommandPool</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-Command-buffer-allocation-%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA%E5%88%86%E9%85%8D"><span class="nav-text">2.2 Command buffer allocation 指令缓冲区分配</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-1-vkAllocateCommandBuffers"><span class="nav-text">2.2.1 vkAllocateCommandBuffers</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-2-VkCommandBufferAllocateInfo"><span class="nav-text">2.2.2 VkCommandBufferAllocateInfo</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-3-createCommandBuffers"><span class="nav-text">2.2.3 createCommandBuffers</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-%E5%90%AF%E5%8A%A8%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA%E8%AE%B0%E5%BD%95"><span class="nav-text">2.3 启动指令缓冲区记录</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-1-%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA%E7%9A%84%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F"><span class="nav-text">2.3.1 指令缓冲区的生命周期</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-2-%E8%AE%B0%E5%BD%95%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="nav-text">2.3.2 记录指令缓冲区</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-%E5%90%AF%E5%8A%A8%E6%B8%B2%E6%9F%93%E9%80%9A%E9%81%93"><span class="nav-text">2.4 启动渲染通道</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-1-VkRenderPassBeginInfo"><span class="nav-text">2.4.1 VkRenderPassBeginInfo</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-2-start-a-Render-Pass"><span class="nav-text">2.4.2 start a Render Pass</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-3-%E5%9F%BA%E6%9C%AC%E7%BB%98%E5%88%B6%E6%8C%87%E4%BB%A4"><span class="nav-text">2.4.3 基本绘制指令</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-4-3-1-vkCmdBindPipeline"><span class="nav-text">2.4.3.1 vkCmdBindPipeline</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-4-3-2-vkCmdDraw"><span class="nav-text">2.4.3.2 vkCmdDraw</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-4-3-3-vkCmdEndRenderPass"><span class="nav-text">2.4.3.3 vkCmdEndRenderPass</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-4-3-4-vkEndCommandBuffer"><span class="nav-text">2.4.3.4 vkEndCommandBuffer</span></a></li></ol></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">15</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

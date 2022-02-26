@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述在之前我们使用顶点着色器以及描述符来实现绘制有颜色的几何体，还实现了旋转动画。接下来我们学习一下纹理贴图，这个将是我们实现加载绘制基本3D模型的基础。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vulkan入门(14)-VkImage图像的创建">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述在之前我们使用顶点着色器以及描述符来实现绘制有颜色的几何体，还实现了旋转动画。接下来我们学习一下纹理贴图，这个将是我们实现加载绘制基本3D模型的基础。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/texture.jpg">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/Vulkan_14_1.png">
+<meta property="article:published_time" content="2022-02-26T19:35:18.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:44:04.385Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Vulkan">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/texture.jpg">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vulkan入门(14)-VkImage图像的创建 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vulkan入门(14)-VkImage图像的创建
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:35:18 / 修改时间：03:44:04" itemprop="dateCreated datePublished" datetime="2022-02-27T03:35:18+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(14)-VkImage图像的创建" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>在之前我们使用顶点着色器以及描述符来实现绘制有颜色的几何体，还实现了旋转动画。接下来我们学习一下纹理贴图，这个将是我们实现加载绘制基本3D模型的基础。</p>
+<span id="more"></span>
+
+<p>添加纹理的基本步骤有:</p>
+<ol>
+<li>创建由设备内存支持的图像对象</li>
+<li>用图像文件中的像素填充创建的图像对象</li>
+<li>创建图像采样器</li>
+<li>添加一个组合的图像采样器描述符来从纹理中采样颜色</li>
+</ol>
+<p>我们以前已经使用过图像对象，但是这些对象是由swap chain扩展自动创建的。这次需要手动创建，创建图像并填充数据类似于创建顶点缓冲区。我们将通过创建一个暂存资源和填充它与像素数据，然后我们复制这到我们将用于渲染的最终图像对象。</p>
+<p>可以创建一个暂存图像，不过Vulkan允许将像素从VkBuffer复制到image中，而且这个API在某些硬件上实际上更快。我们将首先创建这个缓冲区并填充像素值，然后我们将创建一个图像复制像素到。创建image与创建缓冲区并没有太大的不同。它包括查询内存需求、分配设备内存并绑定它，就像我们之前看到的那样。</p>
+<p>图像可以有不同的布局，影响像素在内存中的存储方式。例如，由于图形硬件的工作方式，简单地逐行存储像素可能不会带来最好的性能。当对图像执行任何操作时，确保它们具有在该操作中使用的最佳布局。比如指定渲染通道时其中一些布局有:</p>
+<ol>
+<li>VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: 适合呈现（present）</li>
+<li>VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:片段着色器中写入颜色的最佳附件</li>
+<li>VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: 作为传输操作的最佳源，如vkCmdCopyImageToBuffer</li>
+<li>VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: 作为传输操作的最佳目的地，如vkCmdCopyBufferToImage</li>
+<li>VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: 适合着色器采样</li>
+</ol>
+<p>转换图像布局的最常见方法之一是管道屏障（pipeline barrier）。管道屏障主要用于同步对资源的访问，例如确保在读取图像之前将其写入。后面我们将了解如何将管道壁垒用于转换布局。</p>
+<p>使用VK_SHARING_MODE_EXCLUSIVE时，可以另外使用屏障来转移队列系列的所有权。</p>
+<h1 id="一-纹理贴图"><a href="#一-纹理贴图" class="headerlink" title="一. 纹理贴图"></a>一. 纹理贴图</h1><h2 id="1-1-图像库"><a href="#1-1-图像库" class="headerlink" title="1.1 图像库"></a>1.1 图像库</h2><p>有许多库可用于加载图像，您甚至可以编写自己的代码来加载BMP和PPM等简单格式。 这里我们将使用stb集合中的stb_image库。 这样做的好处是所有代码都在一个文件中，因此不需要任何棘手的构建配置。 下载stb_image.h并将其存储在方便的位置，例如保存GLFW和GLM的目录。 将位置添加到您的包含路径。</p>
+<p>stb_image库地址: <a target="_blank" rel="noopener" href="https://github.com/nothings/stb">https://github.com/nothings/stb</a></p>
+<p>下载后解压，放在指定目录，然后修改我们的Makefile文件：</p>
+<figure class="highlight makefile"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">VULKAN_SDK_PATH = /home/jh/Program/vulkan/1.2.170.0/x86_64</span><br><span class="line">STB_IMAGE_PATH = /home/jh/Program/stb-image</span><br><span class="line"></span><br><span class="line">CFLAGS = -std=c++17 -I<span class="variable">$(VULKAN_SDK_PATH)</span>/<span class="keyword">include</span> -I<span class="variable">$(STB_IMAGE_PATH)</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="1-1-读取图片"><a href="#1-1-读取图片" class="headerlink" title="1.1 读取图片"></a>1.1 读取图片</h2><p>在shaders目录旁边创建一个新的目录textures来存储纹理图像：</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/texture.jpg" alt="texture"></p>
+<p>首先添加头文件:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> STB_IMAGE_IMPLEMENTATION</span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;stb_image.h&gt;</span></span></span><br></pre></td></tr></table></figure>
+
+<p>默认情况下，头文件只定义函数的原型。一个代码文件需要包含STB_IMAGE_IMPLEMENTATION定义的头文件来包含函数体，否则会有链接错误。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="built_in">createCommandPool</span>();</span><br><span class="line">    <span class="comment">// 因为需要使用指令缓冲，所以在创建指令池之后调用</span></span><br><span class="line">    <span class="built_in">createTextureImage</span>();</span><br><span class="line">    <span class="built_in">createVertexBuffer</span>();</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createTextureImage</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="type">int</span> texWidth, texHeight, texChannels;</span><br><span class="line">    <span class="comment">// 加载texture.jpg图像</span></span><br><span class="line">    stbi_uc* pixels = <span class="built_in">stbi_load</span>(<span class="string">&quot;textures/texture.jpg&quot;</span>, &amp;texWidth, &amp;texHeight, &amp;texChannels, STBI_rgb_alpha);</span><br><span class="line">    <span class="comment">// 每个像素4个字节</span></span><br><span class="line">    VkDeviceSize imageSize = texWidth * texHeight * <span class="number">4</span>;</span><br><span class="line">    <span class="keyword">if</span> (!pixels) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to load texture image!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>stbi_load函数将文件路径和要加载的通道数量作为参数。STBI_rgb_alpha值会强制为图像加载Alpha通道，即使它没有通道也是如此, 与其他纹理保持一致性。中间的三个参数是输出图像中通道的宽度、高度和实际数量。返回的指针是像素值数组中的第一个元素。在STBI_rgba_alpha中，像素逐行排列，每个像素4个字节，总共texWidth * texHeight * 4个值。</p>
+<h2 id="1-2-缓存读取的图片"><a href="#1-2-缓存读取的图片" class="headerlink" title="1.2 缓存读取的图片"></a>1.2 缓存读取的图片</h2><p>现在，我们将在主机可见内存中创建一个缓冲区，以便我们可以使用vkMapMemory并将像素复制到其中。 将此临时缓冲区的变量添加到createTextureImage函数：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createTextureImage</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="type">int</span> texWidth, texHeight, texChannels;</span><br><span class="line">    <span class="comment">// 加载texture.jpg图像</span></span><br><span class="line">    stbi_uc* pixels = <span class="built_in">stbi_load</span>(<span class="string">&quot;textures/texture.jpg&quot;</span>, &amp;texWidth, &amp;texHeight, &amp;texChannels, STBI_rgb_alpha);</span><br><span class="line">    <span class="comment">// 每个像素4个字节</span></span><br><span class="line">    VkDeviceSize imageSize = texWidth * texHeight * <span class="number">4</span>;</span><br><span class="line">    <span class="keyword">if</span> (!pixels) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to load texture image!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    VkBuffer stagingBuffer;</span><br><span class="line">    VkDeviceMemory stagingBufferMemory;</span><br><span class="line">    <span class="comment">// 缓冲区应该在主机可见内存中，以便我们可以映射它，并且它应该可用作传输源，以便我们以后可以复制</span></span><br><span class="line">    <span class="built_in">createBuffer</span>(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer,</span><br><span class="line">            stagingBufferMemory);</span><br><span class="line">    <span class="comment">// 内存映射</span></span><br><span class="line">    <span class="type">void</span>* data;</span><br><span class="line">    <span class="built_in">vkMapMemory</span>(device, stagingBufferMemory, <span class="number">0</span>, imageSize, <span class="number">0</span>, &amp;data);</span><br><span class="line">    <span class="built_in">memcpy</span>(data, pixels, <span class="built_in">static_cast</span>&lt;<span class="type">size_t</span>&gt;(imageSize));</span><br><span class="line">    <span class="built_in">vkUnmapMemory</span>(device, stagingBufferMemory);</span><br><span class="line">    <span class="comment">// 最后释放原始像素数据</span></span><br><span class="line">    <span class="built_in">stbi_image_free</span>(pixels);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-3-纹理图像-Texture-Image"><a href="#1-3-纹理图像-Texture-Image" class="headerlink" title="1.3 纹理图像(Texture Image)"></a>1.3 纹理图像(Texture Image)</h2><p>尽管我们可以设置着色器来访问缓冲区中的像素值，但为此目的最好使用Vulkan中的图像对象-VkImage。 通过使用2D坐标，图像对象将使检索颜色更加容易和快捷。 图像对象中的像素称为纹理像素：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line">VkImage textureImage;</span><br><span class="line">VkDeviceMemory textureImageMemory;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createTextureImage</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    VkImageCreateInfo imageInfo = &#123;&#125;;</span><br><span class="line">    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;</span><br><span class="line">    imageInfo.imageType = VK_IMAGE_TYPE_2D; <span class="comment">//二维图像</span></span><br><span class="line">    imageInfo.extent.width = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(texWidth);</span><br><span class="line">    imageInfo.extent.height = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(texHeight);</span><br><span class="line">    imageInfo.extent.depth = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 图像的最小采样的细节级别</span></span><br><span class="line">    imageInfo.mipLevels = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 图像中的层数</span></span><br><span class="line">    imageInfo.arrayLayers = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 指定图像格式，对于像素像素，使用与缓冲区中像素相同的格式，否则复制操作将失败</span></span><br><span class="line">    imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;</span><br><span class="line">    <span class="comment">// 图像平铺模式,这里指定图像像素最佳内存拼接布局</span></span><br><span class="line">    <span class="comment">// 与图像的布局不同，平铺模式不能在以后更改。如果希望能够直接访问图像内存中的texel，则必须使用VK_IMAGE_TILING_OPTIMAL</span></span><br><span class="line">    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 图像的initialLayout只有两个可能的值：VK_IMAGE_LAYOUT_UNDEFINED || VK_IMAGE_LAYOUT_PREINITIALIZED</span></span><br><span class="line">    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;</span><br><span class="line"></span><br><span class="line">    imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;</span><br><span class="line">    <span class="comment">// 图像将仅由一个队列族使用, 因此独占模式</span></span><br><span class="line">    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;</span><br><span class="line">    <span class="comment">// 图像采样</span></span><br><span class="line">    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;</span><br><span class="line">    imageInfo.flags = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line">    <span class="comment">// 创建图像</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateImage</span>(device, &amp;imageInfo, <span class="literal">nullptr</span>, &amp;textureImage) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create image!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 同样的，需要给Image分配内存空间</span></span><br><span class="line">    VkMemoryRequirements memRequirements;</span><br><span class="line">    <span class="built_in">vkGetImageMemoryRequirements</span>(device, textureImage, &amp;memRequirements);</span><br><span class="line">    VkMemoryAllocateInfo allocInfo = &#123;&#125;;</span><br><span class="line">    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;</span><br><span class="line">    allocInfo.allocationSize = memRequirements.size;</span><br><span class="line">    allocInfo.memoryTypeIndex =</span><br><span class="line">            <span class="built_in">findMemoryType</span>(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkAllocateMemory</span>(device, &amp;allocInfo, <span class="literal">nullptr</span>, &amp;textureImageMemory) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to allocate image memory!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 绑定图像和内存</span></span><br><span class="line">    <span class="built_in">vkBindImageMemory</span>(device, textureImage, textureImageMemory, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>对于initialLayout，很少有情况需要在第一次过渡期间保留纹理像素，但是如果想将图像与VK_IMAGE_TILING_LINEAR布局结合使用作为缓存图像。 在这种情况下，将纹理像素数据上传到其中，然后将图像转换为传输源而又不丢失数据。但是，我们首先将图像转换为传输目标，然后从缓冲区对象将纹理像素数据复制到该图像，因此使用VK_IMAGE_LAYOUT_UNDEFINED。</p>
+<p>对于usage, 与缓冲区创建期间的含义相同。 该图像将用作缓冲区副本的目的地，因此应将其设置为传输目的地。 我们还希望能够从着色器访问图像来为网格着色，因此用法应包括VK_IMAGE_USAGE_SAMPLED_BIT。</p>
+<p>采样标志与多重采样有关。 这仅与将用作附件的图像有关，这里使用一个样本。 对于与稀疏图像有关的图像，有一些可选的标志。 稀疏图像是其中实际上仅某些区域由内存支持的图像。 例如，如果将3D纹理用于体素地形，则可以使用它来避免分配内存来存储大量的“空”值，这里我们设置为0。</p>
+<h3 id="1-3-1-VkImageCreateInfo"><a href="#1-3-1-VkImageCreateInfo" class="headerlink" title="1.3.1 VkImageCreateInfo"></a>1.3.1 VkImageCreateInfo</h3><p>创建图像的一系列参数是在VkImageCreateInfo中指明的：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkImageCreateInfo</span> &#123;</span><br><span class="line">    VkStructureType          sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*              pNext;</span><br><span class="line">    VkImageCreateFlags       flags;</span><br><span class="line">    VkImageType              imageType;</span><br><span class="line">    VkFormat                 format;</span><br><span class="line">    VkExtent3D               extent;</span><br><span class="line">    <span class="type">uint32_t</span>                 mipLevels;</span><br><span class="line">    <span class="type">uint32_t</span>                 arrayLayers;</span><br><span class="line">    VkSampleCountFlagBits    samples;</span><br><span class="line">    VkImageTiling            tiling;</span><br><span class="line">    VkImageUsageFlags        usage;</span><br><span class="line">    VkSharingMode            sharingMode;</span><br><span class="line">    <span class="type">uint32_t</span>                 queueFamilyIndexCount;</span><br><span class="line">    <span class="type">const</span> <span class="type">uint32_t</span>*          pQueueFamilyIndices;</span><br><span class="line">    VkImageLayout            initialLayout;</span><br><span class="line">&#125; VkImageCreateInfo;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>sType是此结构的类型,VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO</li>
+<li>pNext是NULL或指向扩展特定结构的指针</li>
+<li>flag是VkImageCreateFlagBits的位掩码，用于描述图像的其他参数</li>
+<li>imageType是VkImageType值，用于指定图像的基本尺寸。就图像类型而言，阵列纹理中的图层不算作尺寸<ol>
+<li>VK_IMAGE_TYPE_1D指定一维图像</li>
+<li>VK_IMAGE_TYPE_2D指定二维图像</li>
+<li>VK_IMAGE_TYPE_3D指定三维图像</li>
+</ol>
+</li>
+<li>format是一种VkFormat，它描述了将包含在图像中的texel块的格式和类型</li>
+<li>extent是一个VkExtent3D，它描述基本级别的每个维度中的数据元素数量</li>
+<li>mipLevels描述可用于图像的最小采样的细节级别的数量</li>
+<li>arrayLayers是图像中的层数</li>
+<li>samples是VkSampleCountFlagBits，用于指定每个纹理像素的样本数</li>
+<li>tiling是一个VkImageTiling值，它指定内存中纹理元素块的平铺模式<ol>
+<li>VK_IMAGE_TILING_LINEAR: 以主要行顺序排列像素</li>
+<li>VK_IMAGE_TILING_OPTIMAL: 指定最佳平铺（纹理像素以实现相关的安排进行布局，以实现更好的内存访问）</li>
+<li>VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT: 表示图片的拼贴是由Linux DRM格式修饰符定义的</li>
+</ol>
+</li>
+<li>usage是VkImageUsageFlagBits的位掩码，用于描述图像的预期用法</li>
+<li>SharingMode是VkSharingMode值，用于指定多个队列系列将访问图像时的图像共享模式</li>
+<li>queueFamilyIndexCount是pQueueFamilyIndi​​ces数组中的条目数</li>
+<li>pQueueFamilyIndi​​ces是将访问此图像的队列系列的列表（如果sharedMode不是VK_SHARING_MODE_CONCURRENT，则将被忽略）</li>
+<li>initialLayout是一个VkImageLayout值，它指定图像的所有图像子资源的初始VkImageLayout。请参阅图像布局<ol>
+<li>VK_IMAGE_LAYOUT_UNDEFINED: GPU不可用，第一次转换将丢弃纹理像素</li>
+<li>VK_IMAGE_LAYOUT_PREINITIALIZED:GPU无法使用，但第一个过渡将保留纹理像素</li>
+</ol>
+</li>
+</ol>
+<h3 id="1-3-2-vkCreateImage"><a href="#1-3-2-vkCreateImage" class="headerlink" title="1.3.2 vkCreateImage"></a>1.3.2 vkCreateImage</h3><p>图像表示多维（最多3个）数据数组，可用于各种目的（例如附件、纹理），通过描述符集将其绑定到图形或计算管道，或直接将其指定为特定命令的参数。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkResult <span class="title">vkCreateImage</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDevice                                    device,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkImageCreateInfo*                    pCreateInfo,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkAllocationCallbacks*                pAllocator,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkImage*                                    pImage)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>device是创建Image的逻辑设备</li>
+<li>pCreateInfo是指向VkImageCreateInfo结构的指针，该结构包含用于创建图像的参数</li>
+<li>pAllocator如“内存分配”一章中所述控制主机内存分配</li>
+<li>pImage是指向VkImage句柄的指针，在该句柄中返回生成的图像对象</li>
+</ol>
+<h3 id="1-3-3-createImage"><a href="#1-3-3-createImage" class="headerlink" title="1.3.3 createImage"></a>1.3.3 createImage</h3><p>现在我们重构下createTextureImage, 将创建VkImage的部分单独做个函数:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createImage</span><span class="params">(<span class="type">uint32_t</span> width, <span class="type">uint32_t</span> height, VkFormat format,</span></span></span><br><span class="line"><span class="params"><span class="function">        VkImageTiling tiling, VkImageUsageFlags usage,</span></span></span><br><span class="line"><span class="params"><span class="function">        VkMemoryPropertyFlags properties, VkImage&amp; image,</span></span></span><br><span class="line"><span class="params"><span class="function">        VkDeviceMemory&amp; imageMemory)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    VkImageCreateInfo imageInfo = &#123;&#125;;</span><br><span class="line">    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;</span><br><span class="line">    imageInfo.imageType = VK_IMAGE_TYPE_2D; <span class="comment">//二维图像</span></span><br><span class="line">    imageInfo.extent.width = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(width);</span><br><span class="line">    imageInfo.extent.height = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(height);</span><br><span class="line">    imageInfo.extent.depth = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 图像的最小采样的细节级别</span></span><br><span class="line">    imageInfo.mipLevels = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 图像中的层数</span></span><br><span class="line">    imageInfo.arrayLayers = <span class="number">1</span>;</span><br><span class="line">    imageInfo.format = format;</span><br><span class="line">    <span class="comment">// 图像平铺模式,这里指定图像像素最佳内存拼接布局</span></span><br><span class="line">    <span class="comment">// 与图像的布局不同，平铺模式不能在以后更改。如果希望能够直接访问图像内存中的texel，则必须使用VK_IMAGE_TILING_OPTIMAL</span></span><br><span class="line">    imageInfo.tiling = tiling;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 图像的initialLayout只有两个可能的值：VK_IMAGE_LAYOUT_UNDEFINED || VK_IMAGE_LAYOUT_PREINITIALIZED</span></span><br><span class="line">    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;</span><br><span class="line"></span><br><span class="line">    imageInfo.usage = usage;</span><br><span class="line">    <span class="comment">// 图像将仅由一个队列族使用, 因此独占模式</span></span><br><span class="line">    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;</span><br><span class="line">    <span class="comment">// 图像采样</span></span><br><span class="line">    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;</span><br><span class="line">    imageInfo.flags = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line">    <span class="comment">// 创建图像</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateImage</span>(device, &amp;imageInfo, <span class="literal">nullptr</span>, &amp;image) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create image!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 同样的，需要给Image分配内存空间</span></span><br><span class="line">    VkMemoryRequirements memRequirements;</span><br><span class="line">    <span class="built_in">vkGetImageMemoryRequirements</span>(device, image, &amp;memRequirements);</span><br><span class="line">    VkMemoryAllocateInfo allocInfo = &#123;&#125;;</span><br><span class="line">    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;</span><br><span class="line">    allocInfo.allocationSize = memRequirements.size;</span><br><span class="line">    allocInfo.memoryTypeIndex =</span><br><span class="line">            <span class="built_in">findMemoryType</span>(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkAllocateMemory</span>(device, &amp;allocInfo, <span class="literal">nullptr</span>, &amp;imageMemory) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to allocate image memory!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 绑定图像和内存</span></span><br><span class="line">    <span class="built_in">vkBindImageMemory</span>(device, image, imageMemory, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createTextureImage</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="type">int</span> texWidth, texHeight, texChannels;</span><br><span class="line">    <span class="comment">// 加载texture.jpg图像</span></span><br><span class="line">    stbi_uc* pixels = <span class="built_in">stbi_load</span>(<span class="string">&quot;textures/texture.jpg&quot;</span>, &amp;texWidth, &amp;texHeight, &amp;texChannels, STBI_rgb_alpha);</span><br><span class="line">    <span class="comment">// 每个像素4个字节</span></span><br><span class="line">    VkDeviceSize imageSize = texWidth * texHeight * <span class="number">4</span>;</span><br><span class="line">    <span class="keyword">if</span> (!pixels) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to load texture image!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    VkBuffer stagingBuffer;</span><br><span class="line">    VkDeviceMemory stagingBufferMemory;</span><br><span class="line">    <span class="comment">// 缓冲区应该在主机可见内存中，以便我们可以映射它，并且它应该可用作传输源，以便我们以后可以复制</span></span><br><span class="line">    <span class="built_in">createBuffer</span>(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer,</span><br><span class="line">            stagingBufferMemory, VK_SHARING_MODE_EXCLUSIVE);</span><br><span class="line">    <span class="comment">// 内存映射</span></span><br><span class="line">    <span class="type">void</span>* data;</span><br><span class="line">    <span class="built_in">vkMapMemory</span>(device, stagingBufferMemory, <span class="number">0</span>, imageSize, <span class="number">0</span>, &amp;data);</span><br><span class="line">    <span class="built_in">memcpy</span>(data, pixels, <span class="built_in">static_cast</span>&lt;<span class="type">size_t</span>&gt;(imageSize));</span><br><span class="line">    <span class="built_in">vkUnmapMemory</span>(device, stagingBufferMemory);</span><br><span class="line">    <span class="comment">// 最后释放原始像素数据</span></span><br><span class="line">    <span class="built_in">stbi_image_free</span>(pixels);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">createImage</span>(texWidth, texHeight, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL,</span><br><span class="line">            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-4-布局转换"><a href="#1-4-布局转换" class="headerlink" title="1.4 布局转换"></a>1.4 布局转换</h2><p>我们需要再次记录和执行一个命令缓冲区以完成布局转换功能，所以最好是将执行指令缓冲区的部分逻辑抽离:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkCommandBuffer <span class="title">beginSingleTimeCommands</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    VkCommandBufferAllocateInfo allocInfo = &#123;&#125;;</span><br><span class="line">    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;</span><br><span class="line">    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;</span><br><span class="line">    allocInfo.commandPool = commandPool;</span><br><span class="line">    allocInfo.commandBufferCount = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">    VkCommandBuffer commandBuffer;</span><br><span class="line">    <span class="built_in">vkAllocateCommandBuffers</span>(device, &amp;allocInfo, &amp;commandBuffer);</span><br><span class="line"></span><br><span class="line">    VkCommandBufferBeginInfo beginInfo = &#123;&#125;;</span><br><span class="line">    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;</span><br><span class="line">    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;</span><br><span class="line">    <span class="built_in">vkBeginCommandBuffer</span>(commandBuffer, &amp;beginInfo);</span><br><span class="line">    <span class="keyword">return</span> commandBuffer;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">endSingleTimeCommands</span><span class="params">(VkCommandBuffer commandBuffer)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">vkEndCommandBuffer</span>(commandBuffer);</span><br><span class="line"></span><br><span class="line">    VkSubmitInfo submitInfo = &#123;&#125;;</span><br><span class="line">    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;</span><br><span class="line">    submitInfo.commandBufferCount = <span class="number">1</span>;</span><br><span class="line">    submitInfo.pCommandBuffers = &amp;commandBuffer;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">vkQueueSubmit</span>(graphicsQueue, <span class="number">1</span>, &amp;submitInfo, VK_NULL_HANDLE);</span><br><span class="line">    <span class="built_in">vkQueueWaitIdle</span>(graphicsQueue);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">vkFreeCommandBuffers</span>(device, commandPool, <span class="number">1</span>, &amp;commandBuffer);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>现在有了beginSingleTimeCommands和endSingleTimeCommands函数，可以对执行单条指令缓冲区的函数进行优化：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">copyBuffer</span><span class="params">(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)</span> </span>&#123;</span><br><span class="line">    VkCommandBuffer commandBuffer= <span class="built_in">beginSingleTimeCommands</span>();</span><br><span class="line">    <span class="comment">// 缓冲拷贝指令</span></span><br><span class="line">    VkBufferCopy copyRegion = &#123;&#125;;</span><br><span class="line">    copyRegion.srcOffset = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line">    copyRegion.dstOffset = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line">    copyRegion.size = size;</span><br><span class="line">    <span class="comment">// std::cout&lt;&lt;&quot;copyBuffer vkCmdCopyBuffer&quot;&lt;&lt;std::endl;</span></span><br><span class="line">    <span class="comment">// 缓冲区的内容使用vkCmdCopyBuffer命令传输。</span></span><br><span class="line">    <span class="comment">// 源和目标缓冲区以及要复制的区域数组作为参数。copyRegion由源缓冲区偏移量、目标缓冲区偏移量和大小组成</span></span><br><span class="line">    <span class="built_in">vkCmdCopyBuffer</span>(commandBuffer, srcBuffer, dstBuffer, <span class="number">1</span>, &amp;copyRegion);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">endSingleTimeCommands</span>(commandBuffer);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果我们仍然使用缓冲区，那么我们现在可以编写一个函数来记录并执行vkCmdCopyBufferToImage，但是这个命令要求首先将Image置于正确的布局中。</p>
+<p>创建一个新函数来处理布局转换：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">transitionImageLayout</span><span class="params">(VkImage image, VkFormat format,</span></span></span><br><span class="line"><span class="params"><span class="function">        VkImageLayout oldLayout, VkImageLayout newLayout)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    VkCommandBuffer commandBuffer = <span class="built_in">beginSingleTimeCommands</span>();</span><br><span class="line">    <span class="comment">// 使用图像内存屏障,用于同步资源访问</span></span><br><span class="line">    VkImageMemoryBarrier barrier = &#123;&#125;;</span><br><span class="line">    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;</span><br><span class="line">    <span class="comment">// 指定布局转换。如果不关心图像的现有内容，可以将VK_IMAGE_LAYOUT_UNDEFINED用作oldLayout</span></span><br><span class="line">    barrier.oldLayout = oldLayout;</span><br><span class="line">    barrier.newLayout = newLayout;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果使用屏障来传递队列族的所有权，那么这两个字段应该是队列族的索引</span></span><br><span class="line">    <span class="comment">// 如果不这样做，则必须将它们设置为VK_QUEUE_FAMILY_IGNORED</span></span><br><span class="line">    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;</span><br><span class="line">    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;</span><br><span class="line">    <span class="comment">// image和subresourceRange指定受影响的图像以及图像的特定部分</span></span><br><span class="line">    barrier.image = image;</span><br><span class="line">    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;</span><br><span class="line">    <span class="comment">// 我们的图像不是数组，也没有mipmapping级别，因此只指定了一个级别和层</span></span><br><span class="line">    barrier.subresourceRange.baseMipLevel = <span class="number">0</span>;</span><br><span class="line">    barrier.subresourceRange.levelCount = <span class="number">1</span>;</span><br><span class="line">    barrier.subresourceRange.baseArrayLayer = <span class="number">0</span>;</span><br><span class="line">    barrier.subresourceRange.layerCount = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 屏障主要用于同步目的，因此必须指定哪些涉及资源的操作类型必须在屏障之前发生，哪些涉及资源的操作必须在屏障上等待</span></span><br><span class="line">    barrier.srcAccessMask = <span class="number">0</span>; <span class="comment">// TODO</span></span><br><span class="line">    barrier.dstAccessMask = <span class="number">0</span>; <span class="comment">// TODO</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 在管道上执行barrier指令, 所有类型的管道屏障都使用相同的函数提交</span></span><br><span class="line">    <span class="built_in">vkCmdPipelineBarrier</span>(commandBuffer,</span><br><span class="line">        <span class="number">0</span> <span class="comment">/* TODO */</span>, <span class="number">0</span> <span class="comment">/* TODO */</span>,</span><br><span class="line">        <span class="number">0</span>,</span><br><span class="line">        <span class="number">0</span>, <span class="literal">nullptr</span>,</span><br><span class="line">        <span class="number">0</span>, <span class="literal">nullptr</span>,</span><br><span class="line">        <span class="number">1</span>, &amp;barrier</span><br><span class="line">    );</span><br><span class="line"></span><br><span class="line">    <span class="built_in">endSingleTimeCommands</span>(commandBuffer);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>执行布局转换的最常见方法之一是使用图像内存屏障。像这样的管道屏障通常用于同步对资源的访问，例如确保在从缓冲区读取之前完成对缓冲区的写入，但是当使用VK_SHARING_MODE_EXCLUSIVE时，它也可以用于转换映像布局和传输队列族所有权。对于缓冲区，有一个等效的缓冲存储器屏障来实现这一点。</p>
+<h3 id="1-4-1-VkImageMemoryBarrier"><a href="#1-4-1-VkImageMemoryBarrier" class="headerlink" title="1.4.1 VkImageMemoryBarrier"></a>1.4.1 VkImageMemoryBarrier</h3><p>图像存储器屏障仅适用于涉及特定图像子资源范围的存储器访问。也就是说，从图像存储器屏障形成的存储器依赖被限定为通过指定的图像子资源范围进行访问。图像内存屏障还可用于定义指定图像子资源范围的图像布局转换或队列族所有权转移。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkImageMemoryBarrier</span> &#123;</span><br><span class="line">    VkStructureType            sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*                pNext;</span><br><span class="line">    VkAccessFlags              srcAccessMask;</span><br><span class="line">    VkAccessFlags              dstAccessMask;</span><br><span class="line">    VkImageLayout              oldLayout;</span><br><span class="line">    VkImageLayout              newLayout;</span><br><span class="line">    <span class="type">uint32_t</span>                   srcQueueFamilyIndex;</span><br><span class="line">    <span class="type">uint32_t</span>                   dstQueueFamilyIndex;</span><br><span class="line">    VkImage                    image;</span><br><span class="line">    VkImageSubresourceRange    subresourceRange;</span><br><span class="line">&#125; VkImageMemoryBarrier;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>sType就是这种结构的类型, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER</li>
+<li>pNext为NULL或指向特定于扩展的结构的指针</li>
+<li>srccessmask是指定源访问掩码的VkAccessFlagBits的位掩码, 指定在哪个管道阶段发生操作，这些操作应该在屏障之前发生</li>
+<li>dstAccessMask是指定目标访问掩码的VkAccessFlagBits位掩码, 指定操作将在其中等待屏障的管道阶段</li>
+<li>oldLayout是图像布局转换中的旧布局</li>
+<li>newLayout是图像布局转换中的新布局</li>
+<li>srcQueueFamilyIndex是队列系列所有权转移的源队列系列</li>
+<li>dstQueueFamilyIndex是队列系列所有权转移的目标队列系列</li>
+<li>image是受此屏障影响的图像</li>
+<li>subresourceRange描述图像中受此屏障影响的图像子资源范围</li>
+</ol>
+<h3 id="1-4-2-vkCmdPipelineBarrier"><a href="#1-4-2-vkCmdPipelineBarrier" class="headerlink" title="1.4.2 vkCmdPipelineBarrier"></a>1.4.2 vkCmdPipelineBarrier</h3><p>vkCmdPipelineBarrier是一个同步命令，它在提交到同一队列的命令之间或同一子类中的命令之间插入依赖关系。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdPipelineBarrier</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkPipelineStageFlags                        srcStageMask,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkPipelineStageFlags                        dstStageMask,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDependencyFlags                           dependencyFlags,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    memoryBarrierCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkMemoryBarrier*                      pMemoryBarriers,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    bufferMemoryBarrierCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkBufferMemoryBarrier*                pBufferMemoryBarriers,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    imageMemoryBarrierCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkImageMemoryBarrier*                 pImageMemoryBarriers)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>commandBuffer是将命令记录到的命令缓冲区</li>
+<li>srcStageMask是一个指定源级掩码的VkPipelineStageFlagBits的位掩码</li>
+<li>dstStageMask是指定目标阶段掩码的VkPipelineStageFlagBits的位掩码</li>
+<li>dependencyFlags是VkdePendencyFlags的位掩码，指定如何形成执行和内存依赖关系</li>
+<li>memoryBarrierCount是pMemoryBarriers数组的长度</li>
+<li>pMemoryBarriers是指向VKMemorySbarrier结构数组的指针</li>
+<li>bufferMemoryBarrierCount是pBufferMemoryBarriers数组的长度</li>
+<li>pBufferMemoryBarriers是指向VkBufferMemoryBarrier结构数组的指针</li>
+<li>imageMemoryBarrierCount是pImageMemoryBarriers数组的长度</li>
+<li>pImageMemoryBarriers是指向VkimAgemoryBarrier结构数组的指针</li>
+</ol>
+<p>当vkCmdPipelineBarrier提交到队列时，它定义了在它之前提交的命令和在它之后提交的命令之间的内存依赖关系。</p>
+<p>如果vkCmdPipelineBarrier是在渲染过程实例外部录制的，则第一个同步作用域将包括按提交顺序较早出现的所有命令。如果vkCmdPipelineBarrier记录在渲染过程实例中，则第一个同步作用域仅包括在同一子过程中以提交顺序较早出现的命令。在这两种情况下，第一个同步作用域仅限于由srcStageMask指定的源阶段掩码确定的管道阶段上的操作。</p>
+<p>如果vkCmdPipelineBarrier是在渲染过程实例外部录制的，则第二个同步作用域将包括以后按提交顺序执行的所有命令。如果vkCmdPipelineBarrier记录在渲染过程实例中，则第二个同步作用域仅包括稍后在同一子过程中按提交顺序出现的命令。在任何一种情况下，第二同步作用域都限于由dstStageMask指定的目的级掩码确定的管道级上的操作。</p>
+<p>第一个访问范围被限制为在由srcStageMask指定的源阶段掩码确定的管道阶段中进行访问。其中，第一访问作用域仅包括由pMemoryBarriers、pBufferMemoryBarriers和pImageMemoryBarriers数组的元素定义的第一访问作用域，每个元素定义一组内存屏障。如果未指定内存屏障，则第一个访问作用域不包括任何访问。</p>
+<p>第二访问范围被限制为在由dstStageMask指定的目标阶段掩码确定的管道阶段中的访问。其中，第二访问作用域仅包括由pMemoryBarriers、pBufferMemoryBarriers和pImageMemoryBarriers数组的元素定义的第二访问作用域，它们各自定义了一组内存屏障。如果未指定内存屏障，则第二访问作用域不包括任何访问。</p>
+<h2 id="1-5-拷贝缓存数据至Image"><a href="#1-5-拷贝缓存数据至Image" class="headerlink" title="1.5 拷贝缓存数据至Image"></a>1.5 拷贝缓存数据至Image</h2><p>就像缓冲区复制一样，需要指定缓冲区的哪个部分将被复制到图像的哪个部分：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">copyBufferToImage</span><span class="params">(VkBuffer buffer, VkImage image, <span class="type">uint32_t</span> width,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">uint32_t</span> height)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    VkCommandBuffer commandBuffer = <span class="built_in">beginSingleTimeCommands</span>();</span><br><span class="line">    <span class="comment">// 使用VkBufferImageCopy指定缓冲区复制行为</span></span><br><span class="line">    VkBufferImageCopy region = &#123;&#125;;</span><br><span class="line">    <span class="comment">// 指定缓冲区中像素值开始的字节偏移量</span></span><br><span class="line">    region.bufferOffset = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 指定像素在内存中的布局方式, 指定0表示像素紧密打包</span></span><br><span class="line">    region.bufferRowLength = <span class="number">0</span>;</span><br><span class="line">    region.bufferImageHeight = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 指示要将像素复制到图像的哪个部分</span></span><br><span class="line">    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;</span><br><span class="line">    region.imageSubresource.mipLevel = <span class="number">0</span>;</span><br><span class="line">    region.imageSubresource.baseArrayLayer = <span class="number">0</span>;</span><br><span class="line">    region.imageSubresource.layerCount = <span class="number">1</span>;</span><br><span class="line">    region.imageOffset = &#123;<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>&#125;;</span><br><span class="line">    region.imageExtent = &#123;width, height, <span class="number">1</span>&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 使用vkCmdCopyBufferToImage函数将缓冲区到图像的复制操作排队</span></span><br><span class="line">    <span class="comment">// 第四个参数指示图像当前使用的布局</span></span><br><span class="line">    <span class="built_in">vkCmdCopyBufferToImage</span>(commandBuffer, buffer, image,</span><br><span class="line">            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,</span><br><span class="line">            <span class="number">1</span>, &amp;region);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">endSingleTimeCommands</span>(commandBuffer);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-1-VkBufferImageCopy"><a href="#1-5-1-VkBufferImageCopy" class="headerlink" title="1.5.1 VkBufferImageCopy"></a>1.5.1 VkBufferImageCopy</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkBufferImageCopy</span> &#123;</span><br><span class="line">    VkDeviceSize                bufferOffset;</span><br><span class="line">    <span class="type">uint32_t</span>                    bufferRowLength;</span><br><span class="line">    <span class="type">uint32_t</span>                    bufferImageHeight;</span><br><span class="line">    VkImageSubresourceLayers    imageSubresource;</span><br><span class="line">    VkOffset3D                  imageOffset;</span><br><span class="line">    VkExtent3D                  imageExtent;</span><br><span class="line">&#125; VkBufferImageCopy;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>bufferOffset是从复制图像数据的缓冲区对象的起始处开始的以字节为单位的偏移量</li>
+<li>bufferRowLength和bufferImageHeight以texel为单位指定缓冲存储器中较大的二维或三维图像的子区域，并控制寻址计算。如果这些值中的任何一个为零，则根据imageExtent，缓冲存储器的这一方面被认为是紧密压缩的</li>
+<li>imageSubresource是一个VkImageSubresourceLayers，用于指定用于源或目标图像数据的图像的特定图像子资源</li>
+<li>imageOffset选择源或目标图像数据子区域的初始x、y、z偏移（以texel为单位）</li>
+<li>imageExtent是要在宽度、高度和深度上复制的图像的大小（以texel为单位）</li>
+</ol>
+<p>当复制到或从深度或模具方面时，缓冲区内存中的数据使用的布局是深度或模具数据的(大部分)紧密封装的表示形式。具体地说:</p>
+<ol>
+<li>复制到或从任何深度&#x2F;模板格式的模板方面的数据都用每个texel的VK_FORMAT_S8_UINT值紧密打包</li>
+<li>复制到或从VK_FORMAT_D16_UNORM或VK_FORMAT_D16_UNORM_S8_UINT格式的深度方面的数据使用每个texel的VK_FORMAT_D16_UNORM值紧密打包</li>
+<li>复制到或从VK_FORMAT_D32_SFLOAT或VK_FORMAT_D32_SFLOAT_S8_UINT格式的深度方面的数据使用每个texel的一个VK_FORMAT_D32_SFLOAT值紧密打包</li>
+<li>复制到或从VK_FORMAT_X8_D24_UNORM_PACK32或VK_FORMAT_D24_UNORM_S8_UINT格式的深度方面的数据被打包为每个texel一个32位单词，每个单词的lsb中有D24值，8个msb中有未定义的值</li>
+</ol>
+<p>由于图像副本的深度或模板方面缓冲区在某些实现上可能需要格式转换，因此不支持图形的队列不支持格式转换。<br>当复制到深度方面时，并且没有启用VK_EXT_depth_range_unrestricted扩展名，缓冲区内存中的数据必须在[0,1]范围内，否则结果值是未定义的。<br>复制从imageSubresource的图像图层baseArrayLayer成员开始一层一层地进行。layerCount层从源图像或目标图像复制。</p>
+<h3 id="1-5-2-vkCmdCopyBufferToImage"><a href="#1-5-2-vkCmdCopyBufferToImage" class="headerlink" title="1.5.2 vkCmdCopyBufferToImage"></a>1.5.2 vkCmdCopyBufferToImage</h3><p>在缓冲区和图像之间复制数据, 从buffer对象复制数据到image对象, 调用vkCmdCopyBufferToImage:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdCopyBufferToImage</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    srcBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkImage                                     dstImage,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkImageLayout                               dstImageLayout,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    regionCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkBufferImageCopy*                    pRegions)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>commandBuffer是命令将被记录到的命令缓冲区</li>
+<li>srcBuffer是源缓冲区</li>
+<li>dstImage是目标图像</li>
+<li>dstImageLayout是复制的目标图像子资源的布局</li>
+<li>regionCount是要复制的区域数</li>
+<li>pRegions是一个指向VkBufferImageCopy结构数组的指针，该结构数组指定要复制的区域</li>
+</ol>
+<p>区域中的每个区域从源缓冲区的指定区域复制到目标图像的指定区域。</p>
+<p>如果dstImage的格式是一个多平面的图像格式)，必须使用VkBufferImageCopy结构的pRegions成员单独指定作为拷贝目标的每个平面的区域。在本例中，imageSubresource的aspectMask必须为VK_IMAGE_ASPECT_PLANE_0_BIT、VK_IMAGE_ASPECT_PLANE_1_BIT或VK_IMAGE_ASPECT_PLANE_2_BIT。对于vkCmdCopyBufferToImage来说，多平面图像的每个平面都被视为具有由相应子资源的aspectMask标识的平面的多平面格式的兼容平面格式中列出的格式。这既适用于VkFormat，也适用于复制中使用的坐标，它对应于平面中的texel，而不是这些texel如何映射到整个图像中的坐标。</p>
+<h2 id="1-6-准备纹理图像"><a href="#1-6-准备纹理图像" class="headerlink" title="1.6 准备纹理图像"></a>1.6 准备纹理图像</h2><p>回到createTextureImage函数。我们在那里做的最后一件事是创建纹理图像。下一步是将暂存缓冲区复制到纹理图像。这包括两个步骤:</p>
+<ol>
+<li>转换纹理图像到VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL</li>
+<li>执行缓冲区到图像复制操作</li>
+</ol>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 该图像是使用VK_IMAGE_LAYOUT_UNDEFINED布局创建的，因此在转换textureImage时应将oldLayout指定为VK_IMAGE_LAYOUT_UNDEFINED</span></span><br><span class="line"><span class="comment">// 在执行复制操作之前，不关心图像内容，所以可以这样做</span></span><br><span class="line"><span class="built_in">transitionImageLayout</span>(textureImage, VK_FORMAT_R8G8B8A8_UNORM,</span><br><span class="line">        VK_IMAGE_LAYOUT_UNDEFINED,</span><br><span class="line">        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 拷贝stagingBuffer中缓存的图像数据至Image（GPU可见内存）</span></span><br><span class="line"><span class="built_in">copyBufferToImage</span>(stagingBuffer, textureImage,</span><br><span class="line">        <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(texWidth), <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(texHeight));</span><br><span class="line"></span><br><span class="line"><span class="comment">// 为了能够从着色器中的纹理图像开始采样，我们需要最后一个过渡来准备着色器访问(用于同步对资源的访问)：</span></span><br><span class="line"><span class="built_in">transitionImageLayout</span>(textureImage, VK_FORMAT_R8G8B8A8_UNORM,</span><br><span class="line">        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,</span><br><span class="line">        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="1-7-转换屏障的含义-VkAccessFlags"><a href="#1-7-转换屏障的含义-VkAccessFlags" class="headerlink" title="1.7 转换屏障的含义 VkAccessFlags"></a>1.7 转换屏障的含义 VkAccessFlags</h2><p>现在在启用验证层的情况下运行应用程序，那么将看到transitionImageLayout中的访问掩码和管道阶段无效。</p>
+<p>我们需要根据过渡中的布局来设置它们，拷贝前后的两种转换都需要设置：</p>
+<ol>
+<li>VK_IMAGE_LAYOUT_UNDEFINED-&gt;VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: 不需要等待任何内容的传输写入</li>
+<li>VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL-&gt; VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: shader reads应该等待Transfer writes，特别是shader在片段着色器中读取，因为这就是我们要使用纹理的地方</li>
+</ol>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line">VkPipelineStageFlags sourceStage;</span><br><span class="line">VkPipelineStageFlags destinationStage;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED</span><br><span class="line">        &amp;&amp; newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) &#123;</span><br><span class="line">    barrier.srcAccessMask = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// Image或缓冲区在清除或复制操作中的写访问</span></span><br><span class="line">    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;</span><br><span class="line">    <span class="comment">// 指定队列最初接收到任何命令的管道阶段</span></span><br><span class="line">    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;</span><br><span class="line">    <span class="comment">// 指定所有复制命令和清除命令管道阶段</span></span><br><span class="line">    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;</span><br><span class="line">&#125; <span class="keyword">else</span> <span class="keyword">if</span> (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL</span><br><span class="line">        &amp;&amp; newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) &#123;</span><br><span class="line">    <span class="comment">// Image或缓冲区在清除或复制操作中的写访问</span></span><br><span class="line">    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;</span><br><span class="line">    <span class="comment">// 指定对存储缓冲区、物理存储缓冲区、统一texel缓冲区、存储texel缓冲区、采样图像或存储图像的读访问</span></span><br><span class="line">    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;</span><br><span class="line">    <span class="comment">// 指定所有复制命令和清除命令管道阶段</span></span><br><span class="line">    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;</span><br><span class="line">    <span class="comment">// 指定片段着色器阶段</span></span><br><span class="line">    destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">throw</span> std::<span class="built_in">invalid_argument</span>(<span class="string">&quot;unsupported layout transition!&quot;</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="built_in">vkCmdPipelineBarrier</span>(commandBuffer, sourceStage, destinationStage,</span><br><span class="line">        <span class="number">0</span>,</span><br><span class="line">        <span class="number">0</span>, <span class="literal">nullptr</span>,</span><br><span class="line">        <span class="number">0</span>, <span class="literal">nullptr</span>,</span><br><span class="line">        <span class="number">1</span>, &amp;barrier);</span><br></pre></td></tr></table></figure>
+
+<p>传输写入必须在管道传输阶段进行。因为写操作不需要等待任何东西，所以您可以为预barrier操作指定一个空的访问掩码和尽可能早的管道阶段VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT。需要注意的是，VK_PIPELINE_STAGE_TRANSFER_BIT并不是图形和计算管道中的一个真正的阶段。它更多的是一个发生转移的伪阶段。</p>
+<p>图像将在相同的管道阶段被写入，然后被片段着色器读取，这就是为什么我们在片段着色器管道阶段指定着色器读取访问。需要注意的一点是，命令缓冲区提交在开始时会导致隐式的VK_ACCESS_HOST_WRITE_BIT同步。由于transitionImageLayout函数只使用一个命令来执行一个命令缓冲区，所以如果在布局转换中需要VK_ACCESS_HOST_WRITE_BIT依赖项，您可以使用这个隐式同步并将srcAccessMask设置为0。</p>
+<p>实际上，有一种特殊的图像布局类型可以支持所有操作–VK_IMAGE_LAYOUT_GENERAL。当然，它的问题在于，它不一定能为任何操作提供最佳性能。在某些特殊情况下，例如使用图像作为输入和输出，或者在离开预初始化的布局后读取图像。到目前为止，所有提交命令的帮助程序功能都已设置为通过等待队列变为空闲状态而同步执行。对于实际应用，建议将这些操作组合在单个命令缓冲区中，并异步执行它们以提高吞吐量，尤其是createTextureImage函数中的过渡和复制。通过创建一个helper函数将命令记录到其中的setupCommandBuffer并尝试添加一个flushSetupCommands来执行到目前为止已记录的命令，来尝试进行此操作。最好在纹理贴图工作后执行此操作，以检查纹理资源是否仍正确设置。</p>
+<h3 id="1-7-1-VkAccessFlagBits"><a href="#1-7-1-VkAccessFlagBits" class="headerlink" title="1.7.1 VkAccessFlagBits"></a>1.7.1 VkAccessFlagBits</h3><p>Vulkan中的内存可以通过shader调用和管道中的一些固定函数来访问。访问类型是所使用的描述符类型的函数，或者固定函数阶段如何访问内存。每个访问类型对应于VkAccessFlagBits中的一个位标志。</p>
+<p>一些同步命令以访问类型集作为参数来定义内存依赖项的访问范围。如果同步命令包含源访问掩码，则其第一个访问作用域仅包括通过该掩码中指定的访问类型进行的访问。类似地，如果同步命令包含目标访问掩码，则其第二个访问作用域仅包括通过该掩码中指定的访问类型进行的访问。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkAccessFlagBits</span> &#123;</span><br><span class="line">    VK_ACCESS_INDIRECT_COMMAND_READ_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_ACCESS_INDEX_READ_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_ACCESS_UNIFORM_READ_BIT = <span class="number">0x00000008</span>,</span><br><span class="line">    VK_ACCESS_INPUT_ATTACHMENT_READ_BIT = <span class="number">0x00000010</span>,</span><br><span class="line">    VK_ACCESS_SHADER_READ_BIT = <span class="number">0x00000020</span>,</span><br><span class="line">    VK_ACCESS_SHADER_WRITE_BIT = <span class="number">0x00000040</span>,</span><br><span class="line">    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT = <span class="number">0x00000080</span>,</span><br><span class="line">    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT = <span class="number">0x00000100</span>,</span><br><span class="line">    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT = <span class="number">0x00000200</span>,</span><br><span class="line">    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT = <span class="number">0x00000400</span>,</span><br><span class="line">    VK_ACCESS_TRANSFER_READ_BIT = <span class="number">0x00000800</span>,</span><br><span class="line">    VK_ACCESS_TRANSFER_WRITE_BIT = <span class="number">0x00001000</span>,</span><br><span class="line">    VK_ACCESS_HOST_READ_BIT = <span class="number">0x00002000</span>,</span><br><span class="line">    VK_ACCESS_HOST_WRITE_BIT = <span class="number">0x00004000</span>,</span><br><span class="line">    VK_ACCESS_MEMORY_READ_BIT = <span class="number">0x00008000</span>,</span><br><span class="line">    VK_ACCESS_MEMORY_WRITE_BIT = <span class="number">0x00010000</span>,</span><br><span class="line">    VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT = <span class="number">0x02000000</span>,</span><br><span class="line">    VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT = <span class="number">0x04000000</span>,</span><br><span class="line">    VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT = <span class="number">0x08000000</span>,</span><br><span class="line">    VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT = <span class="number">0x00100000</span>,</span><br><span class="line">    VK_ACCESS_COMMAND_PROCESS_READ_BIT_NVX = <span class="number">0x00020000</span>,</span><br><span class="line">    VK_ACCESS_COMMAND_PROCESS_WRITE_BIT_NVX = <span class="number">0x00040000</span>,</span><br><span class="line">    VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT = <span class="number">0x00080000</span>,</span><br><span class="line">    VK_ACCESS_SHADING_RATE_IMAGE_READ_BIT_NV = <span class="number">0x00800000</span>,</span><br><span class="line">    VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV = <span class="number">0x00200000</span>,</span><br><span class="line">    VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV = <span class="number">0x00400000</span>,</span><br><span class="line">    VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT = <span class="number">0x01000000</span>,</span><br><span class="line">    VK_ACCESS_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkAccessFlagBits;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>VK_ACCESS_INDIRECT_COMMAND_READ_BIT指定对作为间接绘图或调度命令一部分的间接命令数据的读访问</li>
+<li>VK_ACCESS_INDEX_READ_BIT指定对索引缓冲区的读访问，作为索引绘图命令的一部分，由vkCmdBindIndexBuffer绑定</li>
+<li>VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT指定对顶点缓冲区的读访问，作为绘图命令的一部分，由vkCmdBindVertexBuffers绑定</li>
+<li>VK_ACCESS_UNIFORM_READ_BIT统一缓冲区读访问权限</li>
+<li>VK_ACCESS_INPUT_ATTACHMENT_READ_BIT指定在片段着色期间渲染通道内对输入附件的读访问</li>
+<li>VK_ACCESS_SHADER_READ_BIT指定对存储缓冲区、物理存储缓冲区、统一texel缓冲区、存储texel缓冲区、采样图像或存储图像的读访问</li>
+<li>VK_ACCESS_SHADER_WRITE_BIT存储缓冲区、物理存储缓冲区、存储texel缓冲区或存储映像的写访问</li>
+<li>VK_ACCESS_COLOR_ATTACHMENT_READ_BIT指定对颜色附件的读访问，例如通过混合、逻辑操作或通过某些subpass加载操作。它不包括高级混合操作</li>
+<li>VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT指定在渲染通道期间或通过某些子通道加载和存储操作对颜色、解析或深度&#x2F;模板解析附件的写访问</li>
+<li>VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT指定对深度&#x2F;模板附件的读访问，通过深度或模板操作，或通过某些子传递加载操作</li>
+<li>VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT指定对深度&#x2F;模板附件的写访问，通过深度或模板操作，或者通过某些子传递加载和存储操作</li>
+<li>VK_ACCESS_TRANSFER_READ_BIT拷贝操作中对镜像或缓冲区的读访问</li>
+<li>VK_ACCESS_TRANSFER_WRITE_BIT映像或缓冲区在清除或复制操作中的写访问</li>
+<li>VK_ACCESS_HOST_READ_BIT主机操作读访问。这种类型的访问不是通过资源执行的，而是直接在内存上执行的</li>
+<li>VK_ACCESS_HOST_WRITE_BIT主机操作写访问。这种类型的访问不是通过资源执行的，而是直接在内存上执行的</li>
+<li>VK_ACCESS_MEMORY_READ_BIT所有读访问。它在任何访问掩码中都是有效的，并被视为等同于设置所有在使用它时有效的读访问标志</li>
+<li>VK_ACCESS_MEMORY_WRITE_BIT所有写访问。它在任何访问掩码中都是有效的，并被视为等同于设置所有在使用它时有效的写访问标志</li>
+<li>VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT指定对谓词的读访问，作为条件呈现的一部分</li>
+<li>VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT指定在转换反馈激活时对转换反馈缓冲区的写访问</li>
+<li>VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT指定对转换反馈计数器缓冲区的读访问，当vkCmdBeginTransformFeedbackEXT执行时读取该缓冲区</li>
+<li>VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT指定对转换反馈计数器缓冲区的写访问，该缓冲区在vkCmdEndTransformFeedbackEXT执行时写入</li>
+<li>VK_ACCESS_COMMAND_PROCESS_READ_BIT_NVX指定从VkBuffer输入读取vkCmdProcessCommandsNVX</li>
+<li>VK_ACCESS_COMMAND_PROCESS_WRITE_BIT_NVX指定写到vkCmdProcessCommandsNVX的目标命令缓冲区</li>
+<li>VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT类似于VK_ACCESS_COLOR_ATTACHMENT_READ_BIT，但是也包括高级的混合操作</li>
+<li>VK_ACCESS_SHADING_RATE_IMAGE_READ_BIT_NV指定对着色率图像的读取访问，作为绘图命令的一部分，由vkcmdbindshadingraemimagenv绑定</li>
+<li>VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV指定对加速结构的读访问，作为跟踪或构建命令的一部分</li>
+<li>VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV指定对加速结构的写访问，作为构建命令的一部分</li>
+<li>VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT动态碎片密度图操作时对碎片密度图附件的读访问</li>
+</ol>
+<h3 id="1-7-2-VkPipelineStageFlags-管道阶段"><a href="#1-7-2-VkPipelineStageFlags-管道阶段" class="headerlink" title="1.7.2 VkPipelineStageFlags 管道阶段"></a>1.7.2 VkPipelineStageFlags 管道阶段</h3><p>操作或同步命令执行的工作由多个操作组成，这些操作作为逻辑上独立的步骤序列执行，称为管道阶段。执行的确切管道阶段取决于所使用的特定命令，以及记录命令时的当前命令缓冲区状态。绘制命令、分派命令、复制命令、清除命令和同步命令都在管道阶段的不同集合中执行。同步命令不会在已定义的管道中执行，但会执行VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT和VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT。</p>
+<p>注意同步命令执行的操作(例如可用性和可见性操作)不是由定义的管道阶段执行的。但是，其他命令仍然可以通过VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT和VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT管道阶段与它们同步。</p>
+<p>跨管道阶段执行操作必须遵循隐式排序保证，特别是包括管道阶段顺序。否则，与其他阶段相比，跨管道阶段的执行可能会重叠或无序执行，除非执行依赖项强制执行。</p>
+<p>一些同步命令包括管道阶段参数，将该命令的同步范围限制在这些阶段。这允许对精确的执行依赖关系和操作命令执行的访问进行细粒度的控制。实现应该使用这些管道阶段来避免不必要的停顿或缓存刷新。</p>
+<p>可以设置指定管道阶段通过VkPipelineStageFlags:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkPipelineStageFlagBits</span> &#123;</span><br><span class="line">    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_VERTEX_INPUT_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_VERTEX_SHADER_BIT = <span class="number">0x00000008</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT = <span class="number">0x00000010</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT = <span class="number">0x00000020</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT = <span class="number">0x00000040</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT = <span class="number">0x00000080</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT = <span class="number">0x00000100</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT = <span class="number">0x00000200</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT = <span class="number">0x00000400</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT = <span class="number">0x00000800</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_TRANSFER_BIT = <span class="number">0x00001000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT = <span class="number">0x00002000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_HOST_BIT = <span class="number">0x00004000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT = <span class="number">0x00008000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT = <span class="number">0x00010000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT = <span class="number">0x01000000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT = <span class="number">0x00040000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX = <span class="number">0x00020000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_SHADING_RATE_IMAGE_BIT_NV = <span class="number">0x00400000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_NV = <span class="number">0x00200000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV = <span class="number">0x02000000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV = <span class="number">0x00080000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV = <span class="number">0x00100000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT = <span class="number">0x00800000</span>,</span><br><span class="line">    VK_PIPELINE_STAGE_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkPipelineStageFlagBits;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT指定队列最初接收到任何命令的管道阶段</li>
+<li>VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT指定使用Draw&#x2F;DispatchIndirect数据结构的管道阶段。这个阶段还包括读取vkCmdProcessCommandsNVX写的命令</li>
+<li>VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV指定任务着色器阶段</li>
+<li>VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV指定网格着色器阶段</li>
+<li>VK_PIPELINE_STAGE_VERTEX_INPUT_BIT指定消耗顶点和索引缓冲区的流水线阶段</li>
+<li>VK_PIPELINE_STAGE_VERTEX_SHADER_BIT指定顶点着色器阶段</li>
+<li>VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT指定镶嵌控制着色器阶段</li>
+<li>VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT指定镶嵌评估着色器阶段</li>
+<li>VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT指定几何着色器阶段</li>
+<li>VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT指定片段着色器阶段</li>
+<li>VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT指定执行早期片段测试（片段着色之前的深度和模板测试）的管道阶段。此阶段还包括针对具有深度&#x2F;模板格式的帧缓冲区附件的子传递加载操作</li>
+<li>VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT指定执行后期片段测试（片段着色后的深度和模板测试）的管道阶段。此阶段还包括用于具有深度&#x2F;模板格式的帧缓冲区附件的子传递存储操作</li>
+<li>VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT指定混合后管道的阶段，从管道输出最终颜色值。此阶段还包括子通道加载和存储操作以及具有颜色或深度&#x2F;模板格式的帧缓冲区附件的多样本解析操作</li>
+<li>VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT指定执行计算着色器</li>
+<li>VK_PIPELINE_STAGE_TRANSFER_BIT指定以下命令：<ol>
+<li>所有复制命令，包括vkCmdCopyQueryPoolResults，vkCmdBlitImage，vkCmdResolveImage</li>
+<li>所有清除命令，但vkCmdClearAttachments除外</li>
+</ol>
+</li>
+<li>VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT指定管道中由所有命令生成的操作完成执行的最后阶段</li>
+<li>VK_PIPELINE_STAGE_HOST_BIT指定一个伪阶段，指示在主机上执行设备存储器的读&#x2F;写操作。记录在命令缓冲区中的任何命令都不会调用此阶段</li>
+<li>VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_NV指定光线跟踪着色器阶段的执行</li>
+<li>VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV指定vkCmdBuildAccelerationStructureNV，vkCmdCopyAccelerationStructureNV和vkCmdWriteAccelerationStructuresPropertiesNV的执行</li>
+<li>VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT指定所有图形管线阶段的执行，并且等效于：<ol>
+<li>VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT</li>
+<li>VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT</li>
+<li>VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV</li>
+<li>VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV</li>
+<li>VK_PIPELINE_STAGE_VERTEX_INPUT_BIT</li>
+<li>VK_PIPELINE_STAGE_VERTEX_SHADER_BIT</li>
+<li>VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT</li>
+<li>VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT</li>
+<li>VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT</li>
+<li>VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT</li>
+<li>VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT</li>
+<li>VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT</li>
+<li>VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT</li>
+<li>VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT</li>
+<li>VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT</li>
+<li>VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT</li>
+<li>VK_PIPELINE_STAGE_SHADING_RATE_IMAGE_BIT_NV</li>
+<li>VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT</li>
+</ol>
+</li>
+<li>VK_PIPELINE_STAGE_ALL_COMMANDS_BIT等效于与其一起使用的队列上支持的所有其他管道阶段标志的逻辑或</li>
+<li>VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT指定使用条件渲染谓词的管道阶段</li>
+<li>VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT指定将顶点属性输出值写入转换反馈缓冲区的管线阶段</li>
+<li>VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX指定了处理通过vkCmdProcessCommandsNVX在设备端生成命令的管道阶段</li>
+<li>VK_PIPELINE_STAGE_SHADING_RATE_IMAGE_BIT_NV指定管道的阶段，在该阶段中读取阴影率图像，以确定栅格化图元各部分的阴影率</li>
+<li>VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT指定读取片段密度图以生成片段区域的管线阶段</li>
+</ol>
+<h2 id="1-8-清理"><a href="#1-8-清理" class="headerlink" title="1.8 清理"></a>1.8 清理</h2><p>创建纹理贴图后，不能忘记在必要的时候将内存释放出来：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createTextureImage</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="comment">// 通过清除过渡缓冲区及其末尾的内存来完成createTextureImage函数：</span></span><br><span class="line">    <span class="built_in">transitionImageLayout</span>(textureImage, VK_FORMAT_R8G8B8A8_UNORM,</span><br><span class="line">            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,</span><br><span class="line">            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">vkDestroyBuffer</span>(device, stagingBuffer, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkFreeMemory</span>(device, stagingBufferMemory, <span class="literal">nullptr</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">cleanupSwapChain</span>();</span><br><span class="line"></span><br><span class="line">    <span class="built_in">vkDestroyImage</span>(device, textureImage, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkFreeMemory</span>(device, textureImageMemory, <span class="literal">nullptr</span>);</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-9-总结"><a href="#1-9-总结" class="headerlink" title="1.9 总结"></a>1.9 总结</h2><p>到目前为止，我们从设备物理存储上读取了图片内容，将其转成临时缓存后又将其存储在对应GPU可见的内存中以及生成对应VkImage纹理贴图对象，接下来需要将其显示在屏幕上还需要把这个对象放入图形管道中。</p>
+<p>在回顾下本章中的读取图像的步骤:</p>
+<ol>
+<li>首先利用stb-image库读取图片，将其内容存储在临时缓存区VkBuffer中，注意需要开辟GPU可见内存</li>
+<li>通过VkImageCreateInfo结构指明图像格式并通过vkCreateImage创建VkImage对象</li>
+<li>用VkBuffer图像文件中的像素填充创建的VkImage图像对象<ol>
+<li>填充图像对象需要使用VkImageMemoryBarrier</li>
+<li>使用vkCmdPipelineBarrier使得图像填充Barrier生效</li>
+<li>通过vkCmdCopyBufferToImage完成图像像素从VkBuffer到VkImage的拷贝(填充)</li>
+<li>再通过VkImageMemoryBarrier指定图像是能够从着色器中的纹理图像开始采样</li>
+</ol>
+</li>
+<li>创建图像视图和图像采样器(后续下一章开始处理)</li>
+<li>添加一个组合的图像采样器描述符来从纹理中采样颜色</li>
+</ol>
+<p>上面步骤中，4和5是下一章的内容。</p>
+<h2 id="1-10-Windows上的CMakefileLists-txt写法"><a href="#1-10-Windows上的CMakefileLists-txt写法" class="headerlink" title="1.10 Windows上的CMakefileLists.txt写法"></a>1.10 Windows上的CMakefileLists.txt写法</h2><p>windows平台上编译当前项目，可以使用cmake, CMakefileLists.txt文件如下(注意先安装Vulkan sdk)：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">cmake_minimum_required (VERSION 3.7) #最低要求的CMake版本</span><br><span class="line">project(MyVulkan) # 项目名称</span><br><span class="line">set(VERSION 0.0.1)</span><br><span class="line">set(CMAKE_BUILD_TYPE &quot;Debug&quot;)</span><br><span class="line">set(CMAKE_CXX_FLAGS &quot;$&#123;CMAKE_CXX_FLAGS&#125; -std=c++17 -g -Wall -Wno-unused-variable -pthread&quot;)</span><br><span class="line"></span><br><span class="line">message(STATUS &quot;This is &quot; $&#123;PROJECT_NAME&#125; &quot; version &quot; $&#123;VERSION&#125;)</span><br><span class="line">message(STATUS &quot;This is for windows platform&quot;)</span><br><span class="line">message(&quot;Build Type:&quot; $&#123;CMAKE_BUILD_TYPE&#125; $&#123;CMAKE_CXX_FLAGS&#125;)</span><br><span class="line"></span><br><span class="line"># Use FindVulkan module added with CMAKE 3.7</span><br><span class="line">if (NOT CMAKE_VERSION VERSION_LESS 3.7.0)</span><br><span class="line">    message(STATUS &quot;Using module to find Vulkan&quot;)</span><br><span class="line">    find_package(Vulkan)</span><br><span class="line">endif()</span><br><span class="line"></span><br><span class="line">find_library(Vulkan_LIBRARY NAMES vulkan-1 vulkan PATHS $&#123;CMAKE_SOURCE_DIR&#125;/libs/vulkan)</span><br><span class="line">IF (Vulkan_LIBRARY)</span><br><span class="line">    set(Vulkan_FOUND ON)</span><br><span class="line">    MESSAGE(&quot;Using bundled Vulkan library version&quot;)</span><br><span class="line">ENDIF()</span><br><span class="line"></span><br><span class="line">message(STATUS &quot;Using Vulkan lib: &quot; $&#123;Vulkan_LIBRARY&#125;)</span><br><span class="line"></span><br><span class="line"># CMAKE_SOURCE_DIR 代表工程根目录CMakeLists.txt文件所在目录</span><br><span class="line">set(ROOT_DIR $&#123;CMAKE_SOURCE_DIR&#125;)</span><br><span class="line"></span><br><span class="line">### GLFW3</span><br><span class="line">set(GLFW_LIB_DIR $&#123;ROOT_DIR&#125;/lib/glfw3)</span><br><span class="line">set(GLFW_LIBS $&#123;GLFW_LIB_DIR&#125;/glfw3dll.lib)</span><br><span class="line">### GLM</span><br><span class="line">set(GLM_INCLUDE_DIRS  $&#123;ROOT_DIR&#125;/include/glm)</span><br><span class="line">### stb-image</span><br><span class="line">set(STB_IMAGE_DIRS  $&#123;ROOT_DIR&#125;/include/stb-image)</span><br><span class="line"></span><br><span class="line">message(STATUS &quot;Lib path: &quot;)</span><br><span class="line">message(STATUS &quot;  GLFW3: &quot; $&#123;GLFW_LIBS&#125;)</span><br><span class="line">message(STATUS &quot;  GLM  : &quot; $&#123;GLM_INCLUDE_DIRS&#125;)</span><br><span class="line">message(STATUS &quot;  STB_IMAGE: &quot; $&#123;STB_IMAGE_DIRS&#125;)</span><br><span class="line"></span><br><span class="line"># 定义头文件搜索路径</span><br><span class="line">include_directories($&#123;ROOT_DIR&#125;/inlcude</span><br><span class="line">                    $&#123;GLM_INCLUDE_DIRS&#125;)</span><br><span class="line"></span><br><span class="line">#aux_source_directory(./ SOURCE_DIR)</span><br><span class="line">aux_source_directory($&#123;ROOT_DIR&#125;/inlcude SOURCE_DIR)</span><br><span class="line">aux_source_directory($&#123;ROOT_DIR&#125;/src SOURCE_DIR)</span><br><span class="line"></span><br><span class="line"># Target</span><br><span class="line">add_executable(MyVulkan $&#123;SOURCE_DIR&#125;)</span><br><span class="line"></span><br><span class="line">####Vulkan</span><br><span class="line">find_package(Vulkan REQUIRED)</span><br><span class="line"># GLFW3 is dynamic link</span><br><span class="line">target_link_libraries($&#123;PROJECT_NAME&#125; Vulkan::Vulkan $&#123;GLFW_LIBS&#125;)</span><br></pre></td></tr></table></figure>
+
+<p>项目文件目录:</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/Vulkan_14_1.png" alt="图像14-1"></p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/" title="Vulkan入门(14)-VkImage图像的创建">https://swallowjoe.github.io/2022/02/27/Vulkan入门-14-VkImage图像的创建/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Vulkan/" rel="tag"># Vulkan</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/" rel="prev" title="Vulkan入门(13)-描述符布局及缓存">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(13)-描述符布局及缓存
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" rel="next" title="Vulkan入门(15)-图像视图和采样器">
+      Vulkan入门(15)-图像视图和采样器 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-%E7%BA%B9%E7%90%86%E8%B4%B4%E5%9B%BE"><span class="nav-text">一. 纹理贴图</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-%E5%9B%BE%E5%83%8F%E5%BA%93"><span class="nav-text">1.1 图像库</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-%E8%AF%BB%E5%8F%96%E5%9B%BE%E7%89%87"><span class="nav-text">1.1 读取图片</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-%E7%BC%93%E5%AD%98%E8%AF%BB%E5%8F%96%E7%9A%84%E5%9B%BE%E7%89%87"><span class="nav-text">1.2 缓存读取的图片</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-%E7%BA%B9%E7%90%86%E5%9B%BE%E5%83%8F-Texture-Image"><span class="nav-text">1.3 纹理图像(Texture Image)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-1-VkImageCreateInfo"><span class="nav-text">1.3.1 VkImageCreateInfo</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-2-vkCreateImage"><span class="nav-text">1.3.2 vkCreateImage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-3-createImage"><span class="nav-text">1.3.3 createImage</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-%E5%B8%83%E5%B1%80%E8%BD%AC%E6%8D%A2"><span class="nav-text">1.4 布局转换</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-1-VkImageMemoryBarrier"><span class="nav-text">1.4.1 VkImageMemoryBarrier</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-2-vkCmdPipelineBarrier"><span class="nav-text">1.4.2 vkCmdPipelineBarrier</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-%E6%8B%B7%E8%B4%9D%E7%BC%93%E5%AD%98%E6%95%B0%E6%8D%AE%E8%87%B3Image"><span class="nav-text">1.5 拷贝缓存数据至Image</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-1-VkBufferImageCopy"><span class="nav-text">1.5.1 VkBufferImageCopy</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-2-vkCmdCopyBufferToImage"><span class="nav-text">1.5.2 vkCmdCopyBufferToImage</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-6-%E5%87%86%E5%A4%87%E7%BA%B9%E7%90%86%E5%9B%BE%E5%83%8F"><span class="nav-text">1.6 准备纹理图像</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-7-%E8%BD%AC%E6%8D%A2%E5%B1%8F%E9%9A%9C%E7%9A%84%E5%90%AB%E4%B9%89-VkAccessFlags"><span class="nav-text">1.7 转换屏障的含义 VkAccessFlags</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-7-1-VkAccessFlagBits"><span class="nav-text">1.7.1 VkAccessFlagBits</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-7-2-VkPipelineStageFlags-%E7%AE%A1%E9%81%93%E9%98%B6%E6%AE%B5"><span class="nav-text">1.7.2 VkPipelineStageFlags 管道阶段</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-8-%E6%B8%85%E7%90%86"><span class="nav-text">1.8 清理</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-9-%E6%80%BB%E7%BB%93"><span class="nav-text">1.9 总结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-10-Windows%E4%B8%8A%E7%9A%84CMakefileLists-txt%E5%86%99%E6%B3%95"><span class="nav-text">1.10 Windows上的CMakefileLists.txt写法</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">15</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述本文主要是学习Vulkan Tutorial.pdf文档中的Physical devices and queue families(物理设备和队列系列)部分以及Logical device and queues(逻辑设备与队列)部分。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vulkan入门(3)-设置物理设备和逻辑设备">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述本文主要是学习Vulkan Tutorial.pdf文档中的Physical devices and queue families(物理设备和队列系列)部分以及Logical device and queues(逻辑设备与队列)部分。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-02-26T19:16:37.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:20:43.723Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Vulkan">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vulkan入门(3)-设置物理设备和逻辑设备 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vulkan入门(3)-设置物理设备和逻辑设备
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:16:37 / 修改时间：03:20:43" itemprop="dateCreated datePublished" datetime="2022-02-27T03:16:37+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(3)-设置物理设备和逻辑设备" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>本文主要是学习Vulkan Tutorial.pdf文档中的Physical devices and queue families(物理设备和队列系列)部分以及Logical device and queues(逻辑设备与队列)部分。</p>
+<span id="more"></span>
+
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>[Vulkan-文档]<a target="_blank" rel="noopener" href="https://github.com/KhronosGroup/Vulkan-Docs">https://github.com/KhronosGroup/Vulkan-Docs</a></li>
+<li>[Vulkan-feature查询]<a target="_blank" rel="noopener" href="https://vulkan.lunarg.com/doc/view/1.0.26.0/linux/vkspec.chunked/ch31s01.html">https://vulkan.lunarg.com/doc/view/1.0.26.0/linux/vkspec.chunked/ch31s01.html</a></li>
+</ol>
+<h1 id="一-Physical-devices-and-queue-families-物理设备和队列系列"><a href="#一-Physical-devices-and-queue-families-物理设备和队列系列" class="headerlink" title="一. Physical devices and queue families(物理设备和队列系列)"></a>一. Physical devices and queue families(物理设备和队列系列)</h1><h2 id="1-1-选择物理显卡GPU"><a href="#1-1-选择物理显卡GPU" class="headerlink" title="1.1 选择物理显卡GPU"></a>1.1 选择物理显卡GPU</h2><p>在通过VkInstance初始化Vulkan库之后，需要在系统中查找并选择支持我们所需功能的图形显卡。<br>事实上，我们可以选择任意数量的显卡并同时使用。但在这里，只使用第一个适合我们需求的显卡。<br>我们将添加一个函数pickPhysicalDevice并在initVulkan函数中添加对它的调用。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">checkAvailableExtensions</span>();</span><br><span class="line">    <span class="built_in">createInstance</span>();</span><br><span class="line">    <span class="comment">// 创建DEBUG消息回调</span></span><br><span class="line">    <span class="built_in">setupDebugMessenger</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 选择物理设备</span></span><br><span class="line">    <span class="built_in">pickPhysicalDevice</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">pickPhysicalDevice</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最终选择的图形卡将存储在VkPhysicalDevice句柄中，该句柄作为新的类成员添加。当VkInstance被销毁时，该对象将被隐式销毁，因此我们不需要在清理函数中做任何新的操作。</p>
+<ol>
+<li>VkPhysicalDevice对象不能被显式销毁。相反，当检索到它们的VkInstance对象被撤销时，它们将隐式撤销。</li>
+<li>一旦所有由VkPhysicalDevice对象创建的VkDevice对象都被销毁，VkInstance对象就可以被销毁。</li>
+</ol>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;</span><br></pre></td></tr></table></figure>
+
+<p>列出物理显卡的过程和列出vulkan扩展的过程类似，首先是获取本机物理显卡的数量：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">pickPhysicalDevice</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="type">uint32_t</span> deviceCount = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 首先获取本机物理显卡数量</span></span><br><span class="line">    <span class="built_in">vkEnumeratePhysicalDevices</span>(instance, &amp;deviceCount, <span class="literal">nullptr</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 当然没有GPU时，抛出异常</span></span><br><span class="line">    <span class="keyword">if</span> (deviceCount == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to find GPUs with Vulkan support!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function">std::vector&lt;VkPhysicalDevice&gt; <span class="title">devices</span><span class="params">(deviceCount)</span></span>;</span><br><span class="line">    <span class="built_in">vkEnumeratePhysicalDevices</span>(instance, &amp;deviceCount, devices.<span class="built_in">data</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 遍历所有GPU, 选择合适的使用</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; device : devices) &#123;</span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">isDeviceSuitable</span>(device)) &#123;</span><br><span class="line">            physicalDevice = device;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">bool</span> <span class="title">isDeviceSuitable</span><span class="params">(VkPhysicalDevice device)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 暂时没什么可以挑剔的，都可以吧</span></span><br><span class="line">    <span class="comment">// 其实大部分的机器只会有一个显卡</span></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="1-2-基础设备适配性检查"><a href="#1-2-基础设备适配性检查" class="headerlink" title="1.2 基础设备适配性检查"></a>1.2 基础设备适配性检查</h2><p>通过查询细节来评估设备的适用性。<br>可以使用<strong>vkGetPhysicalDeviceProperties</strong>查询基本设备属性，如名称，类型和支持的Vulkan版本。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">VkPhysicalDeviceProperties deviceProperties;</span><br><span class="line"><span class="built_in">vkGetPhysicalDeviceProperties</span>(device, &amp;deviceProperties);</span><br></pre></td></tr></table></figure>
+
+<p>使用<strong>vkGetPhysicalDeviceFeatures</strong>查询对纹理压缩，64位浮点和多视口渲染（对VR有用）等可选功能的支持：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">VkPhysicalDeviceFeatures deviceFeatures;</span><br><span class="line"><span class="built_in">vkGetPhysicalDeviceFeatures</span>(device, &amp;deviceFeatures);</span><br></pre></td></tr></table></figure>
+<p>基本操作就是：</p>
+<ol>
+<li>通过vkGetPhysicalDeviceProperties获取本机设备的属性</li>
+<li>查询vkGetPhysicalDeviceFeatures中可以被支持的feature</li>
+</ol>
+<p>举个例子，假设我们的应用程序仅适用于支持几何着色器的专用显卡。 那么isDeviceSuitable函数将如下所示：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">isDeviceSuitable</span><span class="params">(VkPhysicalDevice device)</span> </span>&#123;</span><br><span class="line">    VkPhysicalDeviceProperties deviceProperties;</span><br><span class="line">    VkPhysicalDeviceFeatures deviceFeatures;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceProperties</span>(device, &amp;deviceProperties);</span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceFeatures</span>(device, &amp;deviceFeatures);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> ((deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)</span><br><span class="line">            &amp;&amp; deviceFeatures.geometryShader);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>所有可支持的feature见附录。<br>根据Vulkan Tutorial文档，有推荐使用评分机制来选择最合适的GPU，这个就见仁见智，看个人喜好，这里就不赘述了。</p>
+<h2 id="1-3-Queue-families"><a href="#1-3-Queue-families" class="headerlink" title="1.3 Queue families"></a>1.3 Queue families</h2><p>几乎所有Vulkan中的操作，从绘图到上传纹理，都需要将命令提交到队列中(这一点研究过hwui的童鞋肯定深有体会)。<br>存在来自不同队列系列的不同类型的队列，并且每个队列族仅允许命令的子集。<br>例如，可能存在仅允许处理计算命令的队列系列或仅允许与存储器传输相关的命令的队列系列。</p>
+<p>所有我们需要检查本机设备支持哪些队列系列，以及哪一个支持我们要使用的命令。<br>添加一个新函数findQueueFamilies，用于查找我们需要的所有队列系列。<br>比如查找支持图形命令的队列：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">QueueFamilyIndices</span> &#123;</span><br><span class="line">    <span class="comment">// 别忘了添加头文件：including &lt;optional&gt;</span></span><br><span class="line">    <span class="comment">// optional用途如其名，它可以容纳一个对象值或是为空。</span></span><br><span class="line">    <span class="comment">// 典型的应用情景是函数调用时，如需根据条件返回一个对象（有效）或默认对象（无效）</span></span><br><span class="line">    <span class="comment">// 若该对象构造成本很高（资源分配等），可用optional返回一个空对象，提高效率。</span></span><br><span class="line">    std::optional&lt;<span class="type">uint32_t</span>&gt; graphicsFamily;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="type">bool</span> <span class="title">isComplete</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        <span class="keyword">return</span> graphicsFamily.<span class="built_in">has_value</span>();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="function">QueueFamilyIndices <span class="title">findQueueFamilies</span><span class="params">(VkPhysicalDevice device)</span> </span>&#123;</span><br><span class="line">    QueueFamilyIndices indices;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 先检查数量</span></span><br><span class="line">    <span class="type">uint32_t</span> queueFamilyCount = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 使用 vkGetPhysicalDeviceQueueFamilyProperties 检索队列系列是否正是我们需要的：</span></span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceQueueFamilyProperties</span>(device, &amp;queueFamilyCount, <span class="literal">nullptr</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// VkQueueFamilyProperties结构包含有关队列系列的一些详细信息</span></span><br><span class="line">    <span class="comment">// 包括支持的操作类型以及可基于该系列创建的队列数</span></span><br><span class="line">    <span class="function">std::vector&lt;VkQueueFamilyProperties&gt; <span class="title">queueFamilies</span><span class="params">(queueFamilyCount)</span></span>;</span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceQueueFamilyProperties</span>(device, &amp;queueFamilyCount, queueFamilies.<span class="built_in">data</span>());</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 比如我们找到一个支持VK_QUEUE_GRAPHICS_BIT的队列系列</span></span><br><span class="line">    <span class="type">int</span> i = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; queueFamily : queueFamilies) &#123;</span><br><span class="line">        <span class="keyword">if</span> (queueFamily.queueCount &gt; <span class="number">0</span> &amp;&amp; </span><br><span class="line">            queueFamily.queueFlags &amp; VK_QUEUE_GRAPHICS_BIT) &#123;</span><br><span class="line"></span><br><span class="line">            indices.graphicsFamily = i;</span><br><span class="line">        &#125;</span><br><span class="line">    </span><br><span class="line">        <span class="keyword">if</span> (indices.<span class="built_in">isComplete</span>()) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        i++;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> indices;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>把这个检查加入isDeviceSuitable函数。<br>现在已经找到合适的物理设备了， 下一步是创建一个与之适配的逻辑设备。</p>
+<h1 id="二-Logical-device-and-queues"><a href="#二-Logical-device-and-queues" class="headerlink" title="二. Logical device and queues"></a>二. Logical device and queues</h1><p>选择要使用的物理设备后，就可以创建一个与之适配的逻辑设备。<br>逻辑设备创建过程类似于实例创建过程，还需要指定现在要创建的队列（已经查询了哪些队列系列可用）。<br>并且从同一物理设备可以创建多个逻辑设备。</p>
+<p>存储逻辑设备类似物理设备，也是使用句柄：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">VkDevice device;</span><br></pre></td></tr></table></figure>
+<h2 id="2-1-指定要创建的队列"><a href="#2-1-指定要创建的队列" class="headerlink" title="2.1 指定要创建的队列"></a>2.1 指定要创建的队列</h2><p>创建逻辑设备也是在结构体中指定一堆细节，其中第一个是VkDeviceQueueCreateInfo。<br>此结构描述了我们为单个队列系列所需的队列数。<br>比如创建具有图形功能的队列：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">QueueFamilyIndices indices = <span class="built_in">findQueueFamilies</span>(physicalDevice);</span><br><span class="line"></span><br><span class="line">VkDeviceQueueCreateInfo queueCreateInfo = &#123;&#125;;</span><br><span class="line"></span><br><span class="line">queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;</span><br><span class="line">queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.<span class="built_in">value</span>();</span><br><span class="line">queueCreateInfo.queueCount = <span class="number">1</span>;</span><br></pre></td></tr></table></figure>
+
+<p>当前可用的驱动程序只允许为每个队列系列创建少量队列，实际上也不需要多个队列。<br>因为可以在多个线程上创建所有命令缓冲区，然后使用一个低开销调用在主线程上一次性提交。</p>
+<p>Vulkan允许为队列分配优先级，以使用介于0.0和1.0之间的浮点数来影响命令缓冲区执行的调度。<br><strong>即使只有一个队列，也是必需的</strong>：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">float</span> queuePriority = <span class="number">1.0f</span>;</span><br><span class="line">queueCreateInfo.pQueuePriorities = &amp;queuePriority;</span><br></pre></td></tr></table></figure>
+<h2 id="2-2-指定使用的设备功能-feature"><a href="#2-2-指定使用的设备功能-feature" class="headerlink" title="2.2 指定使用的设备功能(feature)"></a>2.2 指定使用的设备功能(feature)</h2><p>要指定的下一个信息是我们将要使用的一组设备feature。<br>这些是在[1.2]中使用vkGetPhysicalDeviceFeatures查询支持的功能，例如几何着色器。<br>如果不需要任何特殊的东西，可以简单地定义它并默认为VK_FALSE。<br>但一旦即将开始用Vulkan做更多有趣的事情，就需要设定这个结构了。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">VkPhysicalDeviceFeatures deviceFeatures = &#123;&#125;;</span><br></pre></td></tr></table></figure>
+<h2 id="2-3-创建逻辑设备"><a href="#2-3-创建逻辑设备" class="headerlink" title="2.3 创建逻辑设备"></a>2.3 创建逻辑设备</h2><p>在VkDeviceQueueCreateInfo和VkPhysicalDeviceFeatures创建完毕后，就可以根据这个创建逻辑设备实例了。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">VkDeviceCreateInfo createInfo = &#123;&#125;;</span><br><span class="line">createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 首先指定VkDeviceQueueCreateInfo</span></span><br><span class="line">createInfo.pQueueCreateInfos = &amp;queueCreateInfo;</span><br><span class="line">createInfo.queueCreateInfoCount = <span class="number">1</span>;</span><br><span class="line"><span class="comment">// 指定VkPhysicalDeviceFeatures</span></span><br><span class="line">createInfo.pEnabledFeatures = &amp;deviceFeatures;</span><br></pre></td></tr></table></figure>
+<p>其余信息与VkInstanceCreateInfo结构相似，并要求指定扩展(Extensions)和验证层(Validation Layers)。不同之处在于这次是逻辑设备的。<br>设备特定扩展的其中之一是VK_KHR_swapchain，它允许您将该设备的渲染图像呈现给窗口。<br>系统中可能存在缺乏此功能的Vulkan设备，比如因为它们仅支持计算操作。</p>
+<p>Vulkan的先前实现区分了实例和设备特定的验证层，但现在不做区分了。<br>也就是说VkDeviceCreateInfo的enabledLayerCount和ppEnabledLayerNames字段在最新实现中可以忽略。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">createInfo.enabledExtensionCount = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (enableValidationLayers) &#123;</span><br><span class="line">    createInfo.enabledLayerCount = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(validationLayers.<span class="built_in">size</span>());</span><br><span class="line">    createInfo.ppEnabledLayerNames = validationLayers.<span class="built_in">data</span>();</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    createInfo.enabledLayerCount = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>类似创建vulkan实例，这里使用 vkCreateDevice 函数创建逻辑设备：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 调用 vkCreateDevice 创建逻辑设备，别忘了在cleanup函数中销毁</span></span><br><span class="line"><span class="keyword">if</span> (<span class="built_in">vkCreateDevice</span>(physicalDevice, &amp;createInfo, <span class="literal">nullptr</span>, &amp;device) != VK_SUCCESS) &#123;</span><br><span class="line">    <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create logical device!&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="2-4-检索队列句柄"><a href="#2-4-检索队列句柄" class="headerlink" title="2.4 检索队列句柄"></a>2.4 检索队列句柄</h2><p>队列是与逻辑设备一起自动创建的，现在创建与它们接口的句柄。<br>使用 <strong>VkQueue</strong> 来存储队列的句柄，如存储图形队列的句柄：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">VkQueue graphicsQueue;</span><br></pre></td></tr></table></figure>
+<p>当设备被销毁时，会隐式清除设备队列，因此我们不需要在清理中执行任何操作(vkCreateXXX才需要主动释放哦)。</p>
+<p>我们可以使用vkGetDeviceQueue函数来检索每个队列系列的队列句柄。<br>参数是逻辑设备，队列系列，队列索引和指向存储队列句柄的变量的指针。<br>因为我们只是从这个系列创建一个队列，所以我们只使用索引0。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">vkGetDeviceQueue</span>(device, indices.graphicsFamily.<span class="built_in">value</span>(), <span class="number">0</span>, &amp;graphicsQueue);</span><br></pre></td></tr></table></figure>
+<p>有了逻辑设备和队列句柄，我们现在可以开始使用显卡来做事了！<br>准备工作基本完成，后续我们可以设置资源并用窗口显示结果！<br>这次就不贴代码了。</p>
+<h1 id="附录"><a href="#附录" class="headerlink" title="附录"></a>附录</h1><h2 id="vulkan-feature"><a href="#vulkan-feature" class="headerlink" title="vulkan feature"></a>vulkan feature</h2><details>
+<summary>vulkan feature</summary>
+<pre><code>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 定义在 vulkan_core.h 文件中</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkPhysicalDeviceFeatures</span> &#123;</span><br><span class="line">    VkBool32    robustBufferAccess;</span><br><span class="line">    VkBool32    fullDrawIndexUint32;</span><br><span class="line">    VkBool32    imageCubeArray;</span><br><span class="line">    VkBool32    independentBlend;</span><br><span class="line">    VkBool32    geometryShader;</span><br><span class="line">    VkBool32    tessellationShader;</span><br><span class="line">    VkBool32    sampleRateShading;</span><br><span class="line">    VkBool32    dualSrcBlend;</span><br><span class="line">    VkBool32    logicOp;</span><br><span class="line">    VkBool32    multiDrawIndirect;</span><br><span class="line">    VkBool32    drawIndirectFirstInstance;</span><br><span class="line">    VkBool32    depthClamp;</span><br><span class="line">    VkBool32    depthBiasClamp;</span><br><span class="line">    VkBool32    fillModeNonSolid;</span><br><span class="line">    VkBool32    depthBounds;</span><br><span class="line">    VkBool32    wideLines;</span><br><span class="line">    VkBool32    largePoints;</span><br><span class="line">    VkBool32    alphaToOne;</span><br><span class="line">    VkBool32    multiViewport;</span><br><span class="line">    VkBool32    samplerAnisotropy;</span><br><span class="line">    VkBool32    textureCompressionETC2;</span><br><span class="line">    VkBool32    textureCompressionASTC_LDR;</span><br><span class="line">    VkBool32    textureCompressionBC;</span><br><span class="line">    VkBool32    occlusionQueryPrecise;</span><br><span class="line">    VkBool32    pipelineStatisticsQuery;</span><br><span class="line">    VkBool32    vertexPipelineStoresAndAtomics;</span><br><span class="line">    VkBool32    fragmentStoresAndAtomics;</span><br><span class="line">    VkBool32    shaderTessellationAndGeometryPointSize;</span><br><span class="line">    VkBool32    shaderImageGatherExtended;</span><br><span class="line">    VkBool32    shaderStorageImageExtendedFormats;</span><br><span class="line">    VkBool32    shaderStorageImageMultisample;</span><br><span class="line">    VkBool32    shaderStorageImageReadWithoutFormat;</span><br><span class="line">    VkBool32    shaderStorageImageWriteWithoutFormat;</span><br><span class="line">    VkBool32    shaderUniformBufferArrayDynamicIndexing;</span><br><span class="line">    VkBool32    shaderSampledImageArrayDynamicIndexing;</span><br><span class="line">    VkBool32    shaderStorageBufferArrayDynamicIndexing;</span><br><span class="line">    VkBool32    shaderStorageImageArrayDynamicIndexing;</span><br><span class="line">    VkBool32    shaderClipDistance;</span><br><span class="line">    VkBool32    shaderCullDistance;</span><br><span class="line">    VkBool32    shaderFloat64;</span><br><span class="line">    VkBool32    shaderInt64;</span><br><span class="line">    VkBool32    shaderInt16;</span><br><span class="line">    VkBool32    shaderResourceResidency;</span><br><span class="line">    VkBool32    shaderResourceMinLod;</span><br><span class="line">    VkBool32    sparseBinding;</span><br><span class="line">    VkBool32    sparseResidencyBuffer;</span><br><span class="line">    VkBool32    sparseResidencyImage2D;</span><br><span class="line">    VkBool32    sparseResidencyImage3D;</span><br><span class="line">    VkBool32    sparseResidency2Samples;</span><br><span class="line">    VkBool32    sparseResidency4Samples;</span><br><span class="line">    VkBool32    sparseResidency8Samples;</span><br><span class="line">    VkBool32    sparseResidency16Samples;</span><br><span class="line">    VkBool32    sparseResidencyAliased;</span><br><span class="line">    VkBool32    variableMultisampleRate;</span><br><span class="line">    VkBool32    inheritedQueries;</span><br><span class="line">&#125; VkPhysicalDeviceFeatures;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-robustBufferAccess"><a href="#1-robustBufferAccess" class="headerlink" title="1. robustBufferAccess"></a>1. robustBufferAccess</h3><p>指定对缓冲区的访问是根据缓冲区描述符的范围进行边界检查的(由VkDescriptorBufferInfo::range，VkBufferViewCreateInfo::range或缓冲区的大小确定）。<br>超出范围访问不得导致应用程序终止，并且着色器加载，存储和原子的效果必须符合与如下相关的行为：</p>
+<ul>
+<li>如果满足以下任何条件，则认为缓冲区访问超出范围：   <ul>
+<li>指针由OpImageTexelPointer形成，坐标小于零或大于或等于绑定范围内的整个元素的数量。</li>
+<li>指针不是由OpImageTexelPointer形成的，并且指向的对象并不完全包含在绑定范围内。这包括通过变量指针执行的访问，其中不能静态地确定被访问的缓冲区描述符。未初始化的指针和指向OpConstantNull的指针被视为指向零大小的对象，因此通过这些指针的所有访问都被视为超出范围。<ul>
+<li>注意：如果SPIR-V OpLoad指令加载结构并且结构的尾端超出边界，则结构的所有成员都被视为超出边界，即使最终的成员未被静态使用。</li>
+</ul>
+</li>
+<li>如果确定给定SPIR-V块中的任何缓冲区访问超出范围，则在同一SPIR-V块中访问小于16字节的地址的任何其他相同类型（加载，存储或原子）访问 远离界外地址也可能被认为是超出界限。</li>
+</ul>
+</li>
+<li>超出范围的缓冲区加载将返回以下任何值：<ul>
+<li>从绑定到缓冲区的内存范围内的任何位置开始的值（可能包括超出缓冲区末尾的内存字节，直到绑定范围的末尾）。</li>
+<li>向量读取的零值或（0,0,0，x）向量，其中x是向量组件类型中表示的有效值，可以是以下任意一种：<ul>
+<li>有符号或无符号整数分量的0,1或最大可表示正整数值</li>
+<li>0.0或1.0，用于浮点组件</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>越界写入可以修改绑定到缓冲区的内存范围内的值，但不能修改任何其他内存。</li>
+<li>越界原子可以修改绑定到缓冲区的内存范围内的值，但不能修改任何其他内存，并返回未定义的值。</li>
+<li>如果绑定顶点缓冲区范围中属性的偏移量加上属性的大小大于以下值，则顶点输入属性被视为超出边界。<ul>
+<li><ol>
+<li>vertexBufferRangeSize, if bindingStride &#x3D;&#x3D; 0; 或者</li>
+</ol>
+</li>
+<li><ol start="2">
+<li>(vertexBufferRangeSize - (vertexBufferRangeSize % bindingStride))</li>
+</ol>
+</li>
+<li>其中vertexBufferRangeSize是绑定到顶点缓冲区绑定的内存范围的字节大小，bindingStride是相应顶点输入绑定的字节跨度。此外，如果使用特定顶点输入绑定的任何顶点输入属性超出边界，则使用该顶点着色器调用的顶点输入绑定的所有顶点输入属性被视为超出边界。</li>
+<li>一旦顶点输入属性超出范围，将为其分配以下值之一：<ul>
+<li>来自绑定到缓冲区的内存范围内任何位置的值，根据属性的格式进行转换。</li>
+<li>零值，或（0,0,0，x）向量，格式根据属性的格式转换。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>如果未启用robustBufferAccess，则应用程序不得执行越界访问。而一般来讲，robustBufferAccess都是需要开启的。</li>
+</ul>
+<h3 id="2-fullDrawIndexUint32"><a href="#2-fullDrawIndexUint32" class="headerlink" title="2. fullDrawIndexUint32"></a>2. fullDrawIndexUint32</h3><p>指定当使用VKIndexType为VK_INDEX_TYPE_UINT32时，索引绘制调用支持完整的32位索引范围。<br>maxDrawIndexedIndexValue是可以使用的最大索引值（除了原始重启索引，当VkIndexType是VK_INDEX_TYPE_UINT32时，它总是2^32-1）。<br>如果支持此功能，则maxDrawIndexedIndexValue必须为2^32-1; 否则它必须不小于2^24-1。</p>
+<h3 id="3-imageCubeArray"><a href="#3-imageCubeArray" class="headerlink" title="3. imageCubeArray"></a>3. imageCubeArray</h3><p>指定是否可以创建VkImageViewType为VK_IMAGE_VIEW_TYPE_CUBE_ARRAY的图像视图，以及是否可以在着色器代码中使用相应的SampledCubeArray和ImageCubeArray SPIR-V功能。</p>
+<h3 id="4-independentBlend"><a href="#4-independentBlend" class="headerlink" title="4. independentBlend"></a>4. independentBlend</h3><p>指定是否每个附件独立控制VkPipelineColorBlendAttachmentState设置。<br>如果未启用此功能，则所有颜色附件的VkPipelineColorBlendAttachmentState设置必须相同。<br>如果启用，可以为每个绑定的颜色附件提供不同的VkPipelineColorBlendAttachmentState。</p>
+<h3 id="5-geometryShader"><a href="#5-geometryShader" class="headerlink" title="5. geometryShader"></a>5. geometryShader</h3><p>指定是否支持几何着色器。<br>如果未启用此功能，则不得使用VK_SHADER_STAGE_GEOMETRY_BIT和VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT枚举值。<br>这还指定着色器模块是否可以声明几何功能。</p>
+<h3 id="6-tessellationShader"><a href="#6-tessellationShader" class="headerlink" title="6. tessellationShader"></a>6. tessellationShader</h3><p>指定是否支持曲面细分控制和评估着色器。<br>如果未启用此功能，则不得使用：</p>
+<ul>
+<li>VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT：指定曲面细分控制阶段</li>
+<li>VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT：指定曲面细分评估阶段</li>
+<li>VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT：指定曲面细分控制着色器阶段</li>
+<li>VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT：指定曲面细分评估着色器阶段</li>
+<li>VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO</li>
+</ul>
+<p>这还指定着色器模块是否可以声明Tessellation功能。</p>
+<h3 id="7-sampleRateShading"><a href="#7-sampleRateShading" class="headerlink" title="7. sampleRateShading"></a>7. sampleRateShading</h3><p>指定是否支持样本着色和多重采样插值。<br>如果未启用此功能，则必须将VkPipelineMultisampleStateCreateInfo结构的sampleShadingEnable成员设置为VK_FALSE，并忽略minSampleShading成员。<br>这还指定着色器模块是否可以声明SampleRateShading功能。</p>
+<h3 id="8-dualSrcBlend"><a href="#8-dualSrcBlend" class="headerlink" title="8. dualSrcBlend"></a>8. dualSrcBlend</h3><p>指定是否支持采用两个源的混合操作。<br>如果未启用此功能，则不得将：</p>
+<ul>
+<li>VK_BLEND_FACTOR_SRC1_COLOR：</li>
+<li>VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR</li>
+<li>VK_BLEND_FACTOR_SRC1_ALPHA</li>
+<li>VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA</li>
+</ul>
+<p>以上枚举值用作源或目标混合因子。详细信息参阅 vkspec.html: 26.1.2. Dual-Source Blending</p>
+<h3 id="9-logicOp"><a href="#9-logicOp" class="headerlink" title="9. logicOp"></a>9. logicOp</h3><p>指定是否支持逻辑运算。 如果未启用此功能，则必须将VkPipelineColorBlendStateCreateInfo结构的logicOpEnable成员设置为VK_FALSE，并忽略logicOp成员。</p>
+<h3 id="10-multiDrawIndirect"><a href="#10-multiDrawIndirect" class="headerlink" title="10. multiDrawIndirect"></a>10. multiDrawIndirect</h3><p>指定是否支持多个draw间接。<br>如果未启用此功能，则vkCmdDrawIndirect和vkCmdDrawIndexedIndirect命令的drawCount参数必须为0或1.<br>如果不支持此功能，则VkPhysicalDeviceLimits结构的maxDrawIndirectCount(间接绘制调用支持的最大绘制计数)成员也必须为1。 </p>
+<h3 id="11-drawIndirectFirstInstance"><a href="#11-drawIndirectFirstInstance" class="headerlink" title="11. drawIndirectFirstInstance"></a>11. drawIndirectFirstInstance</h3><p>指定间接绘制调用是否支持firstInstance参数。<br>如果未启用此功能，则提供给vkCmdDrawIndirect和vkCmdDrawIndexedIndirect命令的所有VkDrawIndirectCommand和VkDrawIndexedIndirectCommand结构的firstInstance成员必须为0。</p>
+<h3 id="12-depthClamp"><a href="#12-depthClamp" class="headerlink" title="12. depthClamp"></a>12. depthClamp</h3><p>指定是否支持深度Clamp。<br>如果未启用此功能，则必须将VkPipelineRasterizationStateCreateInfo结构的depthClampEnable成员设置为VK_FALSE。<br>如果启用，将depthClampEnable设置为VK_TRUE将启用深度Clamp。</p>
+<h3 id="13-depthBiasClamp"><a href="#13-depthBiasClamp" class="headerlink" title="13. depthBiasClamp"></a>13. depthBiasClamp</h3><p>指定是否支持深度偏置Clamp。<br>如果未启用此功能，则必须将VkPipelineRasterizationStateCreateInfo结构的depthBiasClamp成员设置为0.0，除非启用VK_DYNAMIC_STATE_DEPTH_BIAS动态状态，并且必须将vkCmdSetDepthBias的depthBiasClamp参数设置为0.0。</p>
+<h3 id="14-fillModeNonSolid"><a href="#14-fillModeNonSolid" class="headerlink" title="14. fillModeNonSolid"></a>14. fillModeNonSolid</h3><p>指定是否支持点和线框填充模式。<br>如果未启用此功能，则VkPipelineRasterizationStateCreateInfo::polygonMode不得使用:</p>
+<ul>
+<li>VK_POLYGON_MODE_POINT:指定将多边形顶点绘制为点</li>
+<li>VK_POLYGON_MODE_LINE:指定将多边形的边绘制为点</li>
+</ul>
+<h3 id="15-depthBounds"><a href="#15-depthBounds" class="headerlink" title="15. depthBounds"></a>15. depthBounds</h3><p>指定是否支持深度边界测试。<br>如果未启用此功能，则必须将VkPipelineDepthStencilStateCreateInfo结构的depthBoundsTestEnable成员设置为VK_FALSE。 当depthBoundsTestEnable设置为VK_FALSE时，将忽略VkPipelineDepthStencilStateCreateInfo结构的minDepthBounds和maxDepthBounds成员。</p>
+<h3 id="16-wideLines"><a href="#16-wideLines" class="headerlink" title="16. wideLines"></a>16. wideLines</h3><p>指定是否支持宽度不是1.0的行。<br>如果未启用此功能，则必须将VkPipelineRasterizationStateCreateInfo结构的lineWidth成员设置为1.0，除非启用VK_DYNAMIC_STATE_LINE_WIDTH动态状态，并且必须将vWCmdSetLineWidth的lineWidth参数设置为1.0。<br>支持此功能时，支持的线宽的范围和粒度分别由VkPhysicalDeviceLimits结构的lineWidthRange和lineWidthGranularity成员指示。</p>
+<h3 id="17-largePoints"><a href="#17-largePoints" class="headerlink" title="17. largePoints"></a>17. largePoints</h3><p>指定是否支持大小大于1.0的点。<br>如果未启用此功能，则仅支持着色器写入的点大小1.0。 支持的点大小的范围和粒度分别由VkPhysicalDeviceLimits结构的pointSizeRange和pointSizeGranularity成员指示。</p>
+<h3 id="18-alphaToOne"><a href="#18-alphaToOne" class="headerlink" title="18. alphaToOne"></a>18. alphaToOne</h3><p>指定实现是否能够使用定点颜色的最大可表示alpha值或浮点颜色的1.0替换片段着色器中输出的颜色片段的alpha值。<br>如果未启用此功能，则必须将VkPipelineMultisampleStateCreateInfo结构的alphaToOneEnable成员设置为VK_FALSE。<br>否则，将alphaToOneEnable设置为VK_TRUE将启用alpha-to-one行为。</p>
+<h3 id="19-multiViewport"><a href="#19-multiViewport" class="headerlink" title="19. multiViewport"></a>19. multiViewport</h3><p>指定是否支持多个Viewport。 如果未启用此功能：</p>
+<ul>
+<li>必须将VkPipelineViewportStateCreateInfo结构的viewportCount和scissorCount成员设置为1。</li>
+<li>vkCmdSetViewport命令的firstViewport和viewportCount参数必须分别设置为0和1。</li>
+<li>vkCmdSetScissor命令的firstScissor和scissorCount参数必须分别设置为0和1。</li>
+</ul>
+<h3 id="20-samplerAnisotropy"><a href="#20-samplerAnisotropy" class="headerlink" title="20. samplerAnisotropy"></a>20. samplerAnisotropy</h3><p>指定是否支持各向异性过滤。<br>如果未启用此功能，则VkSamplerCreateInfo结构的anisotropyEnable成员必须为VK_FALSE。</p>
+<h3 id="21-textureCompressionETC2"><a href="#21-textureCompressionETC2" class="headerlink" title="21. textureCompressionETC2"></a>21. textureCompressionETC2</h3><p>指定是否支持所有ETC2和EAC压缩纹理格式。<br>如果启用此功能，则OptimalTilingFeatures中必须支持:</p>
+<ul>
+<li><p>VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT:指定可以从中采样图像视图</p>
+</li>
+<li><p>VK_FORMAT_FEATURE_BLIT_SRC_BIT:指定图像可用作vkCmdBlitImage命令的srcImage</p>
+</li>
+<li><p>VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT：图像视图可以与采样器一起使用(详细信息 vkspec.html:VkFormatFeatureFlagBits)</p>
+<p>  以上格式的功能：</p>
+<ul>
+<li>VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK</li>
+<li>VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK</li>
+<li>VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK</li>
+<li>VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK</li>
+<li>VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK</li>
+<li>VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK</li>
+<li>VK_FORMAT_EAC_R11_UNORM_BLOCK</li>
+<li>VK_FORMAT_EAC_R11_SNORM_BLOCK</li>
+<li>VK_FORMAT_EAC_R11G11_UNORM_BLOCK</li>
+<li>VK_FORMAT_EAC_R11G11_SNORM_BLOCK</li>
+</ul>
+</li>
+</ul>
+<p>要查询其他属性，或者未启用该功能，可以使用vkGetPhysicalDeviceFormatProperties和vkGetPhysicalDeviceImageFormatProperties来检查各个格式的支持属性。</p>
+<h3 id="22-textureCompressionASTC-LDR"><a href="#22-textureCompressionASTC-LDR" class="headerlink" title="22. textureCompressionASTC_LDR"></a>22. textureCompressionASTC_LDR</h3><p>指定是否支持所有ASTC LDR压缩纹理格式。<br>如果启用此功能，则OptimalTilingFeatures中必须支持:</p>
+<ul>
+<li><p>VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT</p>
+</li>
+<li><p>VK_FORMAT_FEATURE_BLIT_SRC_BIT和VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT</p>
+<p>  以上格式的功能：</p>
+<ul>
+<li>VK_FORMAT_ASTC_4x4_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_4x4_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_5x4_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_5x4_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_5x5_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_5x5_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_6x5_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_6x5_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_6x6_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_6x6_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_8x5_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_8x5_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_8x6_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_8x6_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_8x8_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_8x8_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x5_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x5_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x6_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x6_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x8_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x8_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x10_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_10x10_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_12x10_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_12x10_SRGB_BLOCK</li>
+<li>VK_FORMAT_ASTC_12x12_UNORM_BLOCK</li>
+<li>VK_FORMAT_ASTC_12x12_SRGB_BLOCK</li>
+</ul>
+</li>
+</ul>
+<p>要查询其他属性，或者未启用该功能，可以使用vkGetPhysicalDeviceFormatProperties和vkGetPhysicalDeviceImageFormatProperties来检查各个格式的支持属性。</p>
+<h3 id="23-textureCompressionBC"><a href="#23-textureCompressionBC" class="headerlink" title="23. textureCompressionBC"></a>23. textureCompressionBC</h3><p>指定是否支持所有BC压缩纹理格式。<br>如果启用此功能，则OptimalTilingFeatures中必须支持：</p>
+<ul>
+<li><p>VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT</p>
+</li>
+<li><p>VK_FORMAT_FEATURE_BLIT_SRC_BIT</p>
+</li>
+<li><p>VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT</p>
+<p>  以上格式的功能：</p>
+<ul>
+<li>VK_FORMAT_BC1_RGB_UNORM_BLOCK</li>
+<li>VK_FORMAT_BC1_RGB_SRGB_BLOCK</li>
+<li>VK_FORMAT_BC1_RGBA_UNORM_BLOCK</li>
+<li>VK_FORMAT_BC1_RGBA_SRGB_BLOCK</li>
+<li>VK_FORMAT_BC2_UNORM_BLOCK</li>
+<li>VK_FORMAT_BC2_SRGB_BLOCK</li>
+<li>VK_FORMAT_BC3_UNORM_BLOCK</li>
+<li>VK_FORMAT_BC3_SRGB_BLOCK</li>
+<li>VK_FORMAT_BC4_UNORM_BLOCK</li>
+<li>VK_FORMAT_BC4_SNORM_BLOCK</li>
+<li>VK_FORMAT_BC5_UNORM_BLOCK</li>
+<li>VK_FORMAT_BC5_SNORM_BLOCK</li>
+<li>VK_FORMAT_BC6H_UFLOAT_BLOCK</li>
+<li>VK_FORMAT_BC6H_SFLOAT_BLOCK</li>
+<li>VK_FORMAT_BC7_UNORM_BLOCK</li>
+<li>VK_FORMAT_BC7_SRGB_BLOCK</li>
+</ul>
+</li>
+</ul>
+<p>要查询其他属性，或者未启用该功能，可以使用vkGetPhysicalDeviceFormatProperties和vkGetPhysicalDeviceImageFormatProperties来检查各个格式的支持属性。</p>
+<h3 id="24-occlusionQueryPrecise"><a href="#24-occlusionQueryPrecise" class="headerlink" title="24. occlusionQueryPrecise"></a>24. occlusionQueryPrecise</h3><p>指定是否支持返回实际样本计数的遮挡查询。<br>通过在VkQueryPoolCreateInfo结构中指定VK_QUERY_TYPE_OCCLUSION的queryType并将其传递给vkCreateQueryPool，可以在VkQueryPool中创建遮挡查询。<br>如果启用此功能，则此类查询可以将flags参数中的VK_QUERY_CONTROL_PRECISE_BIT启用为vkCmdBeginQuery。<br>如果不支持此功能，则实现仅支持布尔遮挡查询。传递任何样本时，布尔查询将返回非零结果值，否则返回结果值为零。<br>启用此功能并设置VK_QUERY_CONTROL_PRECISE_BIT后，遮挡查询将报告传递的实际样本数。</p>
+<h3 id="25-pipelineStatisticsQuery"><a href="#25-pipelineStatisticsQuery" class="headerlink" title="25. pipelineStatisticsQuery"></a>25. pipelineStatisticsQuery</h3><p>指定是否支持管道统计信息查询。<br>如果未启用此功能，则无法创建类型为VK_QUERY_TYPE_PIPELINE_STATISTICS的查询，并且无法在VkQueryPoolCreateInfo结构的pipelineStatistics成员中设置任何VkQueryPipelineStatisticFlagBits位。</p>
+<h3 id="26-vertexPipelineStoresAndAtomics"><a href="#26-vertexPipelineStoresAndAtomics" class="headerlink" title="26. vertexPipelineStoresAndAtomics"></a>26. vertexPipelineStoresAndAtomics</h3><p>指定存储缓冲区和图像是否支持顶点，曲面细分和几何着色器阶段中的存储和原子操作。<br>如果未启用此功能，则着色器模块中这些阶段使用的所有存储器映像，存储纹理缓冲区缓冲区和存储缓冲区变量必须使用NonWritable修饰（或GLSL中的只读内存限定符）进行修饰。</p>
+<h3 id="27-fragmentStoresAndAtomics"><a href="#27-fragmentStoresAndAtomics" class="headerlink" title="27. fragmentStoresAndAtomics"></a>27. fragmentStoresAndAtomics</h3><p>指定存储缓冲区和图像是否支持片段着色器阶段中的存储和原子操作。<br>如果未启用此功能，则着色器模块中片段阶段使用的所有存储器映像，存储纹理缓冲区缓冲区和存储缓冲区变量必须使用NonWritable修饰（或GLSL中的只读内存限定符）进行修饰。</p>
+<h3 id="28-shaderTessellationAndGeometryPointSize"><a href="#28-shaderTessellationAndGeometryPointSize" class="headerlink" title="28. shaderTessellationAndGeometryPointSize"></a>28. shaderTessellationAndGeometryPointSize</h3><p>指定曲面细分控件，曲面细分评估和几何着色器阶段中是否提供PointSize内置修饰。<br>如果未启用此功能，则不得读取或写入使用PointSize内置修饰的成员，并且从曲面细分或几何着色器写入的所有点的大小均为1.0。<br>这还指定着色器模块是否可以为曲面细分控制和评估着色器声明TessellationPointSize功能，或者着色器模块是否可以为几何着色器声明GeometryPointSize功能。<br><strong>支持此功能的实现还必须支持tessellationShader或geometryShader功能中的一个或两个</strong>。</p>
+<h3 id="29-shaderImageGatherExtended"><a href="#29-shaderImageGatherExtended" class="headerlink" title="29. shaderImageGatherExtended"></a>29. shaderImageGatherExtended</h3><p>指定着色器代码中是否可以使用扩展的图像收集指令集。<br>如果未启用此功能，则OpImage * Gather指令不支持Offset和ConstOffsets操作数。 这还指定着色器模块是否可以声明ImageGatherExtended功能。</p>
+<h3 id="30-shaderStorageImageExtendedFormats"><a href="#30-shaderStorageImageExtendedFormats" class="headerlink" title="30. shaderStorageImageExtendedFormats"></a>30. shaderStorageImageExtendedFormats</h3><p>指定着色器代码中是否所有扩展存储器图像格式都可用。<br>如果启用此功能，则必须在所有扩展格式的optimalTilingFeatures中支持VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT功能。<br>要查询其他属性，或者未启用该功能，可以使用vkGetPhysicalDeviceFormatProperties和vkGetPhysicalDeviceImageFormatProperties来检查各个格式的支持属性。</p>
+<h3 id="31-shaderStorageImageMultisample"><a href="#31-shaderStorageImageMultisample" class="headerlink" title="31. shaderStorageImageMultisample"></a>31. shaderStorageImageMultisample</h3><p>指定是否支持多重采样存储映像。<br>如果未启用此功能，则必须使用等于VK_SAMPLE_COUNT_1_BIT的样本创建使用包含VK_IMAGE_USAGE_STORAGE_BIT的用法创建的图像。<br>这还指定着色器模块是否可以声明StorageImageMultisample功能。</p>
+<h3 id="32-shaderStorageImageReadWithoutFormat"><a href="#32-shaderStorageImageReadWithoutFormat" class="headerlink" title="32. shaderStorageImageReadWithoutFormat"></a>32. shaderStorageImageReadWithoutFormat</h3><p>指定存储图像是否需要在从存储器映像<strong>读取</strong>时指定格式限定符。<br>如果未启用此功能，则OpImageRead指令的OpTypeImage不得为Unknown。<br>这还指定着色器模块是否可以声明StorageImageReadWithoutFormat功能。</p>
+<h3 id="33-shaderStorageImageWriteWithoutFormat"><a href="#33-shaderStorageImageWriteWithoutFormat" class="headerlink" title="33. shaderStorageImageWriteWithoutFormat"></a>33. shaderStorageImageWriteWithoutFormat</h3><p>指定存储图像是否需要在<strong>写入</strong>存储图像时指定格式限定符。<br>如果未启用此功能，则OpImageWrite指令的OpTypeImage不得为Unknown。<br>这还指定着色器模块是否可以声明StorageImageWriteWithoutFormat功能。</p>
+<h3 id="34-shaderUniformBufferArrayDynamicIndexing"><a href="#34-shaderUniformBufferArrayDynamicIndexing" class="headerlink" title="34. shaderUniformBufferArrayDynamicIndexing"></a>34. shaderUniformBufferArrayDynamicIndexing</h3><p>指定是否可以通过着色器代码中的动态统一整数表达式对统一缓冲区的数组建立索引。<br>如果未启用此功能，则在着色器代码中聚合到数组中时，描述符类型为VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER或VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC的资源必须仅由常量整数表达式编制索引。<br>这还指定着色器模块是否可以声明UniformBufferArrayDynamicIndexing功能。</p>
+<h3 id="35-shaderSampledImageArrayDynamicIndexing"><a href="#35-shaderSampledImageArrayDynamicIndexing" class="headerlink" title="35. shaderSampledImageArrayDynamicIndexing"></a>35. shaderSampledImageArrayDynamicIndexing</h3><p>指定采样器阵列或采样图像是否可以通过着色器代码中的动态统一整数表达式进行索引。<br>如果未启用此功能，则在着色器代码中聚合到数组中时，描述符类型为VK_DESCRIPTOR_TYPE_SAMPLER，VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER或VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE的资源必须仅由常量整数表达式编制索引。<br>这还指定着色器模块是否可以声明SampledImageArrayDynamicIndexing功能。</p>
+<h3 id="36-shaderStorageBufferArrayDynamicIndexing"><a href="#36-shaderStorageBufferArrayDynamicIndexing" class="headerlink" title="36. shaderStorageBufferArrayDynamicIndexing"></a>36. shaderStorageBufferArrayDynamicIndexing</h3><p>指定是否可以通过着色器代码中的动态统一整数表达式索引存储缓冲区的数组。<br>如果未启用此功能，则在着色器代码中聚合到数组中时，描述符类型为VK_DESCRIPTOR_TYPE_STORAGE_BUFFER或VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC的资源必须仅由常量整数表达式编制索引。<br>这还指定着色器模块是否可以声明StorageBufferArrayDynamicIndexing功能。</p>
+<h3 id="37-shaderStorageImageArrayDynamicIndexing"><a href="#37-shaderStorageImageArrayDynamicIndexing" class="headerlink" title="37. shaderStorageImageArrayDynamicIndexing"></a>37. shaderStorageImageArrayDynamicIndexing</h3><p>指定是否可以通过着色器代码中的动态统一整数表达式索引存储器图像数组。<br>如果未启用此功能，则在着色器代码中聚合到数组中时，描述符类型为VK_DESCRIPTOR_TYPE_STORAGE_IMAGE的资源必须仅通过常量整数表达式编制索引。<br>这还指定着色器模块是否可以声明StorageImageArrayDynamicIndexing功能。</p>
+<h3 id="38-shaderClipDistance"><a href="#38-shaderClipDistance" class="headerlink" title="38. shaderClipDistance"></a>38. shaderClipDistance</h3><p>指定着色器代码中是否支持ClipDistance。<br>如果未启用此功能，则不得在着色器模块中读取或写入使用ClipDistance内置装饰的任何成员。<br>这还指定着色器模块是否可以声明ClipDistance功能。</p>
+<h3 id="39-shaderCullDistance"><a href="#39-shaderCullDistance" class="headerlink" title="39. shaderCullDistance"></a>39. shaderCullDistance</h3><p>指定着色器代码中是否支持CullDistance。<br>如果未启用此功能，则不得在着色器模块中读取或写入使用CullDistance内置装饰的任何成员。<br>这还指定着色器模块是否可以声明CullDistance功能。</p>
+<h3 id="40-shaderFloat64"><a href="#40-shaderFloat64" class="headerlink" title="40. shaderFloat64"></a>40. shaderFloat64</h3><p>指定着色器代码中是否支持64位浮点（双精度）。<br>如果未启用此功能，则不得在着色器代码中使用64位浮点类型。<br>这还指定着色器模块是否可以声明Float64功能。</p>
+<h3 id="41-shaderInt64"><a href="#41-shaderInt64" class="headerlink" title="41. shaderInt64"></a>41. shaderInt64</h3><p>指定着色器代码中是否支持64位整数（有符号和无符号）。<br>如果未启用此功能，则不得在着色器代码中使用64位整数类型。<br>这还指定着色器模块是否可以声明Int64功能。</p>
+<h3 id="42-shaderInt16"><a href="#42-shaderInt16" class="headerlink" title="42. shaderInt16"></a>42. shaderInt16</h3><p>指定着色器代码中是否支持16位整数（有符号和无符号）。<br>如果未启用此功能，则不得在着色器代码中使用16位整数类型。<br>这还指定着色器模块是否可以声明Int16功能。</p>
+<h3 id="43-shaderResourceResidency"><a href="#43-shaderResourceResidency" class="headerlink" title="43. shaderResourceResidency"></a>43. shaderResourceResidency</h3><p>指定着色器代码是否支持返回资源驻留信息的图像操作。<br>如果未启用此功能，则不得在着色器代码中使用OpImageSparse *指令。<br>这还指定着色器模块是否可以声明SparseResidency功能。<br>该功能至少需要支持一个sparseResidency *功能。</p>
+<h3 id="44-shaderResourceMinLod"><a href="#44-shaderResourceMinLod" class="headerlink" title="44. shaderResourceMinLod"></a>44. shaderResourceMinLod</h3><p>指定着色器代码中是否支持指定最小资源LOD的图像操作。<br>如果未启用此功能，则不得在着色器代码中使用MinLod图像操作数。<br>这还指定着色器模块是否可以声明MinLod功能。</p>
+<h3 id="45-sparseBinding"><a href="#45-sparseBinding" class="headerlink" title="45. sparseBinding"></a>45. sparseBinding</h3><p>指定是否可以在不透明的稀疏块级别而不是在对象级别管理资源内存。<br>如果未启用此功能，则必须使用vkBindBufferMemory和vkBindImageMemory命令仅基于每个对象绑定资源内存。 在这种情况下，不能分别使用VkBufferCreateInfo和VkImageCreateInfo结构的flags成员中设置的VK_BUFFER_CREATE_SPARSE_BINDING_BIT和VK_IMAGE_CREATE_SPARSE_BINDING_BIT创建缓冲区和映像。 否则，可以按稀疏资源特征中的描述管理资源存储器。</p>
+<h3 id="46-sparseResidencyBuffer"><a href="#46-sparseResidencyBuffer" class="headerlink" title="46. sparseResidencyBuffer"></a>46. sparseResidencyBuffer</h3><p>指定设备是否可以访问部分驻留缓冲区。<br>如果未启用此功能，则不能使用VkBufferCreateInfo结构的flags成员中设置的VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT创建缓冲区。</p>
+<h3 id="47-sparseResidencyImage2D"><a href="#47-sparseResidencyImage2D" class="headerlink" title="47. sparseResidencyImage2D"></a>47. sparseResidencyImage2D</h3><p>指定设备是否可以访问每个像素1个样本的部分驻留的2D图像。<br>如果未启用此功能，则不得使用VkImageCreateInfo结构的flags成员中设置的VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT创建imageType为VK_IMAGE_TYPE_2D且样本设置为VK_SAMPLE_COUNT_1_BIT的图像。</p>
+<h3 id="48-sparseResidencyImage3D"><a href="#48-sparseResidencyImage3D" class="headerlink" title="48. sparseResidencyImage3D"></a>48. sparseResidencyImage3D</h3><p>指定设备是否可以访问部分驻留的3D图像。<br>如果未启用此功能，则不得使用VkImageCreateInfo结构的flags成员中设置的VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT创建imageType为VK_IMAGE_TYPE_3D的映像。</p>
+<h3 id="49-sparseResidency2Samples"><a href="#49-sparseResidency2Samples" class="headerlink" title="49. sparseResidency2Samples"></a>49. sparseResidency2Samples</h3><p>指定物理设备是否可以访问具有每像素2个样本的部分驻留的2D图像。<br>如果未启用此功能，则不得使用VkImageCreateInfo结构的flags成员中设置的VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT创建imageType为VK_IMAGE_TYPE_2D且样本设置为VK_SAMPLE_COUNT_2_BIT的图像。</p>
+<h3 id="50-sparseResidency4Samples"><a href="#50-sparseResidency4Samples" class="headerlink" title="50. sparseResidency4Samples"></a>50. sparseResidency4Samples</h3><p>指定物理设备是否可以访问每个像素有4个样本的部分驻留的2D图像。<br>如果未启用此功能，则不得使用VkImageCreateInfo结构的flags成员中设置的VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT创建imageType为VK_IMAGE_TYPE_2D且样本设置为VK_SAMPLE_COUNT_4_BIT的图像。</p>
+<h3 id="51-sparseResidency8Samples"><a href="#51-sparseResidency8Samples" class="headerlink" title="51. sparseResidency8Samples"></a>51. sparseResidency8Samples</h3><p>指定物理设备是否可以访问具有每像素8个样本的部分驻留的2D图像。<br>如果未启用此功能，则不得使用VkImageCreateInfo结构的flags成员中设置的VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT创建imageType为VK_IMAGE_TYPE_2D且样本设置为VK_SAMPLE_COUNT_8_BIT的图像。</p>
+<h3 id="52-sparseResidency16Samples"><a href="#52-sparseResidency16Samples" class="headerlink" title="52. sparseResidency16Samples"></a>52. sparseResidency16Samples</h3><p>指定物理设备是否可以访问每个像素16个样本的部分驻留的2D图像。<br>如果未启用此功能，则不得使用VkImageCreateInfo结构的flags成员中设置的VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT创建imageType为VK_IMAGE_TYPE_2D且样本设置为VK_SAMPLE_COUNT_16_BIT的图像。</p>
+<h3 id="53-sparseResidencyAliased"><a href="#53-sparseResidencyAliased" class="headerlink" title="53. sparseResidencyAliased"></a>53. sparseResidencyAliased</h3><p>指定物理设备是否可以正确访问别名到多个位置的数据。<br>如果未启用此功能，则不得分别在VkBufferCreateInfo和VkImageCreateInfo结构的flags成员中使用VK_BUFFER_CREATE_SPARSE_ALIASED_BIT和VK_IMAGE_CREATE_SPARSE_ALIASED_BIT枚举值。</p>
+<h3 id="54-variableMultisampleRate"><a href="#54-variableMultisampleRate" class="headerlink" title="54. variableMultisampleRate"></a>54. variableMultisampleRate</h3><p>指定在没有附件的子通行期间将绑定到命令缓冲区的所有管道是否必须具有VkPipelineMultisampleStateCreateInfo::rasterizationSamples的相同值。<br>如果设置为VK_TRUE，则实现支持不带附件的子通道中的可变多重采样率。<br>如果设置为VK_FALSE，则绑定在此子通道中的所有管道必须具有相同的多采样率。 但这在子通道使用任何附件的情况下无效。</p>
+<h3 id="55-inheritedQueries"><a href="#55-inheritedQueries" class="headerlink" title="55. inheritedQueries"></a>55. inheritedQueries</h3><p>指定在查询处于活动状态时是否可以执行辅助命令缓冲区。</p>
+<p></p></code></pre><p></p>
+</details>
+
+
+<p>说明：vkspec.html（2019&#x2F;05&#x2F;03）是从官方文档 <a target="_blank" rel="noopener" href="https://github.com/KhronosGroup/Vulkan-Docs/">https://github.com/KhronosGroup/Vulkan-Docs/</a> 中制作生成的。可以自行下载最新代码制作，也可以直接下载：</p>
+<ol>
+<li>csdn（需要5积分，不知道怎么去掉这个）：<a target="_blank" rel="noopener" href="https://download.csdn.net/download/u014535072/11158246">https://download.csdn.net/download/u014535072/11158246</a></li>
+<li>百度网盘：链接: <a target="_blank" rel="noopener" href="https://pan.baidu.com/s/1IyPnb-2ti1SjU0puFKwYUQ">https://pan.baidu.com/s/1IyPnb-2ti1SjU0puFKwYUQ</a> 提取码: f2c2</li>
+</ol>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-3-%E8%AE%BE%E7%BD%AE%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87/" title="Vulkan入门(3)-设置物理设备和逻辑设备">https://swallowjoe.github.io/2022/02/27/Vulkan入门-3-设置物理设备和逻辑设备/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Vulkan/" rel="tag"># Vulkan</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/26/Vulkan%E5%85%A5%E9%97%A8-2-%E5%88%9B%E5%BB%BAVulkan%E7%A4%BA%E4%BE%8B%E5%8F%8A%E9%AA%8C%E8%AF%81%E5%B1%82/" rel="prev" title="Vulkan入门(2)-创建Vulkan示例及验证层">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(2)-创建Vulkan示例及验证层
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-4-Surface%E5%92%8C%E4%BA%A4%E6%8D%A2%E9%93%BE/" rel="next" title="Vulkan入门(4)-Surface和交换链">
+      Vulkan入门(4)-Surface和交换链 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-Physical-devices-and-queue-families-%E7%89%A9%E7%90%86%E8%AE%BE%E5%A4%87%E5%92%8C%E9%98%9F%E5%88%97%E7%B3%BB%E5%88%97"><span class="nav-text">一. Physical devices and queue families(物理设备和队列系列)</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-%E9%80%89%E6%8B%A9%E7%89%A9%E7%90%86%E6%98%BE%E5%8D%A1GPU"><span class="nav-text">1.1 选择物理显卡GPU</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-%E5%9F%BA%E7%A1%80%E8%AE%BE%E5%A4%87%E9%80%82%E9%85%8D%E6%80%A7%E6%A3%80%E6%9F%A5"><span class="nav-text">1.2 基础设备适配性检查</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-Queue-families"><span class="nav-text">1.3 Queue families</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-Logical-device-and-queues"><span class="nav-text">二. Logical device and queues</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-%E6%8C%87%E5%AE%9A%E8%A6%81%E5%88%9B%E5%BB%BA%E7%9A%84%E9%98%9F%E5%88%97"><span class="nav-text">2.1 指定要创建的队列</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-%E6%8C%87%E5%AE%9A%E4%BD%BF%E7%94%A8%E7%9A%84%E8%AE%BE%E5%A4%87%E5%8A%9F%E8%83%BD-feature"><span class="nav-text">2.2 指定使用的设备功能(feature)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-%E5%88%9B%E5%BB%BA%E9%80%BB%E8%BE%91%E8%AE%BE%E5%A4%87"><span class="nav-text">2.3 创建逻辑设备</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-%E6%A3%80%E7%B4%A2%E9%98%9F%E5%88%97%E5%8F%A5%E6%9F%84"><span class="nav-text">2.4 检索队列句柄</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E9%99%84%E5%BD%95"><span class="nav-text">附录</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#vulkan-feature"><span class="nav-text">vulkan feature</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-robustBufferAccess"><span class="nav-text">1. robustBufferAccess</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-fullDrawIndexUint32"><span class="nav-text">2. fullDrawIndexUint32</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-imageCubeArray"><span class="nav-text">3. imageCubeArray</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-independentBlend"><span class="nav-text">4. independentBlend</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-geometryShader"><span class="nav-text">5. geometryShader</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-tessellationShader"><span class="nav-text">6. tessellationShader</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#7-sampleRateShading"><span class="nav-text">7. sampleRateShading</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#8-dualSrcBlend"><span class="nav-text">8. dualSrcBlend</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#9-logicOp"><span class="nav-text">9. logicOp</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#10-multiDrawIndirect"><span class="nav-text">10. multiDrawIndirect</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#11-drawIndirectFirstInstance"><span class="nav-text">11. drawIndirectFirstInstance</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#12-depthClamp"><span class="nav-text">12. depthClamp</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#13-depthBiasClamp"><span class="nav-text">13. depthBiasClamp</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#14-fillModeNonSolid"><span class="nav-text">14. fillModeNonSolid</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#15-depthBounds"><span class="nav-text">15. depthBounds</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#16-wideLines"><span class="nav-text">16. wideLines</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#17-largePoints"><span class="nav-text">17. largePoints</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#18-alphaToOne"><span class="nav-text">18. alphaToOne</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#19-multiViewport"><span class="nav-text">19. multiViewport</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#20-samplerAnisotropy"><span class="nav-text">20. samplerAnisotropy</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#21-textureCompressionETC2"><span class="nav-text">21. textureCompressionETC2</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#22-textureCompressionASTC-LDR"><span class="nav-text">22. textureCompressionASTC_LDR</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#23-textureCompressionBC"><span class="nav-text">23. textureCompressionBC</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#24-occlusionQueryPrecise"><span class="nav-text">24. occlusionQueryPrecise</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#25-pipelineStatisticsQuery"><span class="nav-text">25. pipelineStatisticsQuery</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#26-vertexPipelineStoresAndAtomics"><span class="nav-text">26. vertexPipelineStoresAndAtomics</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#27-fragmentStoresAndAtomics"><span class="nav-text">27. fragmentStoresAndAtomics</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#28-shaderTessellationAndGeometryPointSize"><span class="nav-text">28. shaderTessellationAndGeometryPointSize</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#29-shaderImageGatherExtended"><span class="nav-text">29. shaderImageGatherExtended</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#30-shaderStorageImageExtendedFormats"><span class="nav-text">30. shaderStorageImageExtendedFormats</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#31-shaderStorageImageMultisample"><span class="nav-text">31. shaderStorageImageMultisample</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#32-shaderStorageImageReadWithoutFormat"><span class="nav-text">32. shaderStorageImageReadWithoutFormat</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#33-shaderStorageImageWriteWithoutFormat"><span class="nav-text">33. shaderStorageImageWriteWithoutFormat</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#34-shaderUniformBufferArrayDynamicIndexing"><span class="nav-text">34. shaderUniformBufferArrayDynamicIndexing</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#35-shaderSampledImageArrayDynamicIndexing"><span class="nav-text">35. shaderSampledImageArrayDynamicIndexing</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#36-shaderStorageBufferArrayDynamicIndexing"><span class="nav-text">36. shaderStorageBufferArrayDynamicIndexing</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#37-shaderStorageImageArrayDynamicIndexing"><span class="nav-text">37. shaderStorageImageArrayDynamicIndexing</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#38-shaderClipDistance"><span class="nav-text">38. shaderClipDistance</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#39-shaderCullDistance"><span class="nav-text">39. shaderCullDistance</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#40-shaderFloat64"><span class="nav-text">40. shaderFloat64</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#41-shaderInt64"><span class="nav-text">41. shaderInt64</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#42-shaderInt16"><span class="nav-text">42. shaderInt16</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#43-shaderResourceResidency"><span class="nav-text">43. shaderResourceResidency</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#44-shaderResourceMinLod"><span class="nav-text">44. shaderResourceMinLod</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#45-sparseBinding"><span class="nav-text">45. sparseBinding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#46-sparseResidencyBuffer"><span class="nav-text">46. sparseResidencyBuffer</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#47-sparseResidencyImage2D"><span class="nav-text">47. sparseResidencyImage2D</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#48-sparseResidencyImage3D"><span class="nav-text">48. sparseResidencyImage3D</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#49-sparseResidency2Samples"><span class="nav-text">49. sparseResidency2Samples</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#50-sparseResidency4Samples"><span class="nav-text">50. sparseResidency4Samples</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#51-sparseResidency8Samples"><span class="nav-text">51. sparseResidency8Samples</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#52-sparseResidency16Samples"><span class="nav-text">52. sparseResidency16Samples</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#53-sparseResidencyAliased"><span class="nav-text">53. sparseResidencyAliased</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#54-variableMultisampleRate"><span class="nav-text">54. variableMultisampleRate</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#55-inheritedQueries"><span class="nav-text">55. inheritedQueries</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">15</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述虽然现在我们创建的顶点缓冲区工作正常，但是从CPU访问它的内存类型可能不是图形显卡本身读取的最佳内存类型，最理想的内存具有VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT位标志，并且通常不可由专用图形显卡上的CPU访问。而且我们上一篇最后实现的随鼠标移动的功能也没有考虑同步，简单一点，考虑读写分离。 现在创建两个顶点缓冲区：CPU可访问内存中的一个暂存缓冲区用于从顶点数组">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vulkan入门(12)-暂存缓冲和索引缓冲">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述虽然现在我们创建的顶点缓冲区工作正常，但是从CPU访问它的内存类型可能不是图形显卡本身读取的最佳内存类型，最理想的内存具有VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT位标志，并且通常不可由专用图形显卡上的CPU访问。而且我们上一篇最后实现的随鼠标移动的功能也没有考虑同步，简单一点，考虑读写分离。 现在创建两个顶点缓冲区：CPU可访问内存中的一个暂存缓冲区用于从顶点数组">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_1.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_2.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_3.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_4.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_5.png">
+<meta property="article:published_time" content="2022-02-26T19:34:41.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:42:33.608Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Vulkan">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vulkan入门(12)-暂存缓冲和索引缓冲 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vulkan入门(12)-暂存缓冲和索引缓冲
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:34:41 / 修改时间：03:42:33" itemprop="dateCreated datePublished" datetime="2022-02-27T03:34:41+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(12)-暂存缓冲和索引缓冲" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>虽然现在我们创建的顶点缓冲区工作正常，但是从CPU访问它的内存类型可能不是图形显卡本身读取的最佳内存类型，最理想的内存具有VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT位标志，并且通常不可由专用图形显卡上的CPU访问。而且我们上一篇最后实现的随鼠标移动的功能也没有考虑同步，简单一点，考虑读写分离。</p>
+<p>现在创建两个顶点缓冲区：CPU可访问内存中的一个暂存缓冲区用于从顶点数组上传数据，最终顶点缓冲区位于设备本地内存中。然后我们将使用一个缓冲区复制命令将数据从暂存缓冲区移动到实际的顶点缓冲区。简单来说就是暂存缓冲区用于cpu写入，顶点缓冲区用于GPU读取数据。</p>
+<span id="more"></span>
+
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>Vulkan coordinate system <a target="_blank" rel="noopener" href="http://vulkano.rs/guide/vertex-input">http://vulkano.rs/guide/vertex-input</a></li>
+</ol>
+<h1 id="一-传输队列"><a href="#一-传输队列" class="headerlink" title="一. 传输队列"></a>一. 传输队列</h1><p>buffer copy命令需要支持传输操作的队列族，使用VK_QUEUE_TRANSFER_BIT表示。不过任何具有VK_QUEUE_GRAPHICS_BIT或VK_QUEUE_COMPUTE_BIT功能的队列家族都已经隐式支持VK_QUEUE_TRANSFER_BIT操作。在这些情况下，不需要实现在queueFlags中显式地列出它。</p>
+<p>但可以尝试使用专门用于传输操作的不同队列族， 可以如下操作:</p>
+<ol>
+<li>修改QueueFamilyIndices和findQueueFamilies来显式地查找具有VK_QUEUE_TRANSFER位的队列族，而不是VK_QUEUE_GRAPHICS_BIT位</li>
+<li>修改createLogicalDevice以请求传输队列的句柄</li>
+<li>为传输队列系列上提交的命令缓冲区创建第二个命令池</li>
+<li>修改资源的共享模式为VK_SHARING_MODE_CONCURRENT，并指定图形和传输队列族</li>
+<li>提交传输命令，如vkCmdCopyBuffer到传输队列，而不是图形队列</li>
+</ol>
+<h1 id="二-暂存缓冲区"><a href="#二-暂存缓冲区" class="headerlink" title="二. 暂存缓冲区"></a>二. 暂存缓冲区</h1><p>因为我们要创建多个VkBuffer，所以最好把共有的部分抽出，以避免代码累赘:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 传入必要参数</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createBuffer</span><span class="params">(VkDeviceSize size, VkBufferUsageFlags usage,</span></span></span><br><span class="line"><span class="params"><span class="function">        VkMemoryPropertyFlags properties, VkBuffer&amp; buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">        VkDeviceMemory&amp; bufferMemory, VkSharingMode mode)</span> </span>&#123;</span><br><span class="line">    VkBufferCreateInfo bufferInfo = &#123;&#125;;</span><br><span class="line">    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;</span><br><span class="line">    bufferInfo.size = size;</span><br><span class="line">    bufferInfo.usage = usage;</span><br><span class="line">    bufferInfo.sharingMode = mode;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateBuffer</span>(device, &amp;bufferInfo, <span class="literal">nullptr</span>, &amp;buffer) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create vertex buffer!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    VkMemoryRequirements memRequirements;</span><br><span class="line">    <span class="built_in">vkGetBufferMemoryRequirements</span>(device, buffer, &amp;memRequirements);</span><br><span class="line"></span><br><span class="line">    VkMemoryAllocateInfo allocInfo = &#123;&#125;;</span><br><span class="line">    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;</span><br><span class="line">    allocInfo.allocationSize = memRequirements.size;</span><br><span class="line">    allocInfo.memoryTypeIndex = <span class="built_in">findMemoryType</span>(memRequirements.memoryTypeBits, properties);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkAllocateMemory</span>(device, &amp;allocInfo, <span class="literal">nullptr</span>, &amp;bufferMemory) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to allocate vertex buffer memory!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">vkBindBufferMemory</span>(device, buffer, bufferMemory, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createVertexBuffer</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    VkDeviceSize bufferSize = <span class="built_in">sizeof</span>(vertices[<span class="number">0</span>]) * vertices.<span class="built_in">size</span>();</span><br><span class="line"></span><br><span class="line">    VkBuffer stagingBuffer;</span><br><span class="line">    VkDeviceMemory stagingBufferMemory;</span><br><span class="line">    <span class="built_in">createBuffer</span>(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer,</span><br><span class="line">            <span class="comment">// 资源只能由单个队列族独占</span></span><br><span class="line">            stagingBufferMemory, VK_SHARING_MODE_EXCLUSIVE);</span><br><span class="line">    <span class="type">void</span>* data;</span><br><span class="line">    <span class="built_in">vkMapMemory</span>(device, stagingBufferMemory, <span class="number">0</span>, bufferSize, <span class="number">0</span>, &amp;data);</span><br><span class="line">    <span class="built_in">memcpy</span>(data, vertices.<span class="built_in">data</span>(), (<span class="type">size_t</span>) bufferSize);</span><br><span class="line">    <span class="built_in">vkUnmapMemory</span>(device, stagingBufferMemory);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 注意这里的MEMORY_PROPERTY是VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT！</span></span><br><span class="line">    <span class="built_in">createBuffer</span>(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT |</span><br><span class="line">            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer,</span><br><span class="line">            <span class="comment">// 资源只能由单个队列族独占</span></span><br><span class="line">            vertexBufferMemory, VK_SHARING_MODE_EXCLUSIVE);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>因为我们需要使用传输队列，所以注意stagingBuffer的usage是用的VK_BUFFER_USAGE_TRANSFER_SRC_BIT，而vertexBuffer现在用的是VK_BUFFER_USAGE_TRANSFER_DST_BIT！</p>
+<p>vertexBuffer现在从设备本地的内存类型分配，这意味着我们不能使用vkMapMemory。但是，我们可以将数据从stagingBuffer复制到vertexBuffer。我们必须通过指定stagingBuffer的传输源标志和vertexBuffer的传输目标标志以及顶点缓冲区使用标志来表明我们打算这样做。</p>
+<h2 id="2-1-VkBufferUsageFlagBits"><a href="#2-1-VkBufferUsageFlagBits" class="headerlink" title="2.1 VkBufferUsageFlagBits"></a>2.1 VkBufferUsageFlagBits</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkBufferUsageFlagBits</span> &#123;</span><br><span class="line">    VK_BUFFER_USAGE_TRANSFER_SRC_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_BUFFER_USAGE_TRANSFER_DST_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT = <span class="number">0x00000008</span>,</span><br><span class="line">    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT = <span class="number">0x00000010</span>,</span><br><span class="line">    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT = <span class="number">0x00000020</span>,</span><br><span class="line">    VK_BUFFER_USAGE_INDEX_BUFFER_BIT = <span class="number">0x00000040</span>,</span><br><span class="line">    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT = <span class="number">0x00000080</span>,</span><br><span class="line">    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT = <span class="number">0x00000100</span>,</span><br><span class="line">    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT = <span class="number">0x00020000</span>,</span><br><span class="line">    VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT = <span class="number">0x00000800</span>,</span><br><span class="line">    VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT = <span class="number">0x00001000</span>,</span><br><span class="line">    VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT = <span class="number">0x00000200</span>,</span><br><span class="line">    VK_BUFFER_USAGE_RAY_TRACING_BIT_NV = <span class="number">0x00000400</span>,</span><br><span class="line">    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_EXT = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,</span><br><span class="line">    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,</span><br><span class="line">    VK_BUFFER_USAGE_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkBufferUsageFlagBits;</span><br></pre></td></tr></table></figure>
+<p>VkBufferUsageFlagBits设置的位可以指定缓冲区的使用行为：</p>
+<ol>
+<li>VK_BUFFER_USAGE_TRANSFER_SRC_BIT指定缓冲区可以用作传输命令的源(请参阅VK_PIPELINE_STAGE_TRANSFER_BIT的定义)。</li>
+<li>VK_BUFFER_USAGE_TRANSFER_DST_BIT指定缓冲区可以用作传输命令的目的地。</li>
+<li>VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT缓冲区可用于创建一个VkBufferView，该视图适合占用VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER类型的VkDescriptorSet槽位。</li>
+<li>VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT指定该缓冲区可以用来创建一个VkBufferView，该视图适合于占用VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER类型的VkDescriptorSet槽位。</li>
+<li>VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT缓冲区可以用于VkDescriptorBufferInfo中，该缓冲区适合于占用VkDescriptorSet类型的VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC槽位。</li>
+<li>VK_BUFFER_USAGE_STORAGE_BUFFER_BIT指定该缓冲区可用于VkDescriptorBufferInfo中，该缓冲区适合于占用VkDescriptorSet类型的VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC槽位。</li>
+<li>VK_BUFFER_USAGE_INDEX_BUFFER_BIT指定该缓冲区适合作为buffer参数传递给vkCmdBindIndexBuffer。</li>
+<li>VK_BUFFER_USAGE_VERTEX_BUFFER_BIT指定缓冲区适合作为pBuffers数组的元素传递给vkCmdBindVertexBuffers。</li>
+<li>VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT缓冲区适合作为buffer参数传递给vkCmdDrawIndirect、vkCmdDrawIndexedIndirect、vkCmdDrawMeshTasksIndirectNV、vkCmdDrawMeshTasksIndirectCountNV或vkCmdDispatchIndirect。它也适合作为VkIndirectCommandsTokenNVX的缓冲区成员，或VkCmdProcessCommandsInfoNVX的sequencesCountBuffer或sequencesIndexBuffer成员传递</li>
+<li>VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT指定缓冲区适合作为buffer参数传递给vkCmdBeginConditionalRenderingEXT。</li>
+<li>VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT指定该缓冲区适合使用for binding作为vkCmdBindTransformFeedbackBuffersEXT的转换反馈缓冲区。</li>
+<li>VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT指定该缓冲区适合与vkCmdBeginTransformFeedbackEXT和vkCmdEndTransformFeedbackEXT一起用作计数器缓冲区。</li>
+<li>VK_BUFFER_USAGE_RAY_TRACING_BIT_NV指定缓冲区适用于vkCmdTraceRaysNV和vkCmdBuildAccelerationStructureNV。</li>
+<li>VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT指定缓冲区可以通过vkGetBufferDeviceAddress来检索缓冲区设备地址，并使用该地址从着色器访问缓冲区的内存。</li>
+</ol>
+<h2 id="2-2-VkMemoryPropertyFlags"><a href="#2-2-VkMemoryPropertyFlags" class="headerlink" title="2.2 VkMemoryPropertyFlags"></a>2.2 VkMemoryPropertyFlags</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> <span class="title class_">VkMemoryPropertyFlagBits</span> &#123;</span><br><span class="line">    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT = <span class="number">0x00000001</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT = <span class="number">0x00000002</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT = <span class="number">0x00000004</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_HOST_CACHED_BIT = <span class="number">0x00000008</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT = <span class="number">0x00000010</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_PROTECTED_BIT = <span class="number">0x00000020</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD = <span class="number">0x00000040</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD = <span class="number">0x00000080</span>,</span><br><span class="line">    VK_MEMORY_PROPERTY_FLAG_BITS_MAX_ENUM = <span class="number">0x7FFFFFFF</span></span><br><span class="line">&#125; VkMemoryPropertyFlagBits;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT: 指定使用这种类型分配的内存对于设备访问是最有效的。当且仅当内存类型属于设置了VK_MEMORY_HEAP_DEVICE_LOCAL_BIT的堆时，才会设置此属性。</li>
+<li>VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT: 指定使用这种类型分配的内存可以通过vkMapMemory映射给主机访问。</li>
+<li>VK_MEMORY_PROPERTY_HOST_COHERENT_BIT: 指定主机缓存管理命令vkFlushMappedMemoryRanges和vkInvalidateMappedMemoryRanges分别用于刷新主机对设备的写操作，或者使设备的写操作对主机可见。</li>
+<li>VK_MEMORY_PROPERTY_HOST_CACHED_BIT: 指定用这种类型分配的内存缓存在主机上。主机内存对非缓存内存的访问比对缓存内存的访问慢，但是非缓存内存总是与主机一致的。</li>
+<li>VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT: 指定内存类型仅允许设备访问内存。内存类型不能同时设置VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT和VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT。另外，对象的后备内存可以由在惰性分配内存中指定的lazy实现提供。</li>
+<li>VK_MEMORY_PROPERTY_PROTECTED_BIT: 指定内存类型仅允许设备访问内存，并允许受保护的队列操作访问内存。内存类型不能设置VK_MEMORY_PROPERTY_PROTECTED_BIT和任何VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT、VK_MEMORY_PROPERTY_HOST_COHERENT_BIT或VK_MEMORY_PROPERTY_HOST_CACHED_BIT。</li>
+<li>VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD: 指定对这种内存类型分配的设备访问将自动变为可用和可见的。</li>
+<li>VK_MEMORY_PROPERTY_DEVICE_UNCACHHED_BIT_AMD: 指定用这种类型分配的内存不会缓存到设备上。非缓存设备内存总是设备一致的。</li>
+</ol>
+<h2 id="2-3-缓冲区拷贝函数"><a href="#2-3-缓冲区拷贝函数" class="headerlink" title="2.3 缓冲区拷贝函数"></a>2.3 缓冲区拷贝函数</h2><p>内存传输操作使用命令缓冲区执行，就像绘制命令一样。因此，首先分配一个临时的命令缓冲区。您可能希望为这些短期缓冲区创建一个单独的命令池，因为实现可能能够应用内存分配优化。在这种情况下，您应该在生成命令池期间使用VK_COMMAND_POOL_CREATE_TRANSIENT_BIT标志。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">copyBuffer</span><span class="params">(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)</span> </span>&#123;</span><br><span class="line">    VkCommandBufferAllocateInfo allocInfo = &#123;&#125;;</span><br><span class="line">    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;</span><br><span class="line">    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;</span><br><span class="line">    allocInfo.commandPool = commandPool;</span><br><span class="line">    allocInfo.commandBufferCount = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">    VkCommandBuffer commandBuffer;</span><br><span class="line">    <span class="built_in">vkAllocateCommandBuffers</span>(device, &amp;allocInfo, &amp;commandBuffer);</span><br><span class="line">    <span class="comment">// 开始记录指令</span></span><br><span class="line">    VkCommandBufferBeginInfo beginInfo = &#123;&#125;;</span><br><span class="line">    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;</span><br><span class="line">    <span class="comment">// 只使用一次命令缓冲区，并等待函数返回，直到复制操作完成执行</span></span><br><span class="line">    <span class="comment">// 所以使用VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT标志</span></span><br><span class="line">    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;</span><br><span class="line">    <span class="built_in">vkBeginCommandBuffer</span>(commandBuffer, &amp;beginInfo);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 缓冲拷贝指令</span></span><br><span class="line">    VkBufferCopy copyRegion = &#123;&#125;;</span><br><span class="line">    copyRegion.srcOffset = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line">    copyRegion.dstOffset = <span class="number">0</span>; <span class="comment">// Optional</span></span><br><span class="line">    copyRegion.size = size;</span><br><span class="line">    <span class="comment">// 缓冲区的内容使用vkCmdCopyBuffer命令传输。</span></span><br><span class="line">    <span class="comment">// 源和目标缓冲区以及要复制的区域数组作为参数。copyRegion由源缓冲区偏移量、目标缓冲区偏移量和大小组成</span></span><br><span class="line">    <span class="built_in">vkCmdCopyBuffer</span>(commandBuffer, srcBuffer, dstBuffer, <span class="number">1</span>, &amp;copyRegion);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">vkEndCommandBuffer</span>(commandBuffer);</span><br><span class="line">    VkSubmitInfo submitInfo = &#123;&#125;;</span><br><span class="line">    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;</span><br><span class="line">    submitInfo.commandBufferCount = <span class="number">1</span>;</span><br><span class="line">    submitInfo.pCommandBuffers = &amp;commandBuffer;</span><br><span class="line">    <span class="built_in">vkQueueSubmit</span>(graphicsQueue, <span class="number">1</span>, &amp;submitInfo, VK_NULL_HANDLE);</span><br><span class="line">    <span class="built_in">vkQueueWaitIdle</span>(graphicsQueue);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">vkFreeCommandBuffers</span>(device, commandPool, <span class="number">1</span>, &amp;commandBuffer);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>拷贝缓冲指令的一般流程是:</p>
+<ol>
+<li>vkAllocateCommandBuffers 创建指令缓冲，分配内存</li>
+<li>vkBeginCommandBuffer     开始指令记录</li>
+<li>vkCmdCopyBuffer          执行具体指令</li>
+<li>vkEndCommandBuffer       结束指令记录</li>
+<li>vkQueueSubmit            将指令提交到管道</li>
+<li>vkQueueWaitIdle          等待管道执行指令,也可以通过fence机制</li>
+<li>vkFreeCommandBuffers     释放指令缓冲区</li>
+</ol>
+<h3 id="2-2-1-vkCmdCopyBuffer-拷贝缓冲区"><a href="#2-2-1-vkCmdCopyBuffer-拷贝缓冲区" class="headerlink" title="2.2.1 vkCmdCopyBuffer 拷贝缓冲区"></a>2.2.1 vkCmdCopyBuffer 拷贝缓冲区</h3><p>在缓冲区对象之间复制数据，调用:vkCmdCopyBuffer</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdCopyBuffer</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    srcBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    dstBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    regionCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkBufferCopy*                         pRegions)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer是命令将被记录到的命令缓冲区。</li>
+<li>srcBuffer是源缓冲区。</li>
+<li>dstBuffer是目标缓冲区。</li>
+<li>regionCount是要复制的区域数。</li>
+<li>pRegions是一个指向VkBufferCopy结构体数组的指针，该数组指定了要复制的区域。</li>
+</ol>
+<h2 id="2-3-缓冲区拷贝"><a href="#2-3-缓冲区拷贝" class="headerlink" title="2.3 缓冲区拷贝"></a>2.3 缓冲区拷贝</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createVertexBuffer</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    VkDeviceSize bufferSize = <span class="built_in">sizeof</span>(vertices[<span class="number">0</span>]) * vertices.<span class="built_in">size</span>();</span><br><span class="line"></span><br><span class="line">    VkBuffer stagingBuffer;</span><br><span class="line">    VkDeviceMemory stagingBufferMemory;</span><br><span class="line">    <span class="built_in">createBuffer</span>(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer,</span><br><span class="line">            <span class="comment">// 资源只能由单个队列族独占</span></span><br><span class="line">            stagingBufferMemory, VK_SHARING_MODE_EXCLUSIVE);</span><br><span class="line">    <span class="type">void</span>* data;</span><br><span class="line">    <span class="built_in">vkMapMemory</span>(device, stagingBufferMemory, <span class="number">0</span>, bufferSize, <span class="number">0</span>, &amp;data);</span><br><span class="line">    <span class="built_in">memcpy</span>(data, vertices.<span class="built_in">data</span>(), (<span class="type">size_t</span>) bufferSize);</span><br><span class="line">    <span class="built_in">vkUnmapMemory</span>(device, stagingBufferMemory);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 注意这里的MEMORY_PROPERTY是VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT！</span></span><br><span class="line">    <span class="built_in">createBuffer</span>(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT |</span><br><span class="line">            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer,</span><br><span class="line">            <span class="comment">// 资源只能由单个队列族独占</span></span><br><span class="line">            vertexBufferMemory, VK_SHARING_MODE_EXCLUSIVE);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 将暂存缓冲区的数据内容拷贝到顶点缓冲区</span></span><br><span class="line">    <span class="built_in">copyBuffer</span>(stagingBuffer, vertexBuffer, bufferSize);</span><br><span class="line">    <span class="comment">// 销毁暂存缓冲区，释放内存</span></span><br><span class="line">    <span class="built_in">vkDestroyBuffer</span>(device, stagingBuffer, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkFreeMemory</span>(device, stagingBufferMemory, <span class="literal">nullptr</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在这里思考一下，为什么要使用一个暂存缓冲区替换原来的直接使用memcpy呢，而且使用暂存缓冲还额外多了一个创建缓冲区的操作？</p>
+<p>因为图形管道使用顶点数据缓冲区时，如果需要更改顶点数据内容，还需要等待memcpy,如果使用暂存缓冲区，可以将更改顶点数据内容的操作放在另一个线程执行，等到写完之后，再使用vkCmdCopyBuffer指令拷贝内存数据，这样图形管道最多等待这个指令拷贝的时间。当然这一点现在看不出来优势，等我们的顶点数据多而且绘制内容复杂的时候就可以体现出来了。</p>
+<p>让我们更近一步，考虑到每次拷贝都需要执行vkAllocateCommandBuffers分配内存，不如一开始就请求一块合适的内存区域，毕竟这个函数开销还是很大的。通过使用我们在许多函数中看到的偏移参数，在许多不同的对象之间分割单个分配或回收。可以自己实现也可以使用GPUOpen倡议提供的VulkanMemoryAllocator库。</p>
+<h1 id="三-索引缓冲区"><a href="#三-索引缓冲区" class="headerlink" title="三. 索引缓冲区"></a>三. 索引缓冲区</h1><p>在真实世界的应用程序中渲染的3D网格经常会在多个三角形之间共享顶点。比如画一个矩形:<br><img src="/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_1.png" alt="12_1"></p>
+<p>绘制一个矩形需要两个三角形(基本绘制单元只有点、线和三角形，所以矩形是两个三角形之和)，这意味着需要有6个顶点的顶点缓冲区。问题是两个顶点的部分数据重复，会产生50%的冗余。在更复杂的网格中，只会变得更糟，因为顶点会在平均3个三角形中重复使用。解决这个问题的方法是使用索引缓冲区。</p>
+<p>索引缓冲区本质上是一个指向顶点缓冲区的指针数组。它允许重新排序顶点数据，并为多个顶点重用现有数据。上面的插图演示了一个顶点缓冲区包含四个不同的顶点，其索引缓冲区会是什么样子的。前三个索引定义了右上角的三角形，后三个索引定义了左下角三角形的顶点(顺时钟)。</p>
+<h2 id="3-1-创建索引缓冲区"><a href="#3-1-创建索引缓冲区" class="headerlink" title="3.1 创建索引缓冲区"></a>3.1 创建索引缓冲区</h2><p>接下来将修改顶点数据并添加索引数据来绘制一个矩形，像上图中一样。修改顶点数据以表示四个角:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> std::vector&lt;Vertex&gt; vertices = &#123;</span><br><span class="line">    &#123;&#123;<span class="number">-0.5f</span>, <span class="number">-0.5f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">0.0f</span>, <span class="number">0.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">0.5f</span>, <span class="number">-0.5f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">1.0f</span>, <span class="number">0.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">0.5f</span>, <span class="number">0.5f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">0.0f</span>, <span class="number">1.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">-0.5f</span>, <span class="number">0.5f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">1.0f</span>, <span class="number">1.0f</span>&#125;&#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>左上角是红色的，右上方是绿色的，右下角是蓝色的，左下角是白色的。现在添加一个新的数组索引来表示索引缓冲区的内容，匹配图中的索引来绘制右上三角形和左下三角形。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> std::vector&lt;<span class="type">uint16_t</span>&gt; indices = &#123;</span><br><span class="line">    <span class="number">0</span>, <span class="number">1</span>, <span class="number">2</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">0</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>可以使用uint16_t或uint32_t作为索引缓冲区，这取决于顶点中条目的数量。我们可以坚持uint16_t现在，因为我们使用少于65535唯一顶点。</p>
+<p>就像顶点数据一样，索引需要上传到VkBuffer中，GPU才能访问它们。定义两个新的类成员来保存索引缓冲区的资源:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">VkBuffer indexBuffer;</span><br><span class="line">VkDeviceMemory indexBufferMemory;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="built_in">createVertexBuffer</span>();</span><br><span class="line">    <span class="built_in">createIndexBuffer</span>();</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createIndexBuffer</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    VkDeviceSize bufferSize = <span class="built_in">sizeof</span>(indices[<span class="number">0</span>]) * indices.<span class="built_in">size</span>();</span><br><span class="line"></span><br><span class="line">    VkBuffer stagingBuffer;</span><br><span class="line">    VkDeviceMemory stagingBufferMemory;</span><br><span class="line">    <span class="built_in">createBuffer</span>(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |</span><br><span class="line">            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer,</span><br><span class="line">            <span class="comment">// 资源只能由单个队列族独占</span></span><br><span class="line">            stagingBufferMemory, VK_SHARING_MODE_EXCLUSIVE);</span><br><span class="line">    <span class="type">void</span>* data;</span><br><span class="line">    <span class="built_in">vkMapMemory</span>(device, stagingBufferMemory, <span class="number">0</span>, bufferSize, <span class="number">0</span>, &amp;data);</span><br><span class="line">    <span class="built_in">memcpy</span>(data, indices.<span class="built_in">data</span>(), (<span class="type">size_t</span>) bufferSize);</span><br><span class="line">    <span class="built_in">vkUnmapMemory</span>(device, stagingBufferMemory);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">createBuffer</span>(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT</span><br><span class="line">            | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,</span><br><span class="line">            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer,</span><br><span class="line">            <span class="comment">// 资源只能由单个队列族独占</span></span><br><span class="line">            indexBufferMemory, VK_SHARING_MODE_EXCLUSIVE);</span><br><span class="line">    <span class="comment">// 将暂存缓冲区的数据内容拷贝到顶点缓冲区</span></span><br><span class="line">    <span class="built_in">copyBuffer</span>(stagingBuffer, indexBuffer, bufferSize);</span><br><span class="line">    <span class="comment">// 销毁暂存缓冲区，释放内存</span></span><br><span class="line">    <span class="built_in">vkDestroyBuffer</span>(device, stagingBuffer, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkFreeMemory</span>(device, stagingBufferMemory, <span class="literal">nullptr</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到 createIndexBuffer 几乎和 createVertexBuffer 一样，只有bufferSize和VkBufferUsageFlags不同而已，毕竟都是只是缓冲区。</p>
+<p>索引缓冲同样也需要显示销毁： </p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">cleanupSwapChain</span>();</span><br><span class="line">    <span class="built_in">vkDestroyBuffer</span>(device, indexBuffer, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkFreeMemory</span>(device, indexBufferMemory, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkDestroyBuffer</span>(device, vertexBuffer, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkFreeMemory</span>(device, vertexBufferMemory, <span class="literal">nullptr</span>);</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-2-使用顶点缓冲"><a href="#3-2-使用顶点缓冲" class="headerlink" title="3.2 使用顶点缓冲"></a>3.2 使用顶点缓冲</h2><p>使用索引缓冲区绘制涉及createCommandBuffers的两个更改。我们首先需要绑定索引缓冲区，就像我们对顶点缓冲区所做的那样。但是索引缓冲区只能有一个。而且，不可能对每个顶点属性使用不同的索引，所以即使只有一个属性发生变化，仍然需要完全复制顶点数据。</p>
+<p>索引缓冲区与vkCmdBindIndexBuffer绑定，vkCmdBindIndexBuffer包含索引缓冲区、其中的字节偏移量和索引数据类型作为参数。如前所述，可能的类型是VK_INDEX_TYPE_UINT16和VK_INDEX_TYPE_UINT32。</p>
+<p>仅仅绑定索引缓冲区还不能改变任何东西，我们还需要更改绘图命令来告诉Vulkan使用索引缓冲区。移除vkCmdDraw，并用vkCmdDrawIndexed替换:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">VkBuffer vertexBuffers[] = &#123;vertexBuffer&#125;;</span><br><span class="line">VkDeviceSize offsets[] = &#123;<span class="number">0</span>&#125;;</span><br><span class="line"><span class="built_in">vkCmdBindVertexBuffers</span>(commandBuffers[i], <span class="number">0</span>, <span class="number">1</span>, vertexBuffers, offsets);</span><br><span class="line"><span class="comment">// VK_INDEX_TYPE_UINT16 是因为我们索引用的就是uint16_t</span></span><br><span class="line"><span class="built_in">vkCmdBindIndexBuffer</span>(commandBuffers[i], indexBuffer, <span class="number">0</span>, VK_INDEX_TYPE_UINT16);</span><br><span class="line"><span class="comment">// 使用vkCmdDrawIndexed替换vkCmdDraw</span></span><br><span class="line"><span class="comment">// vkCmdDraw(commandBuffers[i], static_cast&lt;uint32_t&gt;(vertices.size()), 1, 0, 0);</span></span><br><span class="line"><span class="built_in">vkCmdDrawIndexed</span>(commandBuffers[i], <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(indices.<span class="built_in">size</span>()), <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line"><span class="built_in">vkCmdEndRenderPass</span>(commandBuffers[i]);</span><br></pre></td></tr></table></figure>
+
+<p>对vkCmdDrawIndexed函数的调用非常类似于vkCmdDraw。前两个参数指定索引的数量和实例的数量。我们没有使用实例，所以只指定一个实例。索引的数量表示将被传递到顶点缓冲区的顶点的数量。下一个参数指定到索引缓冲区的偏移量，使用值1将导致显卡从第二个索引开始读取。倒数第二个参数指定要添加到索引缓冲区中的索引的偏移量。最后一个参数指定了实例化的偏移量。</p>
+<h1 id="四-绘制命令概述"><a href="#四-绘制命令概述" class="headerlink" title="四. 绘制命令概述"></a>四. 绘制命令概述</h1><p>绘制命令大致分为两类:非索引绘图命令和索引绘图命令。</p>
+<h2 id="4-1-非索引绘图命令"><a href="#4-1-非索引绘图命令" class="headerlink" title="4.1 非索引绘图命令"></a>4.1 非索引绘图命令</h2><p>非索引绘图命令为顶点着色器提供一个连续的vertexIndex。顺序索引是由设备自动生成的，这些命令有:</p>
+<ol>
+<li>vkCmdDraw</li>
+<li>vkCmdDrawIndirect</li>
+<li>vkCmdDrawIndirectCount</li>
+<li>vkCmdDrawIndirectCountKHR</li>
+<li>vkCmdDrawIndirectCountAMD</li>
+</ol>
+<h3 id="4-1-1-vkCmdDraw"><a href="#4-1-1-vkCmdDraw" class="headerlink" title="4.1.1 vkCmdDraw"></a>4.1.1 vkCmdDraw</h3><p>vkCmdDraw可以记录一个非索引的绘制，其原型如下:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDraw</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    vertexCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    instanceCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    firstVertex,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    firstInstance)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer是命令记录到的命令缓冲区</li>
+<li>vertexCount是要绘制的顶点数</li>
+<li>instanceCount是要绘制的实例数量</li>
+<li>firstVertex是绘制的第一个顶点的索引</li>
+<li>firstInstance是绘制的第一个实例的实例ID</li>
+</ol>
+<p>执行该命令时，将使用当前基本体拓扑和顶点计数连续顶点索引（第一个顶点索引值等于第一个顶点）组装基本体。原语绘制实例数量为instanceCount，instanceIndex从firstInstance开始，每个实例依次递增。<strong>组装原语的执行要绑定到图形管道</strong>。</p>
+<h3 id="4-1-2-vkCmdDrawIndirect"><a href="#4-1-2-vkCmdDrawIndirect" class="headerlink" title="4.1.2 vkCmdDrawIndirect"></a>4.1.2 vkCmdDrawIndirect</h3><p>vkCmdDrawIndirect用于记录非索引的间接绘制，其原型如下:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndirect</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    drawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer是记录命令的命令缓冲区</li>
+<li>buffer是包含绘图参数的缓冲区</li>
+<li>offset是参数开始的缓冲区中的字节偏移量</li>
+<li>drawCount是要执行的绘制数，可以为零</li>
+<li>stride是连续绘图参数集之间的字节步幅</li>
+</ol>
+<p>vkCmdDrawIndirect的行为与vkCmdDraw类似，不同的是参数是在执行过程中由设备从缓冲区读取的。drawCount绘制由命令执行，参数从缓冲区的偏移量开始，每次绘制时按步长字节递增。每次绘制的参数都编码在一个VkDrawIndirectCommand结构数组中。如果drawCount小于或等于1，则忽略stride。</p>
+<h3 id="4-1-3-vkCmdDrawIndirectCount、vkCmdDrawIndirectCountKHR、vkCmdDrawIndirectCountAMD"><a href="#4-1-3-vkCmdDrawIndirectCount、vkCmdDrawIndirectCountKHR、vkCmdDrawIndirectCountAMD" class="headerlink" title="4.1.3 vkCmdDrawIndirectCount、vkCmdDrawIndirectCountKHR、vkCmdDrawIndirectCountAMD"></a>4.1.3 vkCmdDrawIndirectCount、vkCmdDrawIndirectCountKHR、vkCmdDrawIndirectCountAMD</h3><p>记录来自缓冲区的draw调用计数的非索引绘制调用,可以使用vkCmdDrawIndirectCount，vkCmdDrawIndirectCountKHR或者vkCmdDrawIndirectCountAMD, 这三个指令几乎等效：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndirectCount</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    countBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                countBufferOffset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    maxDrawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndirectCountKHR</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    countBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                countBufferOffset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    maxDrawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndirectCountAMD</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    countBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                countBufferOffset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    maxDrawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer是记录命令的命令缓冲区</li>
+<li>buffer是包含绘图参数的缓冲区</li>
+<li>offset是参数开始的缓冲区中的字节偏移量</li>
+<li>countBuffer是包含绘图计数的缓冲区</li>
+<li>countBufferOffset是开始绘制计数的字节偏移到countBuffer中</li>
+<li>maxDrawCount指定将执行的最大绘制数。实际执行的绘制调用数是countBuffer和maxDrawCount中指定的最小计数</li>
+<li>stride是连续绘图参数集之间的字节步幅</li>
+</ol>
+<p>vkCmdDrawIndirectCount的行为与vkCmdDrawIndirectCount类似，只是在执行期间设备从缓冲区读取绘制计数。该命令将从位于countBufferOffset的countBuffer中读取一个无符号32位整数，并将其用作绘图计数。</p>
+<h2 id="4-2-索引绘图命令"><a href="#4-2-索引绘图命令" class="headerlink" title="4.2 索引绘图命令"></a>4.2 索引绘图命令</h2><p>索引图形命令从索引缓冲区读取索引值，并使用此命令计算顶点着色器的vertexIndex值。这些命令有：</p>
+<ol>
+<li>vkCmdDrawIndexed</li>
+<li>vkCmdDrawIndexedIndirect</li>
+<li>vkCmdDrawIndexedIndirectCount</li>
+<li>vkCmdDrawIndexedIndirectCountKHR</li>
+<li>vkCmdDrawIndexedIndirectCountAMD</li>
+</ol>
+<h3 id="4-2-1-vkCmdDrawIndexed"><a href="#4-2-1-vkCmdDrawIndexed" class="headerlink" title="4.2.1 vkCmdDrawIndexed"></a>4.2.1 vkCmdDrawIndexed</h3><p>vkCmdDrawIndexed可以记录一个索引的绘制，其原型如下:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndexed</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    indexCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    instanceCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    firstIndex,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">int32_t</span>                                     vertexOffset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    firstInstance)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer是命令记录到的命令缓冲区</li>
+<li>indexCount是要绘制的顶点数</li>
+<li>instanceCount是要绘制的实例数</li>
+<li>firstIndex是索引缓冲区中的基索引</li>
+<li>vertexOffset是在索引到顶点缓冲区之前添加到顶点索引的值</li>
+<li>firstInstance是要绘制的第一个实例的实例ID</li>
+</ol>
+<p>在执行该命令时，使用当前基元拓扑和indexCount顶点组装基元，这些顶点的索引是从索引缓冲区检索的。索引缓冲区被视为一个紧凑封装的大小无符号整数数组，该整数由vkCmdBindIndexBuffer::indexType形参定义，该形参与该缓冲区绑定。</p>
+<p>第一个顶点索引位于绑定索引缓冲区中的firstIndex * indexSize + offset的偏移量，其中offset是由vkCmdBindIndexBuffer指定的偏移量，indexSize是由indexType指定的类型的字节大小。从索引缓冲区中连续的位置检索后续的索引值。索引首先与原始的重启值比较，然后0扩展到32位(如果indexType是VK_INDEX_TYPE_UINT8_EXT或VK_INDEX_TYPE_UINT16)，并添加vertexOffset，然后再作为vertexIndex值提供。</p>
+<p>这些原语是用从firstInstance开始的instanceIndex绘制instanceCount次数，并按顺序增加每个实例。<strong>组装的原语执行应绑定图形管道</strong>。</p>
+<h3 id="4-2-2-vkCmdDrawIndexedIndirect"><a href="#4-2-2-vkCmdDrawIndexedIndirect" class="headerlink" title="4.2.2 vkCmdDrawIndexedIndirect"></a>4.2.2 vkCmdDrawIndexedIndirect</h3><p>vkCmdDrawIndexedIndirect用于记录索引的间接绘制，其原型如下:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndexedIndirect</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    drawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer是记录命令的命令缓冲区</li>
+<li>buffer是包含绘图参数的缓冲区</li>
+<li>offset是参数开始的缓冲区中的字节偏移量</li>
+<li>drawCount是要执行的绘制数，可以为零</li>
+<li>stride是连续绘图参数集之间的字节步幅</li>
+</ol>
+<p>vkCmdDrawIndexedIndirect的行为与vkcmddrawindex类似，不同的是参数是在执行过程中由设备从缓冲区中读取的。drawCount绘制由命令执行，参数从缓冲区的偏移量开始，每次绘制时按步长字节递增。每次绘制的参数都编码在vkdrawindexdindirectcommand结构的数组中。如果drawCount小于或等于1，则忽略stride。</p>
+<h3 id="4-2-3-vkCmdDrawIndexedIndirectCount、vkCmdDrawIndexedIndirectKHR、vkCmdDrawIndexedIndirectAMD"><a href="#4-2-3-vkCmdDrawIndexedIndirectCount、vkCmdDrawIndexedIndirectKHR、vkCmdDrawIndexedIndirectAMD" class="headerlink" title="4.2.3 vkCmdDrawIndexedIndirectCount、vkCmdDrawIndexedIndirectKHR、vkCmdDrawIndexedIndirectAMD"></a>4.2.3 vkCmdDrawIndexedIndirectCount、vkCmdDrawIndexedIndirectKHR、vkCmdDrawIndexedIndirectAMD</h3><p>同样的，记录来自缓冲区的draw调用计数的索引绘制调用,可以使用, 这三个指令几乎等效：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndexedIndirectCount</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    countBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                countBufferOffset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    maxDrawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndexedIndirectCountKHR</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    countBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                countBufferOffset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    maxDrawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">vkCmdDrawIndexedIndirectCountAMD</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkCommandBuffer                             commandBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    buffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                offset,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkBuffer                                    countBuffer,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDeviceSize                                countBufferOffset,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    maxDrawCount,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">uint32_t</span>                                    stride)</span></span>;</span><br></pre></td></tr></table></figure>
+<ol>
+<li>commandBuffer是记录命令的命令缓冲区</li>
+<li>buffer是包含绘图参数的缓冲区</li>
+<li>offset是参数开始的缓冲区中的字节偏移量</li>
+<li>countBuffer是包含绘制计数的缓冲区</li>
+<li>countBufferOffset是进入countBuffer的字节偏移量，在这里开始绘制计数</li>
+<li>maxDrawCount指定将执行的最大绘制数。实际执行的draw调用数是countBuffer和maxDrawCount中指定的最小计数</li>
+<li>stride是连续绘图参数集之间的字节步幅</li>
+</ol>
+<p>vkCmdDrawIndexedIndirectCount的行为与vkCmdDrawIndexedIndirect类似，只是在执行期间设备从缓冲区读取绘制计数。该命令将从位于countBufferOffset的countBuffer中读取一个无符号32位整数，并将其用作绘图计数。</p>
+<h1 id="五-小结"><a href="#五-小结" class="headerlink" title="五. 小结"></a>五. 小结</h1><p>在上一篇文章中，我们使用顶点描述符VkVertexInputBindingDescription和VkVertexInputAttributeDescription替换了硬编码顶点，并且使用VkBuffer存储了顶点数据，好处是可随时更改顶点信息。在本文中，我们又使用了暂存缓冲优化了顶点缓冲每次都需要memcpy的弊端，还介绍了顶点索引，使得我们的程序可以画出更多的图形。</p>
+<p>使用暂存缓冲是因为图形管道使用顶点数据缓冲区时，如果需要更改顶点数据内容，还需要等待memcpy,如果使用暂存缓冲区，可以将更改顶点数据内容的操作放在另一个线程执行，等到写完之后，再使用vkCmdCopyBuffer指令拷贝内存数据，这样图形管道最多等待这个指令拷贝的时间。当顶点数据多而且绘制内容复杂的时候就可以体现出来了。</p>
+<p>而使用顶点索引缓冲是和顶点缓冲几乎一样的流程，只是VkBuffer创建时的VkBufferUsageFlags和size(对应的数据不同嘛)不同。</p>
+<p>不过这里还是很好奇，顶点索引和顶点的关系，比如如果我们顶点坐标不变，顶点索引改成：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 顶点索引</span></span><br><span class="line">std::vector&lt;<span class="type">uint16_t</span>&gt; indices = &#123;</span><br><span class="line">    <span class="number">0</span>, <span class="number">1</span>, <span class="number">2</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">1</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>对应的图形就变成了:<br><img src="/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_2.png" alt="图形"></p>
+<p>但是当顶点索引改成:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 顶点索引</span></span><br><span class="line">std::vector&lt;<span class="type">uint16_t</span>&gt; indices = &#123;</span><br><span class="line">    <span class="number">0</span>, <span class="number">1</span>, <span class="number">2</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>对应的图形就变成了:<br><img src="/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_3.png" alt="图形"></p>
+<p>这个顶点索引和最终图像的生成到底是什么个关系呢，参考:<a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/97496535">https://zhuanlan.zhihu.com/p/97496535</a></p>
+<p>Vulkan中的坐标系使用的右手坐标系，相比OpenGL是用的左手坐标系：</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_4.png" alt="坐标系"></p>
+<p>其中原点(0,0,0)在屏幕中央, 所以当我们想画一个三棱锥可以使用如下顶点及索引:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 顶点数据</span></span><br><span class="line">std::vector&lt;Vertex&gt; vertices = &#123;</span><br><span class="line">    &#123;&#123;<span class="number">-0.25f</span>, <span class="number">-0.01f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">0.0f</span>, <span class="number">0.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">0.01f</span>, <span class="number">-0.5f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">1.0f</span>, <span class="number">0.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">0.25f</span>, <span class="number">0.01f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">0.0f</span>, <span class="number">1.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">-0.01f</span>, <span class="number">0.15f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">1.0f</span>, <span class="number">1.0f</span>&#125;&#125;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="comment">// 顶点索引</span></span><br><span class="line">std::vector&lt;<span class="type">uint16_t</span>&gt; indices = &#123;</span><br><span class="line">    <span class="number">0</span>,<span class="number">1</span>,<span class="number">2</span>,<span class="number">2</span>,<span class="number">3</span>,<span class="number">0</span>,<span class="number">0</span>,<span class="number">1</span>,<span class="number">3</span>,<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/Vulkan_12_5.png" alt="三棱锥"></p>
+<p>接下来，让我们再接再厉，学习使用资源描述符来加载3D图形。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/" title="Vulkan入门(12)-暂存缓冲和索引缓冲">https://swallowjoe.github.io/2022/02/27/Vulkan入门-12-暂存缓冲和索引缓冲/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Vulkan/" rel="tag"># Vulkan</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-11-%E9%A1%B6%E7%82%B9%E8%BE%93%E5%85%A5%E6%8F%8F%E8%BF%B0%E5%8F%8A%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2%E7%9A%84%E5%88%9B%E5%BB%BA/" rel="prev" title="Vulkan入门(11)-顶点输入描述及顶点缓冲的创建">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(11)-顶点输入描述及顶点缓冲的创建
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/" rel="next" title="Vulkan入门(13)-描述符布局及缓存">
+      Vulkan入门(13)-描述符布局及缓存 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-%E4%BC%A0%E8%BE%93%E9%98%9F%E5%88%97"><span class="nav-text">一. 传输队列</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="nav-text">二. 暂存缓冲区</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-VkBufferUsageFlagBits"><span class="nav-text">2.1 VkBufferUsageFlagBits</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-VkMemoryPropertyFlags"><span class="nav-text">2.2 VkMemoryPropertyFlags</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-%E7%BC%93%E5%86%B2%E5%8C%BA%E6%8B%B7%E8%B4%9D%E5%87%BD%E6%95%B0"><span class="nav-text">2.3 缓冲区拷贝函数</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-1-vkCmdCopyBuffer-%E6%8B%B7%E8%B4%9D%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="nav-text">2.2.1 vkCmdCopyBuffer 拷贝缓冲区</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-%E7%BC%93%E5%86%B2%E5%8C%BA%E6%8B%B7%E8%B4%9D"><span class="nav-text">2.3 缓冲区拷贝</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="nav-text">三. 索引缓冲区</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-%E5%88%9B%E5%BB%BA%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="nav-text">3.1 创建索引缓冲区</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-%E4%BD%BF%E7%94%A8%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2"><span class="nav-text">3.2 使用顶点缓冲</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%9B%9B-%E7%BB%98%E5%88%B6%E5%91%BD%E4%BB%A4%E6%A6%82%E8%BF%B0"><span class="nav-text">四. 绘制命令概述</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#4-1-%E9%9D%9E%E7%B4%A2%E5%BC%95%E7%BB%98%E5%9B%BE%E5%91%BD%E4%BB%A4"><span class="nav-text">4.1 非索引绘图命令</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#4-1-1-vkCmdDraw"><span class="nav-text">4.1.1 vkCmdDraw</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-1-2-vkCmdDrawIndirect"><span class="nav-text">4.1.2 vkCmdDrawIndirect</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-1-3-vkCmdDrawIndirectCount%E3%80%81vkCmdDrawIndirectCountKHR%E3%80%81vkCmdDrawIndirectCountAMD"><span class="nav-text">4.1.3 vkCmdDrawIndirectCount、vkCmdDrawIndirectCountKHR、vkCmdDrawIndirectCountAMD</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-2-%E7%B4%A2%E5%BC%95%E7%BB%98%E5%9B%BE%E5%91%BD%E4%BB%A4"><span class="nav-text">4.2 索引绘图命令</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-1-vkCmdDrawIndexed"><span class="nav-text">4.2.1 vkCmdDrawIndexed</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-2-vkCmdDrawIndexedIndirect"><span class="nav-text">4.2.2 vkCmdDrawIndexedIndirect</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-3-vkCmdDrawIndexedIndirectCount%E3%80%81vkCmdDrawIndexedIndirectKHR%E3%80%81vkCmdDrawIndexedIndirectAMD"><span class="nav-text">4.2.3 vkCmdDrawIndexedIndirectCount、vkCmdDrawIndexedIndirectKHR、vkCmdDrawIndexedIndirectAMD</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%94-%E5%B0%8F%E7%BB%93"><span class="nav-text">五. 小结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">15</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

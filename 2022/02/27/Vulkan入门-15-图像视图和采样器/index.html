@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述回顾上一篇章中的读取图像的步骤:  首先利用stb-image库读取图片，将其内容存储在临时缓存区VkBuffer中，注意需要开辟GPU可见内存 通过VkImageCreateInfo结构指明图像格式并通过vkCreateImage创建VkImage对象 用VkBuffer图像文件中的像素填充创建的VkImage图像对象 填充图像对象需要使用VkImageMemoryBarrier 使用vkC">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vulkan入门(15)-图像视图和采样器">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述回顾上一篇章中的读取图像的步骤:  首先利用stb-image库读取图片，将其内容存储在临时缓存区VkBuffer中，注意需要开辟GPU可见内存 通过VkImageCreateInfo结构指明图像格式并通过vkCreateImage创建VkImage对象 用VkBuffer图像文件中的像素填充创建的VkImage图像对象 填充图像对象需要使用VkImageMemoryBarrier 使用vkC">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_1.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_2.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_3.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_4.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_5.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_6.png">
+<meta property="article:published_time" content="2022-02-26T19:35:34.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:44:47.967Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Vulkan">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vulkan入门(15)-图像视图和采样器 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vulkan入门(15)-图像视图和采样器
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:35:34 / 修改时间：03:44:47" itemprop="dateCreated datePublished" datetime="2022-02-27T03:35:34+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(15)-图像视图和采样器" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>回顾上一篇章中的读取图像的步骤:</p>
+<ol>
+<li>首先利用stb-image库读取图片，将其内容存储在临时缓存区VkBuffer中，注意需要开辟GPU可见内存</li>
+<li>通过VkImageCreateInfo结构指明图像格式并通过vkCreateImage创建VkImage对象</li>
+<li>用VkBuffer图像文件中的像素填充创建的VkImage图像对象<ol>
+<li>填充图像对象需要使用VkImageMemoryBarrier</li>
+<li>使用vkCmdPipelineBarrier使得图像填充Barrier生效</li>
+<li>通过vkCmdCopyBufferToImage完成图像像素从VkBuffer到VkImage的拷贝(填充)</li>
+<li>再通过VkImageMemoryBarrier指定图像是能够从着色器中的纹理图像开始采样</li>
+</ol>
+</li>
+<li>创建图像视图和图像采样器</li>
+<li>添加一个组合的图像采样器描述符来从纹理中采样颜色</li>
+</ol>
+<p>在图像采样器创建之前，我们首先看看纹理图像视图，这个是在我们创建交换链的时候见过:</p>
+<span id="more"></span>
+
+<h1 id="一-纹理图像视图-Texture-Image-View"><a href="#一-纹理图像视图-Texture-Image-View" class="headerlink" title="一. 纹理图像视图 Texture Image View"></a>一. 纹理图像视图 Texture Image View</h1><p>通过VkImageView类来存储纹理图像视图, 它描述了如何访问图像以及要访问的图像部分，创建VkImageView的方式也是通过一个结构体：VkImageViewCreateInfo, 来指明细节. 这部分我们在之前的交换链创建图像视图中有过接触，如果忘记了的话可以回顾一下。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line">VkImageView textureImageView;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="built_in">createTextureImage</span>();</span><br><span class="line">    <span class="built_in">createTextureImageView</span>();</span><br><span class="line">    <span class="built_in">createVertexBuffer</span>();</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">VkImageView <span class="title">createImageView</span><span class="params">(VkImage image, VkFormat format)</span> </span>&#123;</span><br><span class="line">    VkImageView imageView;</span><br><span class="line">    VkImageViewCreateInfo viewInfo = &#123;&#125;;</span><br><span class="line">    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;</span><br><span class="line">    viewInfo.image = image; <span class="comment">// 绑定 VkImage</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// viewType和format字段指定应如何解释图像数据</span></span><br><span class="line">    <span class="comment">// viewType参数指定图像为一维纹理，二维纹理，三维纹理或立方体贴图</span></span><br><span class="line">    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;</span><br><span class="line">    <span class="comment">// 图像格式</span></span><br><span class="line">    viewInfo.format = format;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// subresourceRange字段描述了图像的目的是什么以及应该访问图像的哪个部分。</span></span><br><span class="line">    <span class="comment">// 这里图像将用作颜色目标，没有任何mipmapping级别或多个层。</span></span><br><span class="line">    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;</span><br><span class="line">    viewInfo.subresourceRange.baseMipLevel = <span class="number">0</span>;</span><br><span class="line">    viewInfo.subresourceRange.levelCount = <span class="number">1</span>;</span><br><span class="line">    viewInfo.subresourceRange.baseArrayLayer = <span class="number">0</span>;</span><br><span class="line">    viewInfo.subresourceRange.layerCount = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 注意，通过vkCreateXXX创建的对象，不需要时要主动去释放</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateImageView</span>(device, &amp;viewInfo, <span class="literal">nullptr</span>, &amp;imageView) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create image views!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> imageView;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createImageViews</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 设置集合大小</span></span><br><span class="line">    swapChainImageViews.<span class="built_in">resize</span>(swapChainImages.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; swapChainImageViews.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        swapChainImageViews[i] = <span class="built_in">createImageView</span>(swapChainImages[i],</span><br><span class="line">                                        swapChainImageFormat);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createTextureImageView</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    textureImageView = <span class="built_in">createImageView</span>(textureImage,</span><br><span class="line">                                VK_FORMAT_R8G8B8A8_UNORM);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 在 vulkan 中推荐在创建的资源不需要后主动释放</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 清理交换链关联资源</span></span><br><span class="line">    <span class="built_in">cleanupSwapChain</span>();</span><br><span class="line">    <span class="comment">// 清理纹理贴图</span></span><br><span class="line">    <span class="built_in">vkDestroyImageView</span>(device, textureImageView, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkDestroyImage</span>(device, textureImage, <span class="literal">nullptr</span>);</span><br><span class="line">    <span class="built_in">vkFreeMemory</span>(device, textureImageMemory, <span class="literal">nullptr</span>);</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如上，纹理图像的视图创建成功了，很简单。接下来就是采样器的创建了。</p>
+<h1 id="二-采样器"><a href="#二-采样器" class="headerlink" title="二. 采样器"></a>二. 采样器</h1><p>着色器可以直接从图像读取纹理像素，但是当将其用作纹理时，一般不会直接读取。 通常通过采样器访问纹理，采样器将应用过滤和转换以计算最终获取的颜色。</p>
+<p>这些过滤器有助于处理过采样等问题。 考虑一个映射到几何图形的纹理，该纹理的碎片多于纹理像素。</p>
+<p>如果只是在每个片段中使用最接近的纹理像素作为纹理坐标，那么将获得下图左边图像的结果：</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_1.png" alt="图像15-1"></p>
+<p>而通过线性插值法将4个最接近的纹理像素组合在一起，那么将获得如上右图所示的更平滑的结果。 当然，您的应用程序可能具有更适合左侧风格的艺术风格要求（比如Minecraft，哈哈），但是在常规图形应用程序中，右侧风格是首选，图像越精细越好。 从纹理读取颜色时，采样器对象会自动为您应用此过滤。</p>
+<p>抽样不足(欠采样)则是相反的问题，比如纹理像素多于片段。这将导致在以锐角采样高频图案(如棋盘纹理)时产生伪影:</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_2.png" alt="图像15-2"></p>
+<p>如左图所示，纹理在远处变得模糊混乱。解决这个问题的方法是各向异性滤波，它也可以由采样器自动应用。</p>
+<p>除了这些过滤器，采样器还可以处理转换。它决定当你试图通过它的寻址模式读取图像外的texel时会发生什么。下面的图片显示了一些可能性:</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_3.png" alt="图像15-3"></p>
+<h2 id="2-1-createTextureSampler"><a href="#2-1-createTextureSampler" class="headerlink" title="2.1 createTextureSampler"></a>2.1 createTextureSampler</h2><p>现在创建一个函数createTextureSampler来设置这样的采样对象。稍后我们将在着色器中使用采样器从纹理中读取颜色:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line">VkImageView textureImageView;</span><br><span class="line">VkSampler textureSampler;</span><br><span class="line">...</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">initVulkan</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="built_in">createTextureImage</span>();</span><br><span class="line">    <span class="built_in">createTextureImageView</span>();</span><br><span class="line">    <span class="built_in">createTextureSampler</span>();</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">createTextureSampler</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 采样器通过VkSamplerCreateInfo结构进行配置，该结构指定了应应用的所有过滤器和转换。 </span></span><br><span class="line">    VkSamplerCreateInfo samplerInfo = &#123;&#125;;</span><br><span class="line">    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;</span><br><span class="line">    <span class="comment">// magFilter和minFilter字段指定如何对放大或缩小的纹理像素进行插值。</span></span><br><span class="line">    <span class="comment">// 放大倍数与上面描述的过采样问题有关，而缩小倍数与欠采样有关。</span></span><br><span class="line">    <span class="comment">// 指定要应用于查找的放大滤镜为线性过滤</span></span><br><span class="line">    samplerInfo.magFilter = VK_FILTER_LINEAR;</span><br><span class="line">    <span class="comment">// 指定要应用于查找的缩小过滤器为线性过滤</span></span><br><span class="line">    samplerInfo.minFilter = VK_FILTER_LINEAR;</span><br><span class="line">    <span class="comment">// 指定U、V、W坐标的[0..1]范围之外的寻址模式, 指定当超出图像尺寸时，重复纹理</span></span><br><span class="line">    <span class="comment">// 注意，轴称为U，V和W，而不是X，Y和Z。这是纹理空间坐标的约定</span></span><br><span class="line">    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;</span><br><span class="line">    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;</span><br><span class="line">    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// anisotropyEnable为true, 采样器使用使用各向异性过滤</span></span><br><span class="line">    samplerInfo.anisotropyEnable = VK_TRUE;</span><br><span class="line">    samplerInfo.maxAnisotropy = <span class="number">16</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// borderColor字段指定在使用边界寻址模式对图像进行采样以外时返回的颜色。 </span></span><br><span class="line">    <span class="comment">// 可以以float或int格式返回黑色，白色或透明。</span></span><br><span class="line">    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;</span><br><span class="line">    <span class="comment">// 指定要用于处理图像中纹理像素的坐标系</span></span><br><span class="line">    <span class="comment">// 为VK_FALSE，则将使用所有轴上的[0，1）范围对纹理像素进行寻址</span></span><br><span class="line">    samplerInfo.unnormalizedCoordinates = VK_FALSE;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果启用了比较功能，则将首先将纹理像素与一个值进行比较，并且该比较的结果将用于过滤操作中。 主要用于阴影贴图上的百分比封闭器过滤。</span></span><br><span class="line">    samplerInfo.compareEnable = VK_FALSE;</span><br><span class="line">    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 所有这些字段都适用于mipmapping。以后讨论mipmapping</span></span><br><span class="line">    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;</span><br><span class="line">    samplerInfo.mipLodBias = <span class="number">0.0f</span>;</span><br><span class="line">    samplerInfo.minLod = <span class="number">0.0f</span>;</span><br><span class="line">    samplerInfo.maxLod = <span class="number">0.0f</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建采样器，注意清理</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateSampler</span>(device, &amp;samplerInfo, <span class="literal">nullptr</span>, &amp;textureSampler) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create texture sampler!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">cleanup</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">cleanupSwapChain</span>();</span><br><span class="line">    <span class="comment">// 清理采样器</span></span><br><span class="line">    <span class="built_in">vkDestroySampler</span>(device, textureSampler, <span class="literal">nullptr</span>);</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>samplerInfo中的anisotropyEnable和maxAnisotropy这两个字段指定是否应该使用各向异性过滤。最大各向异性字段限制了可以用来计算最终颜色的texel样本的数量。数值越低，性能越好，但质量越低。目前没有任何图形硬件可以使用超过16个样本，因为超过这个值的差异就可以忽略不计了。</p>
+<p>unnormalizedCoordinates字段指定要用于处理图像中纹理像素的坐标系。 如果此字段为VK_TRUE，则可以简单地使用[0，texWidth）和[0，texHeight）范围内的坐标。 如果为VK_FALSE，则将使用所有轴上的[0，1）范围对纹理像素进行寻址。 实际应用中几乎总是使用归一化的坐标，因为这样一来，便可以使用分辨率完全相同的不同分辨率的纹理。</p>
+<p>请注意，采样器未在任何地方引用VkImage。 采样器是一个独特的对象，它提供了一个接口来从纹理中提取颜色。 它可以应用于所需的任何图像，无论是1D，2D还是3D。 这与许多较早的API不同，后者将纹理图像和过滤合并为一个状态。</p>
+<h2 id="2-2-VkSamplerCreateInfo"><a href="#2-2-VkSamplerCreateInfo" class="headerlink" title="2.2 VkSamplerCreateInfo"></a>2.2 VkSamplerCreateInfo</h2><p>VkSamplerCreateInfo结构体指定了采样器对象的状态：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="title class_">VkSamplerCreateInfo</span> &#123;</span><br><span class="line">    VkStructureType         sType;</span><br><span class="line">    <span class="type">const</span> <span class="type">void</span>*             pNext;</span><br><span class="line">    VkSamplerCreateFlags    flags;</span><br><span class="line">    VkFilter                magFilter;</span><br><span class="line">    VkFilter                minFilter;</span><br><span class="line">    VkSamplerMipmapMode     mipmapMode;</span><br><span class="line">    VkSamplerAddressMode    addressModeU;</span><br><span class="line">    VkSamplerAddressMode    addressModeV;</span><br><span class="line">    VkSamplerAddressMode    addressModeW;</span><br><span class="line">    <span class="type">float</span>                   mipLodBias;</span><br><span class="line">    VkBool32                anisotropyEnable;</span><br><span class="line">    <span class="type">float</span>                   maxAnisotropy;</span><br><span class="line">    VkBool32                compareEnable;</span><br><span class="line">    VkCompareOp             compareOp;</span><br><span class="line">    <span class="type">float</span>                   minLod;</span><br><span class="line">    <span class="type">float</span>                   maxLod;</span><br><span class="line">    VkBorderColor           borderColor;</span><br><span class="line">    VkBool32                unnormalizedCoordinates;</span><br><span class="line">&#125; VkSamplerCreateInfo;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>sType是此结构的类型， VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO</li>
+<li>pNext是NULL或指向扩展特定结构的指针</li>
+<li>flag是VkSamplerCreateFlagBits的位掩码，描述了采样器的其他参数</li>
+<li>magFilter是VkFilter值，用于指定要应用于查找的放大滤镜<ol>
+<li>VK_FILTER_NEAREST 指定最近的过滤</li>
+<li>VK_FILTER_LINEAR 指定线性过滤</li>
+<li>VK_FILTER_CUBIC_EXT 指定三次过滤</li>
+<li>VK_FILTER_CUBIC_IMG 指定三次过滤，同VK_FILTER_CUBIC_EXT</li>
+</ol>
+</li>
+<li>minFilter是一个VkFilter值，用于指定要应用于查找的缩小过滤器</li>
+<li>mipmapMode是VkSamplerMipmapMode值，指定要应用于查找的mipmap过滤器</li>
+<li>addressModeU是VkSamplerAddressMode值，用于为U坐标指定[0..1]范围之外的寻址模式<ol>
+<li>VK_SAMPLER_ADDRESS_MODE_REPEAT 当超出图像尺寸时，重复纹理</li>
+<li>VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT 类似于重复，但是当超出尺寸时会反转坐标以镜像图像</li>
+<li>VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE 在图像尺寸之外，获取最靠近坐标的边缘的颜色</li>
+<li>VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER 当采样超出图像尺寸时，返回纯色</li>
+<li>VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE 类似CLAMP_TO_EDGE，但使用与最近边缘相反的边缘,仅在启用samplerMirrorClampToEdge或启用[VK_KHR_sampler_mirror_clamp_to_edge]扩展名后才有效</li>
+</ol>
+</li>
+<li>addressModeV是VkSamplerAddressMode值，用于指定V坐标的[0..1]范围之外的寻址模式</li>
+<li>addressModeW是VkSamplerAddressMode值，它为W坐标指定[0..1]范围之外的寻址模式</li>
+<li>mipLodBias是要添加到mipmap LOD（详细程度）计算中的偏差，以及由SPIR-V中的图像采样功能提供的偏差</li>
+<li>anisotropyEnable为VK_TRUE以启用各向异性过滤，如“ Texel各向异性过滤”部分所述，否则为VK_FALSE</li>
+<li>maxAnisotropy是anisotropyEnable为VK_TRUE时采样器使用的各向异性值钳位。如果anisotropyEnable为VK_FALSE，则maxAnisotropy被忽略</li>
+<li>compareEnable为VK_TRUE，以允许在查找过程中与参考值进行比较，否则为VK_FALSE<ol>
+<li>注意：如果此成员不匹配，则某些实现将默认为着色器状态</li>
+</ol>
+</li>
+<li>compareOp是一个VkCompareOp值，它指定比较功能，以按“深度比较操作”部分所述在过滤之前将其应用于获取的数据</li>
+<li>minLod和maxLod是用于钳位计算的LOD值的值</li>
+<li>borderColor是VkBorderColor值，用于指定要使用的预定义边框颜色</li>
+<li>unnormalizedCoordinates指定要用于处理图像中纹理像素的坐标系。设置为VK_TRUE时，用于查找纹理像素的图像坐标的范围在0到x，y和z的图像尺寸的范围内。设置为VK_FALSE时，图像坐标范围为零到一。<ol>
+<li>当unnormalizedCoordinates为VK_TRUE时，在着色器中使用采样器的图像具有以下要求：<ol>
+<li>viewType必须为VK_IMAGE_VIEW_TYPE_1D或VK_IMAGE_VIEW_TYPE_2D</li>
+<li>图像视图必须具有单个图层和单个mip级别</li>
+</ol>
+</li>
+<li>当unnormalizedCoordinates为VK_TRUE时，使用采样器的着色器中的图像内置函数具有以下要求：<ol>
+<li>这些功能不得使用投影</li>
+<li>这些函数不得使用偏移量</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+<h2 id="2-3-vkCreateSampler"><a href="#2-3-vkCreateSampler" class="headerlink" title="2.3 vkCreateSampler"></a>2.3 vkCreateSampler</h2><p>VkSampler对象表示图像采样器的状态，实现可使用该对象读取图像数据并为着色器应用过滤和其他转换。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">VkResult <span class="title">vkCreateSampler</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    VkDevice                                    device,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkSamplerCreateInfo*                  pCreateInfo,</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> VkAllocationCallbacks*                pAllocator,</span></span></span><br><span class="line"><span class="params"><span class="function">    VkSampler*                                  pSampler)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>device是创建采样器的逻辑设备</li>
+<li>pCreateInfo是指向VkSamplerCreateInfo结构的指针，该结构指定采样器对象的状态</li>
+<li>pAllocator控制主机内存分配</li>
+<li>pSampler是指向VkSampler句柄的指针，在该句柄中返回生成的采样器对象</li>
+</ol>
+<h2 id="2-4-设备功能之各向异性过滤"><a href="#2-4-设备功能之各向异性过滤" class="headerlink" title="2.4 设备功能之各向异性过滤"></a>2.4 设备功能之各向异性过滤</h2><p>如果现在运行程序，则会看到如下所示的验证层消息：</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_4.png" alt="图片15-4"></p>
+<p>这是因为各向异性过滤实际上是一个可选的设备特性。我们需要更新createLogicalDevice函数来请求它:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">VkPhysicalDeviceFeatures deviceFeatures = &#123;&#125;;</span><br><span class="line">deviceFeatures.samplerAnisotropy = VK_TRUE;</span><br></pre></td></tr></table></figure>
+
+<p>即使现在的显卡不支持它的可能性很小，我们也应该更新isDeviceSuitable来检查它是否可用:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">isDeviceSuitable</span><span class="params">(VkPhysicalDevice device)</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    VkPhysicalDeviceFeatures supportedFeatures;</span><br><span class="line">    <span class="built_in">vkGetPhysicalDeviceFeatures</span>(device, &amp;supportedFeatures);</span><br><span class="line">    <span class="keyword">return</span> indices.<span class="built_in">isComplete</span>() &amp;&amp; extensionsSupported &amp;&amp;</span><br><span class="line">            swapChainAdequate &amp;&amp; supportedFeatures.samplerAnisotropy;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>vkGetPhysicalDeviceFeatures重新调整VkPhysicalDeviceFeatures结构的用途，通过设置布尔值来指示支持哪些功能，而不是请求哪些功能。</p>
+<p>除了强制各向异性过滤的可用性，也可以通过条件设置不使用它:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">samplerInfo.anisotropyEnable = VK_FALSE;</span><br><span class="line">samplerInfo.maxAnisotropy = <span class="number">1</span>;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-5-小结"><a href="#2-5-小结" class="headerlink" title="2.5 小结"></a>2.5 小结</h2><p>现在图像有了，接下来，我们将向着色器公开图像和采样器对象，以便将纹理绘制到正方形上并呈现出来。</p>
+<h1 id="三-组合图像采样器"><a href="#三-组合图像采样器" class="headerlink" title="三. 组合图像采样器"></a>三. 组合图像采样器</h1><p>我们在统一缓冲区部分中了解了描述符。 现在我们看一种新型的描述符：组合图像采样器。 该描述符使着色器可以通过采样器对象访问图像资源。</p>
+<p>我们将从修改描述符布局，描述符池和描述符集开始，以包括此类组合的图像采样器描述符。 之后，我们将向顶点添加纹理坐标，并修改片段着色器以从纹理读取颜色，而不仅仅是插入顶点颜色。</p>
+<h2 id="3-1-更新描述符"><a href="#3-1-更新描述符" class="headerlink" title="3.1 更新描述符"></a>3.1 更新描述符</h2><p>回到createDescriptorSetLayout函数，为组合的图像采样器描述符添加VkDescriptorSetLayoutBinding。 将其放在统一缓冲区之后的绑定中：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createDescriptorSetLayout</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    VkDescriptorSetLayoutBinding uboLayoutBinding = &#123;&#125;;</span><br><span class="line">    <span class="comment">// 指定在着色器中使用的绑定</span></span><br><span class="line">    uboLayoutBinding.binding = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 描述符的类型</span></span><br><span class="line">    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;</span><br><span class="line">    uboLayoutBinding.descriptorCount = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 指定描述符将在顶点着色器阶段被引用</span></span><br><span class="line">    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;</span><br><span class="line">    <span class="comment">// pImmutableSamplers仅与图像采样描述符有关</span></span><br><span class="line">    uboLayoutBinding.pImmutableSamplers = <span class="literal">nullptr</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建采样器描述符</span></span><br><span class="line">    VkDescriptorSetLayoutBinding samplerLayoutBinding = &#123;&#125;;</span><br><span class="line">    samplerLayoutBinding.binding = <span class="number">1</span>;</span><br><span class="line">    samplerLayoutBinding.descriptorCount = <span class="number">1</span>;</span><br><span class="line">    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;</span><br><span class="line">    samplerLayoutBinding.pImmutableSamplers = <span class="literal">nullptr</span>;</span><br><span class="line">    <span class="comment">// 指明片段着色器阶段可以使用组合的图像采样器描述符, 那就是片段颜色确定的地方。</span></span><br><span class="line">    <span class="comment">// 可以在顶点着色器中使用纹理采样，例如通过高度图使顶点网格动态变形。</span></span><br><span class="line">    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;</span><br><span class="line"></span><br><span class="line">    std::array&lt;VkDescriptorSetLayoutBinding, 2&gt; bindings = &#123;uboLayoutBinding, samplerLayoutBinding&#125;;</span><br><span class="line"></span><br><span class="line">    VkDescriptorSetLayoutCreateInfo layoutInfo = &#123;&#125;;</span><br><span class="line">    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;</span><br><span class="line">    layoutInfo.bindingCount = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(bindings.<span class="built_in">size</span>());</span><br><span class="line">    layoutInfo.pBindings = bindings.<span class="built_in">data</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建描述符集布局</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateDescriptorSetLayout</span>(device, &amp;layoutInfo, <span class="literal">nullptr</span>, &amp;descriptorSetLayout) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create descriptor set layout!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果您现在运行带有验证层的应用程序，那么会发现描述符池无法使用此布局分配描述符集，因为它没有任何组合的图像采样器描述符。</p>
+<p>转到createDescriptorPool函数并对其进行修改，以包括此描述符的VkDescriptorPoolSize：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createDescriptorPool</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    VkDescriptorPoolSize poolSize = &#123;&#125;;</span><br><span class="line">    <span class="comment">// 我们创建的是统一缓冲的描述符</span></span><br><span class="line">    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;</span><br><span class="line">    poolSize.descriptorCount = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(swapChainImages.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    std::array&lt;VkDescriptorPoolSize, 2&gt; poolSizes = &#123;&#125;;</span><br><span class="line">    <span class="comment">// 第一个是统一缓冲区描述符</span></span><br><span class="line">    poolSizes[<span class="number">0</span>].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;</span><br><span class="line">    poolSizes[<span class="number">0</span>].descriptorCount = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(swapChainImages.<span class="built_in">size</span>());</span><br><span class="line">    <span class="comment">// 第二个是纹理图像采样器描述符</span></span><br><span class="line">    poolSizes[<span class="number">1</span>].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;</span><br><span class="line">    poolSizes[<span class="number">1</span>].descriptorCount = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(swapChainImages.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    VkDescriptorPoolCreateInfo poolInfo = &#123;&#125;;</span><br><span class="line">    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;</span><br><span class="line">    poolInfo.poolSizeCount = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(poolSizes.<span class="built_in">size</span>());</span><br><span class="line">    poolInfo.pPoolSizes = poolSizes.<span class="built_in">data</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 除了可用的单个描述符的最大数量外，还需要指定可以分配的最大描述符集数量：与交换链图像数量一致</span></span><br><span class="line">    poolInfo.maxSets = <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(swapChainImages.<span class="built_in">size</span>());</span><br><span class="line">    <span class="comment">// 创建描述符池</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">vkCreateDescriptorPool</span>(device, &amp;poolInfo, <span class="literal">nullptr</span>, &amp;descriptorPool) != VK_SUCCESS) &#123;</span><br><span class="line">        <span class="keyword">throw</span> std::<span class="built_in">runtime_error</span>(<span class="string">&quot;failed to create descriptor pool!&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最后一步是将实际图像和采样器资源绑定到描述符集中的描述符。 转到createDescriptorSets函数:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">createDescriptorSets</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 配置描述符</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; descriptorSets.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        ...</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 绑定图像视图和采样器到描述符中</span></span><br><span class="line">        VkDescriptorImageInfo imageInfo = &#123;&#125;;</span><br><span class="line">        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 必须在VkDescriptorImageInfo结构中指定用于组合图像采样器结构的资源</span></span><br><span class="line">        imageInfo.imageView = textureImageView;</span><br><span class="line">        imageInfo.sampler = textureSampler;</span><br><span class="line"></span><br><span class="line">        std::array&lt;VkWriteDescriptorSet, 2&gt; descriptorWrites = &#123;&#125;;</span><br><span class="line">        descriptorWrites[<span class="number">0</span>].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;</span><br><span class="line">        descriptorWrites[<span class="number">0</span>].dstSet = descriptorSets[i];</span><br><span class="line">        descriptorWrites[<span class="number">0</span>].dstBinding = <span class="number">0</span>;</span><br><span class="line">        descriptorWrites[<span class="number">0</span>].dstArrayElement = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">// 绑定统一缓冲区至描述符</span></span><br><span class="line">        descriptorWrites[<span class="number">0</span>].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;</span><br><span class="line">        descriptorWrites[<span class="number">0</span>].descriptorCount = <span class="number">1</span>;</span><br><span class="line">        descriptorWrites[<span class="number">0</span>].pBufferInfo = &amp;bufferInfo;</span><br><span class="line"></span><br><span class="line">        descriptorWrites[<span class="number">1</span>].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;</span><br><span class="line">        descriptorWrites[<span class="number">1</span>].dstSet = descriptorSets[i];</span><br><span class="line">        descriptorWrites[<span class="number">1</span>].dstBinding = <span class="number">1</span>;</span><br><span class="line">        descriptorWrites[<span class="number">1</span>].dstArrayElement = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">// 绑定图像视图和相应的采样器至描述符</span></span><br><span class="line">        descriptorWrites[<span class="number">1</span>].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;</span><br><span class="line">        descriptorWrites[<span class="number">1</span>].descriptorCount = <span class="number">1</span>;</span><br><span class="line">        descriptorWrites[<span class="number">1</span>].pImageInfo = &amp;imageInfo;</span><br><span class="line">        <span class="comment">// 应用描述符集更新</span></span><br><span class="line">        <span class="built_in">vkUpdateDescriptorSets</span>(device,</span><br><span class="line">            <span class="built_in">static_cast</span>&lt;<span class="type">uint32_t</span>&gt;(descriptorWrites.<span class="built_in">size</span>()),</span><br><span class="line">            descriptorWrites.<span class="built_in">data</span>(), <span class="number">0</span>, <span class="literal">nullptr</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>必须在VkDescriptorImageInfo结构中指定用于组合图像采样器结构的资源，就像在VkDescriptorBufferInfo结构中指定用于统一缓冲区描述符的缓冲区资源一样。</p>
+<h2 id="3-2-纹理坐标"><a href="#3-2-纹理坐标" class="headerlink" title="3.2 纹理坐标"></a>3.2 纹理坐标</h2><p>纹理映射还有一个重要要素就是每个顶点的实际坐标。 坐标决定了图像如何实际映射到几何体:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">Vertex</span> &#123;</span><br><span class="line">    glm::vec2 pos;</span><br><span class="line">    glm::vec3 color;</span><br><span class="line">    glm::vec2 texCoord;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="type">static</span> VkVertexInputBindingDescription <span class="title">getBindingDescription</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        VkVertexInputBindingDescription bindingDescription = &#123;&#125;;</span><br><span class="line">        bindingDescription.binding = <span class="number">0</span>;</span><br><span class="line">        bindingDescription.stride = <span class="built_in">sizeof</span>(Vertex);</span><br><span class="line">        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;</span><br><span class="line">        <span class="keyword">return</span> bindingDescription;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="type">static</span> std::array&lt;VkVertexInputAttributeDescription, 3&gt; <span class="title">getAttributeDescriptions</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        std::array&lt;VkVertexInputAttributeDescription, 3&gt; attributeDescriptions = &#123;&#125;;</span><br><span class="line">        <span class="comment">// position 顶点输入位置属性描述符</span></span><br><span class="line">        attributeDescriptions[<span class="number">0</span>].binding = <span class="number">0</span>;</span><br><span class="line">        attributeDescriptions[<span class="number">0</span>].location = <span class="number">0</span>;</span><br><span class="line">        attributeDescriptions[<span class="number">0</span>].format = VK_FORMAT_R32G32_SFLOAT;</span><br><span class="line">        attributeDescriptions[<span class="number">0</span>].offset = <span class="built_in">offsetof</span>(Vertex, pos);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// color 顶点输入颜色属性描述符</span></span><br><span class="line">        attributeDescriptions[<span class="number">1</span>].binding = <span class="number">0</span>;</span><br><span class="line">        attributeDescriptions[<span class="number">1</span>].location = <span class="number">1</span>;</span><br><span class="line">        attributeDescriptions[<span class="number">1</span>].format = VK_FORMAT_R32G32B32_SFLOAT;</span><br><span class="line">        attributeDescriptions[<span class="number">1</span>].offset = <span class="built_in">offsetof</span>(Vertex, color);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// coordinates 顶点输入坐标属性描述符</span></span><br><span class="line">        attributeDescriptions[<span class="number">2</span>].binding = <span class="number">0</span>;</span><br><span class="line">        attributeDescriptions[<span class="number">2</span>].location = <span class="number">2</span>;</span><br><span class="line">        attributeDescriptions[<span class="number">2</span>].format = VK_FORMAT_R32G32_SFLOAT;</span><br><span class="line">        attributeDescriptions[<span class="number">2</span>].offset = <span class="built_in">offsetof</span>(Vertex, texCoord);</span><br><span class="line">        <span class="keyword">return</span> attributeDescriptions;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>修改“顶点”结构，使其包含用于纹理坐标的vec2（texCoord）。 确保还添加了VkVertexInputAttributeDescription，以便我们可以将访问纹理坐标用作顶点着色器中的输入。 要将它们传递到片段着色器以便在正方形表面上进行插值，这是必要的。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> std::vector&lt;Vertex&gt; vertices = &#123;</span><br><span class="line">    &#123;&#123;<span class="number">-0.5f</span>, <span class="number">-0.5f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">0.0f</span>, <span class="number">0.0f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">0.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">0.5f</span>, <span class="number">-0.5f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">1.0f</span>, <span class="number">0.0f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">0.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">0.5f</span>, <span class="number">0.5f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">0.0f</span>, <span class="number">1.0f</span>&#125;, &#123;<span class="number">0.0f</span>, <span class="number">1.0f</span>&#125;&#125;,</span><br><span class="line">    &#123;&#123;<span class="number">-0.5f</span>, <span class="number">0.5f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">1.0f</span>, <span class="number">1.0f</span>&#125;, &#123;<span class="number">1.0f</span>, <span class="number">1.0f</span>&#125;&#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>先使用从左上角的0、0到右下角的1、1的坐标简单地用纹理填充正方形。 随意尝试使用不同的坐标。 稍后我们看看低于0或高于1的坐标下的实际的寻址模式！</p>
+<h2 id="3-3-着色器"><a href="#3-3-着色器" class="headerlink" title="3.3 着色器"></a>3.3 着色器</h2><p>最后一步是修改着色器，以从纹理中采样颜色。 我们首先需要修改顶点着色器，以将纹理坐标传递到片段着色器：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">in</span> <span class="type">vec2</span> inPosition;</span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">1</span>) <span class="keyword">in</span> <span class="type">vec3</span> inColor;</span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">2</span>) <span class="keyword">in</span> <span class="type">vec2</span> inTexCoord;</span><br><span class="line"></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">out</span> <span class="type">vec3</span> fragColor;</span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">1</span>) <span class="keyword">out</span> <span class="type">vec2</span> fragTexCoord;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    <span class="built_in">gl_Position</span> = ubo.proj * ubo.view * ubo.model * <span class="type">vec4</span>(inPosition, <span class="number">0.0</span>, <span class="number">1.0</span>);</span><br><span class="line">    fragColor = inColor;</span><br><span class="line">    fragTexCoord = inTexCoord;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>就像每个顶点的颜色一样，栅格化器会将fragTexCoord值平滑地插入到正方形区域中。 我们可以通过使片段着色器将纹理坐标输出为颜色来形象化：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#version 450</span></span><br><span class="line"><span class="meta">#extension GL_ARB_separate_shader_objects : enable</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">in</span> <span class="type">vec3</span> fragColor;</span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">1</span>) <span class="keyword">in</span> <span class="type">vec2</span> fragTexCoord;</span><br><span class="line"></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">location</span> = <span class="number">0</span>) <span class="keyword">out</span> <span class="type">vec4</span> outColor;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    outColor = <span class="type">vec4</span>(fragTexCoord, <span class="number">0.0</span>, <span class="number">1.0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>现在我们编译下着色器，然后运行下程序:</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_5.png" alt="图片15-5"></p>
+<h3 id="3-3-1-片段着色器中的图像采样器描述符"><a href="#3-3-1-片段着色器中的图像采样器描述符" class="headerlink" title="3.3.1 片段着色器中的图像采样器描述符"></a>3.3.1 片段着色器中的图像采样器描述符</h3><p>组合的图像采样器描述符在GLSL中由采样器统一表示。 在片段着色器中添加对它的引用：</p>
+<figure class="highlight glsl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># 对于其他类型的图像，存在等效的sampler1D和sampler3D类型。 确保在此处使用正确的绑定。 </span></span><br><span class="line"><span class="keyword">layout</span>(<span class="keyword">binding</span> = <span class="number">1</span>) <span class="keyword">uniform</span> <span class="type">sampler2D</span> texSampler;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> main() &#123;</span><br><span class="line">    outColor = <span class="built_in">texture</span>(texSampler, fragTexCoord);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>编译一下shader然后运行程序:</p>
+<p><img src="/images/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/Vulkan_15_6.png" alt="图像15-6"></p>
+<p>哒哒，一个旋转的贴图出现了！</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" title="Vulkan入门(15)-图像视图和采样器">https://swallowjoe.github.io/2022/02/27/Vulkan入门-15-图像视图和采样器/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Vulkan/" rel="tag"># Vulkan</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/" rel="prev" title="Vulkan入门(14)-VkImage图像的创建">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(14)-VkImage图像的创建
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-%E7%BA%B9%E7%90%86%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE-Texture-Image-View"><span class="nav-text">一. 纹理图像视图 Texture Image View</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-%E9%87%87%E6%A0%B7%E5%99%A8"><span class="nav-text">二. 采样器</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-createTextureSampler"><span class="nav-text">2.1 createTextureSampler</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-VkSamplerCreateInfo"><span class="nav-text">2.2 VkSamplerCreateInfo</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-vkCreateSampler"><span class="nav-text">2.3 vkCreateSampler</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-%E8%AE%BE%E5%A4%87%E5%8A%9F%E8%83%BD%E4%B9%8B%E5%90%84%E5%90%91%E5%BC%82%E6%80%A7%E8%BF%87%E6%BB%A4"><span class="nav-text">2.4 设备功能之各向异性过滤</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-%E5%B0%8F%E7%BB%93"><span class="nav-text">2.5 小结</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-%E7%BB%84%E5%90%88%E5%9B%BE%E5%83%8F%E9%87%87%E6%A0%B7%E5%99%A8"><span class="nav-text">三. 组合图像采样器</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-%E6%9B%B4%E6%96%B0%E6%8F%8F%E8%BF%B0%E7%AC%A6"><span class="nav-text">3.1 更新描述符</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-%E7%BA%B9%E7%90%86%E5%9D%90%E6%A0%87"><span class="nav-text">3.2 纹理坐标</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-%E7%9D%80%E8%89%B2%E5%99%A8"><span class="nav-text">3.3 着色器</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-1-%E7%89%87%E6%AE%B5%E7%9D%80%E8%89%B2%E5%99%A8%E4%B8%AD%E7%9A%84%E5%9B%BE%E5%83%8F%E9%87%87%E6%A0%B7%E5%99%A8%E6%8F%8F%E8%BF%B0%E7%AC%A6"><span class="nav-text">3.3.1 片段着色器中的图像采样器描述符</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">15</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
