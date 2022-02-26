@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简述本文详细分析android的消息机制Looper的底层原理。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Looper-Android中的消息机制">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简述本文详细分析android的消息机制Looper的底层原理。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/Handler.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/Looper.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/Delivery_Dispatch.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/MessageHandle.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android中的消息机制/epoll_1.jpg">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android中的消息机制/epoll_2.jpg">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android中的消息机制/epoll_3.jpg">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Looper-Android中的消息机制/epoll_4.jpg">
+<meta property="article:published_time" content="2022-02-26T19:48:26.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:57:34.959Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Looper">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/Handler.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Looper-Android中的消息机制 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Looper-Android中的消息机制
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:48:26 / 修改时间：03:57:34" itemprop="dateCreated datePublished" datetime="2022-02-27T03:48:26+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Looper/" itemprop="url" rel="index"><span itemprop="name">Looper</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" class="post-meta-item leancloud_visitors" data-flag-title="Looper-Android中的消息机制" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>本文详细分析android的消息机制Looper的底层原理。</p>
+<span id="more"></span>
+
+<p><strong>以下分析基于Android S.</strong></p>
+<p>初学Android的时候, 比较容易遇到如下错误:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">E AndroidRuntime: FATAL EXCEPTION: 非UI线程</span><br><span class="line">E AndroidRuntime: Process: com.android.demo, PID: 23939</span><br><span class="line">E AndroidRuntime: android.view.ViewRootImpl$CalledFromWrongThreadException: Only the original thread that created a view hierarchy can touch its views.</span><br><span class="line">E AndroidRuntime: 	at android.view.ViewRootImpl.checkThread(ViewRootImpl.java:9587)</span><br><span class="line">E AndroidRuntime: 	at android.view.ViewRootImpl.requestLayout(ViewRootImpl.java:1894)</span><br><span class="line">......</span><br><span class="line">E AndroidRuntime: 	at java.lang.Thread.run(Thread.java:923)</span><br></pre></td></tr></table></figure>
+
+<p>往往是我们在非UI线程更新UI组件导致的。解决的方案也很简单，将更新组件的操作移入UI线程执行即可。此时就需要用到Android中非常基础又非常重要的Handler、Looper、Message这三个类:</p>
+<figure class="highlight kt"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">var</span> uiHandler = UiHandler(Looper.getMainLooper())</span><br><span class="line"><span class="keyword">val</span> message = uiHandler.obtainMessage(MSG_UPDATE_UI)</span><br><span class="line">message.obj = <span class="string">&quot;我在UI线程中更新UI组件哦!&quot;</span></span><br><span class="line">uiHandler.sendMessage(message)</span><br><span class="line"></span><br><span class="line"><span class="keyword">companion</span> <span class="keyword">object</span> &#123;</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">val</span> MSG_UPDATE_UI = <span class="number">0x1</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">inner</span> <span class="class"><span class="keyword">class</span> <span class="title">UiHandler</span></span>(looper: Looper) : Handler(looper) &#123;</span><br><span class="line">    <span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">handleMessage</span><span class="params">(msg: <span class="type">Message</span>)</span></span> &#123;</span><br><span class="line">        <span class="keyword">super</span>.handleMessage(msg)</span><br><span class="line">        <span class="keyword">when</span> (msg.what) &#123;</span><br><span class="line">            MSG_UPDATE_UI -&gt; &#123;</span><br><span class="line">                textview.text = msg.obj <span class="keyword">as</span> String</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如上，设置Handler的Looper为MainLooper，然后通过sendMessage将封装数据的Message发送到MainLooper代表的UI线程中处理，就这样切换了线程。接下来我们研究下其中的原理，为什么Looper有main looper, Handler的sendMessage是怎么找到对应线程，然后调用handleMessage的。</p>
+<p>或者通过Looper prepare的方式， 其实也是获取主线程的Looper实现的:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Keep</span> <span class="keyword">extends</span> <span class="title class_">Thread</span> &#123;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">final</span> <span class="type">int</span> <span class="variable">MSG_A</span> <span class="operator">=</span> <span class="number">0x00</span>;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">final</span> <span class="type">int</span> <span class="variable">MSG_B</span> <span class="operator">=</span> <span class="number">0x00</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> Handler handler;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">run</span><span class="params">()</span> &#123;</span><br><span class="line">        Looper.prepare();</span><br><span class="line">        handler = <span class="keyword">new</span> <span class="title class_">Handler</span>() &#123;</span><br><span class="line">            <span class="meta">@Override</span></span><br><span class="line">            <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">handleMessage</span><span class="params">(Message msg)</span> &#123;</span><br><span class="line">                <span class="keyword">switch</span> (msg.what) &#123;</span><br><span class="line">                    <span class="keyword">case</span> MSG_A: &#123; <span class="comment">/* .... */</span> &#125; <span class="keyword">break</span>;</span><br><span class="line">                    <span class="keyword">case</span> MSG_B: &#123; <span class="comment">/* .... */</span> &#125; <span class="keyword">break</span>;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;;</span><br><span class="line">        Looper.loop();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这样我们在需要的时候执行: handler.sendMessage(handler.obtain(MSG_A)) 即可以实现线程交换了, 除了sendMessage，还有如下方式:</p>
+<p><img src="/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/Handler.png" alt="Handler"></p>
+<p>Android系统中大量使用Message来进行跨线程通信，实现交互，设计四个类：Message、Handler、Looper和MessageQueue, 类图如下:</p>
+<p><img src="/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/Looper.png" alt="Looper类图"></p>
+<ol>
+<li>Message: 消息，封装待传递的数据</li>
+<li>Handler: 消息辅助类，向消息池(MessageQueue)中存入消息和接收消息进行处理</li>
+<li>Looper:  如其名，封装一个不断循环的函数体，不停的从消息池(MessageQueue)中取出合适的消息交给Handler处理</li>
+<li>MessageQueue: 消息池，维护了一个由消息组成的链表，该链表按照消息执行的时间顺序排列</li>
+</ol>
+<p>我们首先看看UI线程的Looper获取：Looper.getMainLooper()</p>
+<h1 id="一-Main-Looper的创建"><a href="#一-Main-Looper的创建" class="headerlink" title="一. Main Looper的创建"></a>一. Main Looper的创建</h1><h2 id="1-1-Looper-getMainLooper"><a href="#1-1-Looper-getMainLooper" class="headerlink" title="1.1 Looper.getMainLooper"></a>1.1 Looper.getMainLooper</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> Looper <span class="title function_">getMainLooper</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (Looper.class) &#123;</span><br><span class="line">        <span class="keyword">return</span> sMainLooper;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>返回的就是Looper中静态变量sMainLooper。那么该sMainLooper是何时创建的呢：</p>
+<h2 id="1-2-sMainLooper"><a href="#1-2-sMainLooper" class="headerlink" title="1.2 sMainLooper"></a>1.2 sMainLooper</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">prepareMainLooper</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// 1.2.1 Looper准备工作</span></span><br><span class="line">    prepare(<span class="literal">false</span>);</span><br><span class="line">    <span class="keyword">synchronized</span> (Looper.class) &#123;</span><br><span class="line">        <span class="keyword">if</span> (sMainLooper != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalStateException</span>(<span class="string">&quot;The main Looper has already been prepared.&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 1.2.3 myLooper拿的就是当前线程的Looper.</span></span><br><span class="line">        sMainLooper = myLooper();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>sMainLooper是在Looper.prepareMainLooper被<strong>第一次调用</strong>时赋值的。而prepareMainLooper是在ActivityThread.main函数中调用的:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ActivityThread.java</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    Looper.prepareMainLooper();</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 1.3 执行loop</span></span><br><span class="line">    Looper.loop();</span><br><span class="line">    <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">RuntimeException</span>(<span class="string">&quot;Main thread loop unexpectedly exited&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在Zygote启动进程时，进程的入口函数是ActivityThread.main，也就是说三方进程启动后第一时间就会调用Looper.prepareMainLooper()设置sMainLooper。</p>
+<h3 id="1-2-1-Looper-prepare"><a href="#1-2-1-Looper-prepare" class="headerlink" title="1.2.1 Looper.prepare"></a>1.2.1 Looper.prepare</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">prepare</span><span class="params">()</span> &#123;</span><br><span class="line">    prepare(<span class="literal">true</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// quitAllowed 这个参数表明该Looper是否允许退出</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">prepare</span><span class="params">(<span class="type">boolean</span> quitAllowed)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (sThreadLocal.get() != <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">RuntimeException</span>(<span class="string">&quot;Only one Looper may be created per thread&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 1.2.2 注意这里创建了一个Looper, 并保存在sThreadLocal中</span></span><br><span class="line">    sThreadLocal.set(<span class="keyword">new</span> <span class="title class_">Looper</span>(quitAllowed));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>quitAllowed 这个参数表明该Looper是否允许退出，自然UI线程(主线程)是不允许退出的，除非被kill或者进程自杀。</p>
+<p>这里稍微提一下，sThreadLocal是ThreadLocal类型，实现了线程本地存储区(Thread Local Storage, 简称TLS)。每个线程都有自己私有的存储区域，不同线程之间彼此不能访问对方的TSL区域。简单来说，可以将这里的 <strong>sThreadLocal 视为一个Map集合，其中key为Thread, value是Looper</strong>, <strong>每次set和get都是获取当前线程对应的Looper</strong></p>
+<h3 id="1-2-2-Looper-的创建"><a href="#1-2-2-Looper-的创建" class="headerlink" title="1.2.2 Looper 的创建"></a>1.2.2 Looper 的创建</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="title function_">Looper</span><span class="params">(<span class="type">boolean</span> quitAllowed)</span> &#123;</span><br><span class="line">    <span class="comment">// 3.1 MessageQueue创建</span></span><br><span class="line">    mQueue = <span class="keyword">new</span> <span class="title class_">MessageQueue</span>(quitAllowed);</span><br><span class="line">    mThread = Thread.currentThread();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>简单的创建了一个MessageQueue,并保存创建该Looper的线程。</p>
+<h3 id="1-2-3-Looper-myLooper"><a href="#1-2-3-Looper-myLooper" class="headerlink" title="1.2.3 Looper.myLooper"></a>1.2.3 Looper.myLooper</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="meta">@Nullable</span> Looper <span class="title function_">myLooper</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> sThreadLocal.get();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过sThreadLocal获取当前线程对应的Looper.</p>
+<h2 id="1-3-Looper-loop"><a href="#1-3-Looper-loop" class="headerlink" title="1.3 Looper.loop"></a>1.3 Looper.loop</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">loop</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// 获取当前线程的Looper</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Looper</span> <span class="variable">me</span> <span class="operator">=</span> myLooper();</span><br><span class="line">    <span class="comment">// Looper一定存在某个线程中，线程不一定拥有Looper</span></span><br><span class="line">    <span class="keyword">if</span> (me == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">RuntimeException</span>(<span class="string">&quot;No Looper; Looper.prepare() wasn&#x27;t called on this thread.&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// adb shell &#x27;setprop log.looper.1000.main.slow 1 &amp;&amp; stop &amp;&amp; start&#x27;</span></span><br><span class="line">    <span class="comment">// 用于修改记录Looper中的Message是否执行慢或者超时的时长</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">thresholdOverride</span> <span class="operator">=</span></span><br><span class="line">            SystemProperties.getInt(<span class="string">&quot;log.looper.&quot;</span></span><br><span class="line">                    + Process.myUid() + <span class="string">&quot;.&quot;</span></span><br><span class="line">                    + Thread.currentThread().getName()</span><br><span class="line">                    + <span class="string">&quot;.slow&quot;</span>, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果有message分发超时，这个变量就会被标记为true</span></span><br><span class="line">    me.mSlowDeliveryDetected = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这个就是Loop名称的由来，一直循环</span></span><br><span class="line">    <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!loopOnce(me, ident, thresholdOverride)) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>loop()函数很简单，就一直循环执行loopOnce就可</p>
+<h2 id="1-4-Looper-loopOnce"><a href="#1-4-Looper-loopOnce" class="headerlink" title="1.4 Looper.loopOnce"></a>1.4 Looper.loopOnce</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="type">boolean</span> <span class="title function_">loopOnce</span><span class="params">(<span class="keyword">final</span> Looper me,</span></span><br><span class="line"><span class="params">        <span class="keyword">final</span> <span class="type">long</span> ident, <span class="keyword">final</span> <span class="type">int</span> thresholdOverride)</span> &#123;</span><br><span class="line">    <span class="comment">// 5.1 通过MessageQueue获取下一个Message, 这里稍后分析</span></span><br><span class="line">    <span class="type">Message</span> <span class="variable">msg</span> <span class="operator">=</span> me.mQueue.next();</span><br><span class="line">    <span class="keyword">if</span> (msg == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="comment">// 获取的下一个Message为null，说明该Looper将要退出</span></span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// mLogging是Printer的对象，可以通过: looper.setMessageLogging(printer)设置</span></span><br><span class="line">    <span class="comment">// 用于打印Looper日志，如下：</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Printer</span> <span class="variable">logging</span> <span class="operator">=</span> me.mLogging;</span><br><span class="line">    <span class="keyword">if</span> (logging != <span class="literal">null</span>) &#123;</span><br><span class="line">        logging.println(<span class="string">&quot;&gt;&gt;&gt;&gt;&gt; Dispatching to &quot;</span> + msg.target + <span class="string">&quot; &quot;</span></span><br><span class="line">                + msg.callback + <span class="string">&quot;: &quot;</span> + msg.what);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// Make sure the observer won&#x27;t change while processing a transaction.</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Observer</span> <span class="variable">observer</span> <span class="operator">=</span> sObserver;</span><br><span class="line">    <span class="comment">// traceTag用于抓取systrace，通过looper.setTraceTag设置</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">long</span> <span class="variable">traceTag</span> <span class="operator">=</span> me.mTraceTag;</span><br><span class="line">    <span class="comment">// mSlowDispatchThresholdMs和mSlowDeliveryThresholdMs默认都是0</span></span><br><span class="line">    <span class="comment">// 可以通过setSlowLogThresholdMs设置</span></span><br><span class="line">    <span class="comment">// 比如SystemServer主线程的looper就被分别设置为100ms，200ms</span></span><br><span class="line">    <span class="type">long</span> <span class="variable">slowDispatchThresholdMs</span> <span class="operator">=</span> me.mSlowDispatchThresholdMs;</span><br><span class="line">    <span class="type">long</span> <span class="variable">slowDeliveryThresholdMs</span> <span class="operator">=</span> me.mSlowDeliveryThresholdMs;</span><br><span class="line">    <span class="keyword">if</span> (thresholdOverride &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// thresholdOverride可以通过属性修改:setprop log.looper.1000.main.slow 1</span></span><br><span class="line">        slowDispatchThresholdMs = thresholdOverride;</span><br><span class="line">        slowDeliveryThresholdMs = thresholdOverride;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">logSlowDelivery</span> <span class="operator">=</span> (slowDeliveryThresholdMs &gt; <span class="number">0</span>) &amp;&amp; (msg.when &gt; <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">logSlowDispatch</span> <span class="operator">=</span> (slowDispatchThresholdMs &gt; <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">needStartTime</span> <span class="operator">=</span> logSlowDelivery || logSlowDispatch;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">needEndTime</span> <span class="operator">=</span> logSlowDispatch;</span><br><span class="line">    <span class="comment">// 开始抓取trace</span></span><br><span class="line">    <span class="keyword">if</span> (traceTag != <span class="number">0</span> &amp;&amp; Trace.isTagEnabled(traceTag)) &#123;</span><br><span class="line">        Trace.traceBegin(traceTag, msg.target.getTraceName(msg));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 记录Message分发开始的时间</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">long</span> <span class="variable">dispatchStart</span> <span class="operator">=</span> needStartTime ? SystemClock.uptimeMillis() : <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">long</span> dispatchEnd;</span><br><span class="line">    <span class="type">Object</span> <span class="variable">token</span> <span class="operator">=</span> <span class="literal">null</span>;</span><br><span class="line">    <span class="keyword">if</span> (observer != <span class="literal">null</span>) &#123;</span><br><span class="line">        token = observer.messageDispatchStarting();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="type">long</span> <span class="variable">origWorkSource</span> <span class="operator">=</span> ThreadLocalWorkSource.setUid(msg.workSourceUid);</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="comment">// 1.4.1 分发message， 这里的target就是Handler</span></span><br><span class="line">        msg.target.dispatchMessage(msg);</span><br><span class="line">        <span class="keyword">if</span> (observer != <span class="literal">null</span>) &#123;</span><br><span class="line">            observer.messageDispatched(token, msg);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 记录消息分发结束时间</span></span><br><span class="line">        dispatchEnd = needEndTime ? SystemClock.uptimeMillis() : <span class="number">0</span>;</span><br><span class="line">    &#125; <span class="keyword">catch</span> (Exception exception) &#123;</span><br><span class="line">        <span class="keyword">if</span> (observer != <span class="literal">null</span>) &#123;</span><br><span class="line">            observer.dispatchingThrewException(token, msg, exception);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">throw</span> exception;</span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">        ThreadLocalWorkSource.restore(origWorkSource);</span><br><span class="line">        <span class="keyword">if</span> (traceTag != <span class="number">0</span>) &#123;</span><br><span class="line">            Trace.traceEnd(traceTag);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (logSlowDelivery) &#123;</span><br><span class="line">        <span class="comment">// mSlowDeliveryDetected 表明之前就有消息等待分发超时了</span></span><br><span class="line">        <span class="keyword">if</span> (me.mSlowDeliveryDetected) &#123;</span><br><span class="line">            <span class="comment">// message分发时间和该message需要执行的时间相差不超过10ms，说明Message分发及时</span></span><br><span class="line">            <span class="comment">// 去掉之前标记的消息分发超时</span></span><br><span class="line">            <span class="keyword">if</span> ((dispatchStart - msg.when) &lt;= <span class="number">10</span>) &#123;</span><br><span class="line">                Slog.w(TAG, <span class="string">&quot;Drained&quot;</span>);</span><br><span class="line">                me.mSlowDeliveryDetected = <span class="literal">false</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">// 这里就是检测Message等待分发是否超过阈值</span></span><br><span class="line">            <span class="comment">// 打印的日志如： Looper: Slow delivery took 233ms android.ui h=com.XXX c=null m=31</span></span><br><span class="line">            <span class="keyword">if</span> (showSlowLog(slowDeliveryThresholdMs, msg.when, dispatchStart, <span class="string">&quot;delivery&quot;</span>,</span><br><span class="line">                    msg)) &#123;</span><br><span class="line">                <span class="comment">// Once we write a slow delivery log, suppress until the queue drains.</span></span><br><span class="line">                me.mSlowDeliveryDetected = <span class="literal">true</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 消息分发是否超时</span></span><br><span class="line">    <span class="comment">// 打印的日志如： Looper: Slow dispatch took 233ms android.ui h=com.XXX c=null m=31</span></span><br><span class="line">    <span class="keyword">if</span> (logSlowDispatch) &#123;</span><br><span class="line">        showSlowLog(slowDispatchThresholdMs, dispatchStart, dispatchEnd, <span class="string">&quot;dispatch&quot;</span>, msg);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (logging != <span class="literal">null</span>) &#123;</span><br><span class="line">        logging.println(<span class="string">&quot;&lt;&lt;&lt;&lt;&lt; Finished to &quot;</span> + msg.target + <span class="string">&quot; &quot;</span> + msg.callback);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 回收该Message</span></span><br><span class="line">    msg.recycleUnchecked();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>loopOnce函数看起来也很简单，一直从MessageQueue中获取Message并执行Handler.handleMessage函数。除非拿到的message是null时返回false，否则永远返回true。<br>注意弄清 delivery 和 dispatch 的区别：</p>
+<ol>
+<li>delivery: 消息被拿出准备分发的时间与消息期望被执行的时间差</li>
+<li>dispatch: 消息处理的总时间，即handle.dispatchMessage的执行时长</li>
+</ol>
+<p><img src="/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/Delivery_Dispatch.png" alt="Delivery_Dispatch"></p>
+<h3 id="1-4-1-Handler-dispatchMessage"><a href="#1-4-1-Handler-dispatchMessage" class="headerlink" title="1.4.1 Handler.dispatchMessage"></a>1.4.1 Handler.dispatchMessage</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">dispatchMessage</span><span class="params">(<span class="meta">@NonNull</span> Message msg)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (msg.callback != <span class="literal">null</span>) &#123;</span><br><span class="line">        handleCallback(msg);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (mCallback != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">if</span> (mCallback.handleMessage(msg)) &#123;</span><br><span class="line">                <span class="keyword">return</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 执行我们重载的函数了</span></span><br><span class="line">        handleMessage(msg);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们知道在Handler.handleMessage这里已经转到Handler对应Looper所在的线程了。这样看起来，线程切换的奥秘都被隐藏在MessageQueue中了。</p>
+<h1 id="二-Message"><a href="#二-Message" class="headerlink" title="二. Message"></a>二. Message</h1><p>在分析MessageQueue之前，简单看一下Message的设计。</p>
+<table>
+<thead>
+<tr>
+<th>变量</th>
+<th>类型</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>what</td>
+<td>int</td>
+<td>标明消息类别</td>
+</tr>
+<tr>
+<td>arg1</td>
+<td>int</td>
+<td>参数1</td>
+</tr>
+<tr>
+<td>arg2</td>
+<td>int</td>
+<td>参数2</td>
+</tr>
+<tr>
+<td>obj</td>
+<td>Object</td>
+<td>消息内容</td>
+</tr>
+<tr>
+<td>when</td>
+<td>long</td>
+<td>消息期望触发时间</td>
+</tr>
+<tr>
+<td>data</td>
+<td>Bundle</td>
+<td>消息附带内容</td>
+</tr>
+<tr>
+<td>target</td>
+<td>Handler</td>
+<td>消息触发执行的Handler</td>
+</tr>
+<tr>
+<td>callback</td>
+<td>Runnable</td>
+<td>消息执行的Runnable</td>
+</tr>
+<tr>
+<td>next</td>
+<td>Message</td>
+<td>下一个消息, 消息链表结构基础</td>
+</tr>
+</tbody></table>
+<h2 id="2-1-消息链表结构"><a href="#2-1-消息链表结构" class="headerlink" title="2.1 消息链表结构"></a>2.1 消息链表结构</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@UnsupportedAppUsage</span></span><br><span class="line"><span class="comment">/*package*/</span> Message next;</span><br><span class="line"></span><br><span class="line"><span class="comment">/** <span class="doctag">@hide</span> */</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">final</span> <span class="type">Object</span> <span class="variable">sPoolSync</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Object</span>();</span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> Message sPool;</span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="type">int</span> <span class="variable">sPoolSize</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">final</span> <span class="type">int</span> <span class="variable">MAX_POOL_SIZE</span> <span class="operator">=</span> <span class="number">50</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> Message <span class="title function_">obtain</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (sPoolSync) &#123;</span><br><span class="line">        <span class="keyword">if</span> (sPool != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="type">Message</span> <span class="variable">m</span> <span class="operator">=</span> sPool;</span><br><span class="line">            sPool = m.next;</span><br><span class="line">            m.next = <span class="literal">null</span>;</span><br><span class="line">            m.flags = <span class="number">0</span>; <span class="comment">// clear in-use flag</span></span><br><span class="line">            sPoolSize--;</span><br><span class="line">            <span class="keyword">return</span> m;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">Message</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>通过维护一个大小为50的Message缓冲池，来缓解Message频繁创建销毁带来的资源损耗，所以在开发过程中尽可能选择使用obtain来创建Message。</p>
+<h1 id="三-MessageQueue"><a href="#三-MessageQueue" class="headerlink" title="三. MessageQueue"></a>三. MessageQueue</h1><p>既然Message自己就维护了一个链表结构，还需要MessageQueue做什么呢？</p>
+<h2 id="3-1-MessageQueue"><a href="#3-1-MessageQueue" class="headerlink" title="3.1 MessageQueue"></a>3.1 MessageQueue</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">MessageQueue(<span class="type">boolean</span> quitAllowed) &#123;</span><br><span class="line">    mQuitAllowed = quitAllowed;</span><br><span class="line">    <span class="comment">// 3.2 通过JNI进入native实例化</span></span><br><span class="line">    mPtr = nativeInit();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>设置mQuitAllowed, 主线程的Looper不允许退出(调用quit，主动退出)。然后通过JNI进入native层初始化</p>
+<h2 id="3-2-android-os-MessageQueue-nativeInit"><a href="#3-2-android-os-MessageQueue-nativeInit" class="headerlink" title="3.2 android_os_MessageQueue_nativeInit"></a>3.2 android_os_MessageQueue_nativeInit</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> jlong <span class="title">android_os_MessageQueue_nativeInit</span><span class="params">(JNIEnv* env, jclass clazz)</span> </span>&#123;</span><br><span class="line">    NativeMessageQueue* nativeMessageQueue = <span class="keyword">new</span> <span class="built_in">NativeMessageQueue</span>();</span><br><span class="line">    <span class="keyword">if</span> (!nativeMessageQueue) &#123;</span><br><span class="line">        <span class="built_in">jniThrowRuntimeException</span>(env, <span class="string">&quot;Unable to allocate native queue&quot;</span>);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    nativeMessageQueue-&gt;<span class="built_in">incStrong</span>(env);</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">reinterpret_cast</span>&lt;jlong&gt;(nativeMessageQueue);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>也就是创建了一个NativeMessageQueue的对象。</p>
+<h2 id="3-3-NativeMessageQueue"><a href="#3-3-NativeMessageQueue" class="headerlink" title="3.3 NativeMessageQueue"></a>3.3 NativeMessageQueue</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">NativeMessageQueue::<span class="built_in">NativeMessageQueue</span>() :</span><br><span class="line">        <span class="built_in">mPollEnv</span>(<span class="literal">NULL</span>), <span class="built_in">mPollObj</span>(<span class="literal">NULL</span>), <span class="built_in">mExceptionObj</span>(<span class="literal">NULL</span>) &#123;</span><br><span class="line">    <span class="comment">// 注意这里是native层的Loop了, 同样的也是通过TLS方式存储的</span></span><br><span class="line">    mLooper = Looper::<span class="built_in">getForThread</span>();</span><br><span class="line">    <span class="keyword">if</span> (mLooper == <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="comment">// 3.4 创建Looper</span></span><br><span class="line">        mLooper = <span class="keyword">new</span> <span class="built_in">Looper</span>(<span class="literal">false</span>);</span><br><span class="line">        <span class="comment">// 保存在当前线程的TLS中</span></span><br><span class="line">        Looper::<span class="built_in">setForThread</span>(mLooper);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-4-Looper-cpp"><a href="#3-4-Looper-cpp" class="headerlink" title="3.4 Looper.cpp"></a>3.4 Looper.cpp</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">Looper::<span class="built_in">Looper</span>(<span class="type">bool</span> allowNonCallbacks)</span><br><span class="line">    : <span class="built_in">mAllowNonCallbacks</span>(allowNonCallbacks),</span><br><span class="line">      <span class="built_in">mSendingMessage</span>(<span class="literal">false</span>),</span><br><span class="line">      <span class="built_in">mPolling</span>(<span class="literal">false</span>),</span><br><span class="line">      <span class="built_in">mEpollRebuildRequired</span>(<span class="literal">false</span>),</span><br><span class="line">      <span class="built_in">mNextRequestSeq</span>(<span class="number">0</span>),</span><br><span class="line">      <span class="built_in">mResponseIndex</span>(<span class="number">0</span>),</span><br><span class="line">      <span class="built_in">mNextMessageUptime</span>(LLONG_MAX) &#123;</span><br><span class="line">    <span class="comment">// eventfd函数会创建一个eventfd, 这里保存在mWakeEventFd中</span></span><br><span class="line">    <span class="comment">// EFD_NONBLOCK: 设置FD对象为非阻塞状态</span></span><br><span class="line">    <span class="comment">// EFD_CLOEXEC: 调用exec后会自动关闭文件描述符，防止泄漏</span></span><br><span class="line">    mWakeEventFd.<span class="built_in">reset</span>(<span class="built_in">eventfd</span>(<span class="number">0</span>, EFD_NONBLOCK | EFD_CLOEXEC));</span><br><span class="line">    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(mWakeEventFd.<span class="built_in">get</span>() &lt; <span class="number">0</span>, <span class="string">&quot;Could not make wake event fd: %s&quot;</span>, <span class="built_in">strerror</span>(errno));</span><br><span class="line"></span><br><span class="line">    AutoMutex _l(mLock);</span><br><span class="line">    <span class="comment">// 3.4.1 重建epoll</span></span><br><span class="line">    <span class="built_in">rebuildEpollLocked</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>eventfd 是 Linux 的一个系统调用，创建一个文件描述符用于事件通知，自 Linux 2.6.22 以后开始支持。该函数会创建一个 eventfd 对象，用户空间的应用程序可以用这个 eventfd 来实现事件的等待或通知机制，也可以用于内核通知新的事件到用户空间应用程序。</p>
+</blockquote>
+<p>看来初始化该Looper的线程是通过这个eventfd来实现被唤醒的。</p>
+<h3 id="3-4-1-Looper-cpp-rebuildEpollLocked"><a href="#3-4-1-Looper-cpp-rebuildEpollLocked" class="headerlink" title="3.4.1 Looper.cpp:rebuildEpollLocked"></a>3.4.1 Looper.cpp:rebuildEpollLocked</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Looper::rebuildEpollLocked</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 如果原有fd存在，则关闭</span></span><br><span class="line">    <span class="keyword">if</span> (mEpollFd &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">        mEpollFd.<span class="built_in">reset</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建一个新的epoll实例, 并获取该实例的fd标记</span></span><br><span class="line">    mEpollFd.<span class="built_in">reset</span>(<span class="built_in">epoll_create1</span>(EPOLL_CLOEXEC));</span><br><span class="line">    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(mEpollFd &lt; <span class="number">0</span>, <span class="string">&quot;Could not create epoll instance: %s&quot;</span>, <span class="built_in">strerror</span>(errno));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">struct</span> <span class="title class_">epoll_event</span> eventItem;</span><br><span class="line">    <span class="built_in">memset</span>(&amp; eventItem, <span class="number">0</span>, <span class="built_in">sizeof</span>(epoll_event));</span><br><span class="line">    <span class="comment">// EPOLLIN 表明fd文件可读</span></span><br><span class="line">    eventItem.events = EPOLLIN;</span><br><span class="line">    eventItem.data.fd = mWakeEventFd.<span class="built_in">get</span>();</span><br><span class="line">    <span class="comment">// 在epoll实例上注册mWakeEventFd文件描述符，并将EPOLL_CTL_ADD事件关联到mWakeEventFd</span></span><br><span class="line">    <span class="type">int</span> result = <span class="built_in">epoll_ctl</span>(mEpollFd.<span class="built_in">get</span>(), EPOLL_CTL_ADD, mWakeEventFd.<span class="built_in">get</span>(), &amp;eventItem);</span><br><span class="line">    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(result != <span class="number">0</span>, <span class="string">&quot;Could not add wake event fd to epoll instance: %s&quot;</span>,</span><br><span class="line">                        <span class="built_in">strerror</span>(errno));</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 对所有mRequests的fd进行重定向, 均关联到新创建的epoll实例上</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; mRequests.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        <span class="type">const</span> Request&amp; request = mRequests.<span class="built_in">valueAt</span>(i);</span><br><span class="line">        <span class="keyword">struct</span> <span class="title class_">epoll_event</span> eventItem;</span><br><span class="line">        request.<span class="built_in">initEventItem</span>(&amp;eventItem);</span><br><span class="line"></span><br><span class="line">        <span class="type">int</span> epollResult = <span class="built_in">epoll_ctl</span>(mEpollFd.<span class="built_in">get</span>(), EPOLL_CTL_ADD, request.fd, &amp;eventItem);</span><br><span class="line">        <span class="keyword">if</span> (epollResult &lt; <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;Error adding epoll events for fd %d while rebuilding epoll set: %s&quot;</span>,</span><br><span class="line">                  request.fd, <span class="built_in">strerror</span>(errno));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里主要是创建了一个epoll实例，并将该Looper的mWakeEventFd（即eventfd）关联到该epoll实例上。如果该Looper的mRequests存在Request时，也对所有mRequests的fd进行重定向, 均关联到新创建的epoll实例上。</p>
+<p>所以MessageQueue的初始化就是在Native层创建了一个NativeMessageQueue的对象，该对象持有一个Native层的Looper对象。而Native层的Looper里有两个文件描述符: </p>
+<ol>
+<li>通过eventfd创建的mWakeEventFd; </li>
+<li>通过epoll_create1创建的代表epoll实例的mEpollFd。</li>
+</ol>
+<h1 id="四-sendMessageAtTime发送消息"><a href="#四-sendMessageAtTime发送消息" class="headerlink" title="四. sendMessageAtTime发送消息"></a>四. sendMessageAtTime发送消息</h1><p>现在回到Handler发送消息，假设Handler中的Looper是MainLooper, 现在是在非UI线程，比如bg线程读取网络数据后更新到UI组件上：uiHandler.sendMessageAtTime </p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">sendMessageAtTime</span><span class="params">(<span class="meta">@NonNull</span> Message msg, <span class="type">long</span> uptimeMillis)</span> &#123;</span><br><span class="line">    <span class="type">MessageQueue</span> <span class="variable">queue</span> <span class="operator">=</span> mQueue;</span><br><span class="line">    <span class="keyword">if</span> (queue == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="type">RuntimeException</span> <span class="variable">e</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">RuntimeException</span>(</span><br><span class="line">                <span class="built_in">this</span> + <span class="string">&quot; sendMessageAtTime() called with no mQueue&quot;</span>);</span><br><span class="line">        Log.w(<span class="string">&quot;Looper&quot;</span>, e.getMessage(), e);</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> enqueueMessage(queue, msg, uptimeMillis);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="type">boolean</span> <span class="title function_">enqueueMessage</span><span class="params">(<span class="meta">@NonNull</span> MessageQueue queue, <span class="meta">@NonNull</span> Message msg,</span></span><br><span class="line"><span class="params">            <span class="type">long</span> uptimeMillis)</span> &#123;</span><br><span class="line">    <span class="comment">// 将Message的target设置为自己</span></span><br><span class="line">    msg.target = <span class="built_in">this</span>;</span><br><span class="line">    msg.workSourceUid = ThreadLocalWorkSource.getUid();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// mAsynchronous表明是否异步执行</span></span><br><span class="line">    <span class="keyword">if</span> (mAsynchronous) &#123;</span><br><span class="line">        msg.setAsynchronous(<span class="literal">true</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 交给Handler的MessageQueue执行</span></span><br><span class="line">    <span class="keyword">return</span> queue.enqueueMessage(msg, uptimeMillis);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="4-1-MessageQueue-enqueueMessage"><a href="#4-1-MessageQueue-enqueueMessage" class="headerlink" title="4.1 MessageQueue.enqueueMessage"></a>4.1 MessageQueue.enqueueMessage</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">enqueueMessage</span><span class="params">(Message msg, <span class="type">long</span> when)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">synchronized</span> (<span class="built_in">this</span>) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 标记该Message正在使用, 避免缓冲池重复使用该Message</span></span><br><span class="line">        msg.markInUse();</span><br><span class="line">        <span class="comment">// 记录该Message期望执行的时间</span></span><br><span class="line">        msg.when = when;</span><br><span class="line">        <span class="comment">// mMessages是一个Message对象，代表该MessageQueue队列的头节点</span></span><br><span class="line">        <span class="type">Message</span> <span class="variable">p</span> <span class="operator">=</span> mMessages;</span><br><span class="line">        <span class="type">boolean</span> needWake;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (p == <span class="literal">null</span> || when == <span class="number">0</span> || when &lt; p.when) &#123;</span><br><span class="line">            <span class="comment">// 如果头节点是空的、传入的Message执行时间是0（立刻执行）</span></span><br><span class="line">            <span class="comment">// 或者执行时间在头节点消息执行之前，将该Message作为链表新的头节点</span></span><br><span class="line">            msg.next = p;</span><br><span class="line">            mMessages = msg;</span><br><span class="line">            <span class="comment">// mBlocked为false代表Handler所在线程已经拿到合适的Message执行了</span></span><br><span class="line">            needWake = mBlocked;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">// 将Message插入到链表头节点之后</span></span><br><span class="line">            needWake = mBlocked &amp;&amp; p.target == <span class="literal">null</span> &amp;&amp; msg.isAsynchronous();</span><br><span class="line">            Message prev;</span><br><span class="line">            <span class="comment">// 找到该Message的位置，即其执行时间在链表中的顺序排列位置</span></span><br><span class="line">            <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">                prev = p;</span><br><span class="line">                p = p.next;</span><br><span class="line">                <span class="keyword">if</span> (p == <span class="literal">null</span> || when &lt; p.when) &#123;</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                &#125;</span><br><span class="line">                <span class="keyword">if</span> (needWake &amp;&amp; p.isAsynchronous()) &#123;</span><br><span class="line">                    needWake = <span class="literal">false</span>;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            msg.next = p; <span class="comment">// invariant: p == prev.next</span></span><br><span class="line">            prev.next = msg;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 是否需要唤醒, 唤醒什么，当然是Handler的Looper对应线程了！</span></span><br><span class="line">        <span class="keyword">if</span> (needWake) &#123;</span><br><span class="line">            <span class="comment">// 进入JNI, 通过epoll唤醒线程</span></span><br><span class="line">            nativeWake(mPtr);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>所以Handler.sendMessage仅仅是将Message插入MessageQueue中Message链表的合适位置，即保持mMessages链表中的Message期望执行时间从小到大排列，等待执行。</p>
+<h2 id="4-2-android-os-MessageQueue-nativeWake"><a href="#4-2-android-os-MessageQueue-nativeWake" class="headerlink" title="4.2 android_os_MessageQueue_nativeWake"></a>4.2 android_os_MessageQueue_nativeWake</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">void</span> <span class="title">android_os_MessageQueue_nativeWake</span><span class="params">(JNIEnv* env, jclass clazz, jlong ptr)</span> </span>&#123;</span><br><span class="line">    NativeMessageQueue* nativeMessageQueue = <span class="built_in">reinterpret_cast</span>&lt;NativeMessageQueue*&gt;(ptr);</span><br><span class="line">    nativeMessageQueue-&gt;<span class="built_in">wake</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">NativeMessageQueue::wake</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    mLooper-&gt;<span class="built_in">wake</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>转到native层的loop执行。</p>
+<h2 id="4-3-Looper-cpp-wake"><a href="#4-3-Looper-cpp-wake" class="headerlink" title="4.3 Looper.cpp:wake"></a>4.3 Looper.cpp:wake</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Looper::wake</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="type">uint64_t</span> inc = <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 通过write向该Looper的mWakeEventFd中写入1</span></span><br><span class="line">    <span class="type">ssize_t</span> nWrite = <span class="built_in">TEMP_FAILURE_RETRY</span>(<span class="built_in">write</span>(mWakeEventFd.<span class="built_in">get</span>(), &amp;inc, <span class="built_in">sizeof</span>(<span class="type">uint64_t</span>)));</span><br><span class="line">    <span class="keyword">if</span> (nWrite != <span class="built_in">sizeof</span>(<span class="type">uint64_t</span>)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (errno != EAGAIN) &#123;</span><br><span class="line">            <span class="built_in">LOG_ALWAYS_FATAL</span>(<span class="string">&quot;Could not write wake signal to fd %d (returned %zd): %s&quot;</span>,</span><br><span class="line">                             mWakeEventFd.<span class="built_in">get</span>(), nWrite, <span class="built_in">strerror</span>(errno));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>到这里，bg线程中uiHandler发送Message的流程就结束了。</p>
+<h1 id="五-UI线程处理Message"><a href="#五-UI线程处理Message" class="headerlink" title="五. UI线程处理Message"></a>五. UI线程处理Message</h1><p>那么此时我们UI线程在做什么呢? 对了，就是一直在循环执行 Looper中的 loopOnce 函数！</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="type">boolean</span> <span class="title function_">loopOnce</span><span class="params">(<span class="keyword">final</span> Looper me,</span></span><br><span class="line"><span class="params">        <span class="keyword">final</span> <span class="type">long</span> ident, <span class="keyword">final</span> <span class="type">int</span> thresholdOverride)</span> &#123;</span><br><span class="line">    <span class="comment">// 5.1 通过MessageQueue获取下一个Message</span></span><br><span class="line">    <span class="type">Message</span> <span class="variable">msg</span> <span class="operator">=</span> me.mQueue.next();</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="5-1-MessageQueue-next"><a href="#5-1-MessageQueue-next" class="headerlink" title="5.1 MessageQueue.next"></a>5.1 MessageQueue.next</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">Message <span class="title function_">next</span><span class="params">()</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="type">int</span> <span class="variable">pendingIdleHandlerCount</span> <span class="operator">=</span> -<span class="number">1</span>; <span class="comment">// -1 only during first iteration</span></span><br><span class="line">    <span class="type">int</span> <span class="variable">nextPollTimeoutMillis</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 5.2 转到Native中执行，获取下一次poll的时间</span></span><br><span class="line">        nativePollOnce(ptr, nextPollTimeoutMillis);</span><br><span class="line">        ......</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>直接转到native层执行pollOnce.</p>
+<h2 id="5-2-android-os-MessageQueue-nativePollOnce"><a href="#5-2-android-os-MessageQueue-nativePollOnce" class="headerlink" title="5.2 android_os_MessageQueue_nativePollOnce"></a>5.2 android_os_MessageQueue_nativePollOnce</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">void</span> <span class="title">android_os_MessageQueue_nativePollOnce</span><span class="params">(JNIEnv* env, jobject obj,</span></span></span><br><span class="line"><span class="params"><span class="function">        jlong ptr, jint timeoutMillis)</span> </span>&#123;</span><br><span class="line">    NativeMessageQueue* nativeMessageQueue = <span class="built_in">reinterpret_cast</span>&lt;NativeMessageQueue*&gt;(ptr);</span><br><span class="line">    nativeMessageQueue-&gt;<span class="built_in">pollOnce</span>(env, obj, timeoutMillis);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">NativeMessageQueue::pollOnce</span><span class="params">(JNIEnv* env, jobject pollObj, <span class="type">int</span> timeoutMillis)</span> </span>&#123;</span><br><span class="line">    mPollEnv = env;</span><br><span class="line">    mPollObj = pollObj;</span><br><span class="line">    <span class="comment">// 还是用到Native层的Looper</span></span><br><span class="line">    mLooper-&gt;<span class="built_in">pollOnce</span>(timeoutMillis);</span><br><span class="line">    mPollObj = <span class="literal">NULL</span>;</span><br><span class="line">    mPollEnv = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mExceptionObj) &#123;</span><br><span class="line">        env-&gt;<span class="built_in">Throw</span>(mExceptionObj);</span><br><span class="line">        env-&gt;<span class="built_in">DeleteLocalRef</span>(mExceptionObj);</span><br><span class="line">        mExceptionObj = <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="5-3-Looper-cpp-pollOnce"><a href="#5-3-Looper-cpp-pollOnce" class="headerlink" title="5.3 Looper.cpp:pollOnce"></a>5.3 Looper.cpp:pollOnce</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">inline</span> <span class="type">int</span> <span class="title">pollOnce</span><span class="params">(<span class="type">int</span> timeoutMillis)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">pollOnce</span>(timeoutMillis, <span class="literal">nullptr</span>, <span class="literal">nullptr</span>, <span class="literal">nullptr</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">Looper::pollOnce</span><span class="params">(<span class="type">int</span> timeoutMillis, <span class="type">int</span>* outFd, <span class="type">int</span>* outEvents, <span class="type">void</span>** outData)</span> </span>&#123;</span><br><span class="line">    <span class="type">int</span> result = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">        <span class="comment">// 当前mResponses还是空的，mResponseIndex为0</span></span><br><span class="line">        <span class="keyword">while</span> (mResponseIndex &lt; mResponses.<span class="built_in">size</span>()) &#123;</span><br><span class="line">            <span class="type">const</span> Response&amp; response = mResponses.<span class="built_in">itemAt</span>(mResponseIndex++);</span><br><span class="line">            <span class="type">int</span> ident = response.request.ident;</span><br><span class="line">            <span class="keyword">if</span> (ident &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="type">int</span> fd = response.request.fd;</span><br><span class="line">                <span class="type">int</span> events = response.events;</span><br><span class="line">                <span class="type">void</span>* data = response.request.data;</span><br><span class="line"></span><br><span class="line">                <span class="keyword">if</span> (outFd != <span class="literal">nullptr</span>) *outFd = fd;</span><br><span class="line">                <span class="keyword">if</span> (outEvents != <span class="literal">nullptr</span>) *outEvents = events;</span><br><span class="line">                <span class="keyword">if</span> (outData != <span class="literal">nullptr</span>) *outData = data;</span><br><span class="line">                <span class="keyword">return</span> ident;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// result为0, 表明poll超时</span></span><br><span class="line">        <span class="keyword">if</span> (result != <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="keyword">if</span> (outFd != <span class="literal">nullptr</span>) *outFd = <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">if</span> (outEvents != <span class="literal">nullptr</span>) *outEvents = <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">if</span> (outData != <span class="literal">nullptr</span>) *outData = <span class="literal">nullptr</span>;</span><br><span class="line">            <span class="keyword">return</span> result;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 先执行这里</span></span><br><span class="line">        result = <span class="built_in">pollInner</span>(timeoutMillis);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="5-4-Looper-cpp-pollInner"><a href="#5-4-Looper-cpp-pollInner" class="headerlink" title="5.4 Looper.cpp:pollInner"></a>5.4 Looper.cpp:pollInner</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">int</span> <span class="title">Looper::pollInner</span><span class="params">(<span class="type">int</span> timeoutMillis)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// Poll.</span></span><br><span class="line">    <span class="type">int</span> result = POLL_WAKE;</span><br><span class="line">    mResponses.<span class="built_in">clear</span>();</span><br><span class="line">    mResponseIndex = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 标记正在poll</span></span><br><span class="line">    mPolling = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// EPOLL_MAX_EVENTS默认是16</span></span><br><span class="line">    <span class="keyword">struct</span> <span class="title class_">epoll_event</span> eventItems[EPOLL_MAX_EVENTS];</span><br><span class="line">    <span class="comment">// 通过epoll_wait监听mEpollFd文件描述符等待被唤醒, 注意这里timeoutMillis是0</span></span><br><span class="line">    <span class="comment">// 也就是说当mEpollFd没有事件时，立刻返回超时 0</span></span><br><span class="line">    <span class="type">int</span> eventCount = <span class="built_in">epoll_wait</span>(mEpollFd.<span class="built_in">get</span>(), eventItems, EPOLL_MAX_EVENTS, timeoutMillis);</span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    <span class="comment">// poll超时，在执行一次Looper.pollOnce的循环</span></span><br><span class="line">    <span class="keyword">if</span> (eventCount == <span class="number">0</span>) &#123;</span><br><span class="line">        result = POLL_TIMEOUT;</span><br><span class="line">        <span class="keyword">goto</span> Done;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// epoll中存在事件</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; eventCount; i++) &#123;</span><br><span class="line">        <span class="type">int</span> fd = eventItems[i].data.fd;</span><br><span class="line">        <span class="type">uint32_t</span> epollEvents = eventItems[i].events;</span><br><span class="line">        <span class="comment">// 当epoll中事件描述符是当前Looper的mWakeEventFd时, 说明有线程通过write向该fd写入值</span></span><br><span class="line">        <span class="keyword">if</span> (fd == mWakeEventFd.<span class="built_in">get</span>()) &#123;</span><br><span class="line">            <span class="keyword">if</span> (epollEvents &amp; EPOLLIN) &#123;</span><br><span class="line">                <span class="comment">// 5.5 执行被唤醒后的处理</span></span><br><span class="line">                <span class="built_in">awoken</span>();</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="built_in">ALOGW</span>(<span class="string">&quot;Ignoring unexpected epoll events 0x%x on wake event fd.&quot;</span>, epollEvents);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        ......</span><br><span class="line">    &#125;</span><br><span class="line">Done: ;</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>int epoll_wait(int epfd, struct epoll_event * events, int maxevents, int timeout);</p>
+</blockquote>
+<p>等待事件的产生，类似于select()调用。参数events用来从内核得到事件的集合，maxevents告之内核这个events有多大，参数timeout是超时时间（毫秒，0会立即返回，-1将不确定，也有说法说是永久阻塞）。该函数返回需要处理的事件数目，如返回0表示已超时。如果返回–1，则表示出现错误。</p>
+<ol>
+<li>epfd是 epoll的描述符。</li>
+<li>events则是分配好的 epoll_event结构体数组，epoll将会把发生的事件复制到 events数组中</li>
+<li>maxevents表示本次可以返回的最大事件数目，通常 maxevents参数与预分配的events数组的大小是相等的。</li>
+<li>timeout表示在没有检测到事件发生时最多等待的时间（单位为毫秒），如果 timeout为0，则表示 epoll_wait在 rdllist链表中为空，立刻返回，不会等待。</li>
+</ol>
+<h2 id="5-5-Looper-cpp-awoken"><a href="#5-5-Looper-cpp-awoken" class="headerlink" title="5.5 Looper.cpp:awoken"></a>5.5 Looper.cpp:awoken</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Looper::awoken</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="type">uint64_t</span> counter;</span><br><span class="line">    <span class="built_in">TEMP_FAILURE_RETRY</span>(<span class="built_in">read</span>(mWakeEventFd.<span class="built_in">get</span>(), &amp;counter, <span class="built_in">sizeof</span>(<span class="type">uint64_t</span>)));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>读取mWakeEventFd中的值，也就是之前bg线程通过write写入的1. 然后回到Looper.cpp:pollOnce返回1.</p>
+<p>这样UI线程就从epoll_wait阻塞状态(或者一直执行Looper.cpp:pollOnce函数的状态)退出，之后回到java层的MessageQueue.next中继续执行。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line">Message <span class="title function_">next</span><span class="params">()</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="type">int</span> <span class="variable">pendingIdleHandlerCount</span> <span class="operator">=</span> -<span class="number">1</span>; <span class="comment">// -1 only during first iteration</span></span><br><span class="line">    <span class="type">int</span> <span class="variable">nextPollTimeoutMillis</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 5.2 转到Native中执行，获取下一次poll的时间</span></span><br><span class="line">        nativePollOnce(ptr, nextPollTimeoutMillis);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">synchronized</span> (<span class="built_in">this</span>) &#123;</span><br><span class="line">            <span class="comment">// 记录当前系统时间</span></span><br><span class="line">            <span class="keyword">final</span> <span class="type">long</span> <span class="variable">now</span> <span class="operator">=</span> SystemClock.uptimeMillis();</span><br><span class="line">            <span class="type">Message</span> <span class="variable">prevMsg</span> <span class="operator">=</span> <span class="literal">null</span>;</span><br><span class="line">            <span class="type">Message</span> <span class="variable">msg</span> <span class="operator">=</span> mMessages;</span><br><span class="line">            ......</span><br><span class="line">            <span class="comment">// 尝试找到抵达执行时间的Message</span></span><br><span class="line">            <span class="keyword">if</span> (msg != <span class="literal">null</span>) &#123;</span><br><span class="line">                <span class="keyword">if</span> (now &lt; msg.when) &#123;</span><br><span class="line">                    <span class="comment">// 如果头节点Message的执行时间尚未到来，那么下一次epoll_wait的等待时间就是</span></span><br><span class="line">                    <span class="comment">// 该message执行时间和当前时间的差值</span></span><br><span class="line">                    nextPollTimeoutMillis = (<span class="type">int</span>) Math.min(msg.when - now, Integer.MAX_VALUE);</span><br><span class="line">                &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                    <span class="comment">// 找到可执行的Message了</span></span><br><span class="line">                    mBlocked = <span class="literal">false</span>;</span><br><span class="line">                    <span class="keyword">if</span> (prevMsg != <span class="literal">null</span>) &#123;</span><br><span class="line">                        prevMsg.next = msg.next;</span><br><span class="line">                    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                        <span class="comment">// 头节点标记为下一个</span></span><br><span class="line">                        mMessages = msg.next;</span><br><span class="line">                    &#125;</span><br><span class="line">                    msg.next = <span class="literal">null</span>;</span><br><span class="line">                    <span class="keyword">if</span> (DEBUG) Log.v(TAG, <span class="string">&quot;Returning message: &quot;</span> + msg);</span><br><span class="line">                    msg.markInUse();</span><br><span class="line">                    <span class="comment">// 打破循环，返回该Message，回到Looper.loopOnce中</span></span><br><span class="line">                    <span class="comment">// 即执行 [1.4.1] Handler.dispatchMessage</span></span><br><span class="line">                    <span class="keyword">return</span> msg;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="comment">// No more messages.</span></span><br><span class="line">                nextPollTimeoutMillis = -<span class="number">1</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            ......</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>自此，Android的线程切换就结束了。</p>
+<h1 id="六-小结"><a href="#六-小结" class="headerlink" title="六. 小结"></a>六. 小结</h1><p>通过上述分析，画一张图来展示一次Message的执行:</p>
+<p><img src="/images/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/MessageHandle.png" alt="Message Handle"></p>
+<div style="page-break-after: always;"></div>
+
+
+<h2 id="6-1-Epoll机制"><a href="#6-1-Epoll机制" class="headerlink" title="6.1 Epoll机制"></a>6.1 Epoll机制</h2><p>关于Eopll推荐大家阅读这篇文: <a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/63179839">Epoll本质</a> <a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/63179839">https://zhuanlan.zhihu.com/p/63179839</a></p>
+<ol>
+<li>cpu running</li>
+</ol>
+<img src="/images/Looper-Android中的消息机制/epoll_1.jpg" width="500">
+
+<ol>
+<li>Ui Thread: epoll_wait</li>
+</ol>
+<img src="/images/Looper-Android中的消息机制/epoll_2.jpg" width="500">
+
+<ol start="3">
+<li>Bg Thread: write fd</li>
+</ol>
+<img src="/images/Looper-Android中的消息机制/epoll_3.jpg" width="500">
+
+<ol start="4">
+<li>Ui Thread: read</li>
+</ol>
+<img src="/images/Looper-Android中的消息机制/epoll_4.jpg" width="500">
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" title="Looper-Android中的消息机制">https://swallowjoe.github.io/2022/02/27/Looper-Android中的消息机制/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Looper/" rel="tag"># Looper</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" rel="prev" title="Vulkan入门(15)-图像视图和采样器">
+      <i class="fa fa-chevron-left"></i> Vulkan入门(15)-图像视图和采样器
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/" rel="next" title="App申请帧率(1)--简述">
+      App申请帧率(1)--简述 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-Main-Looper%E7%9A%84%E5%88%9B%E5%BB%BA"><span class="nav-text">一. Main Looper的创建</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-Looper-getMainLooper"><span class="nav-text">1.1 Looper.getMainLooper</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-sMainLooper"><span class="nav-text">1.2 sMainLooper</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-1-Looper-prepare"><span class="nav-text">1.2.1 Looper.prepare</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-2-Looper-%E7%9A%84%E5%88%9B%E5%BB%BA"><span class="nav-text">1.2.2 Looper 的创建</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-3-Looper-myLooper"><span class="nav-text">1.2.3 Looper.myLooper</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-Looper-loop"><span class="nav-text">1.3 Looper.loop</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-Looper-loopOnce"><span class="nav-text">1.4 Looper.loopOnce</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-1-Handler-dispatchMessage"><span class="nav-text">1.4.1 Handler.dispatchMessage</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-Message"><span class="nav-text">二. Message</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-%E6%B6%88%E6%81%AF%E9%93%BE%E8%A1%A8%E7%BB%93%E6%9E%84"><span class="nav-text">2.1 消息链表结构</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-MessageQueue"><span class="nav-text">三. MessageQueue</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-MessageQueue"><span class="nav-text">3.1 MessageQueue</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-android-os-MessageQueue-nativeInit"><span class="nav-text">3.2 android_os_MessageQueue_nativeInit</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-NativeMessageQueue"><span class="nav-text">3.3 NativeMessageQueue</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-Looper-cpp"><span class="nav-text">3.4 Looper.cpp</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-4-1-Looper-cpp-rebuildEpollLocked"><span class="nav-text">3.4.1 Looper.cpp:rebuildEpollLocked</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%9B%9B-sendMessageAtTime%E5%8F%91%E9%80%81%E6%B6%88%E6%81%AF"><span class="nav-text">四. sendMessageAtTime发送消息</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#4-1-MessageQueue-enqueueMessage"><span class="nav-text">4.1 MessageQueue.enqueueMessage</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-2-android-os-MessageQueue-nativeWake"><span class="nav-text">4.2 android_os_MessageQueue_nativeWake</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-3-Looper-cpp-wake"><span class="nav-text">4.3 Looper.cpp:wake</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%94-UI%E7%BA%BF%E7%A8%8B%E5%A4%84%E7%90%86Message"><span class="nav-text">五. UI线程处理Message</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#5-1-MessageQueue-next"><span class="nav-text">5.1 MessageQueue.next</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-2-android-os-MessageQueue-nativePollOnce"><span class="nav-text">5.2 android_os_MessageQueue_nativePollOnce</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-3-Looper-cpp-pollOnce"><span class="nav-text">5.3 Looper.cpp:pollOnce</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-4-Looper-cpp-pollInner"><span class="nav-text">5.4 Looper.cpp:pollInner</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-5-Looper-cpp-awoken"><span class="nav-text">5.5 Looper.cpp:awoken</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%85%AD-%E5%B0%8F%E7%BB%93"><span class="nav-text">六. 小结</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#6-1-Epoll%E6%9C%BA%E5%88%B6"><span class="nav-text">6.1 Epoll机制</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">20</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

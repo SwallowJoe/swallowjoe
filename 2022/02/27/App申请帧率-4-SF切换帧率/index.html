@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="以下分析基于Android R. 简述上一章我们分析了SurfaceFlinger是如何根据Framework传入的帧率参数选择合适帧率的。 接来下我们详细看看SurfaceFlinger是如何通知硬件切换帧率的。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="App申请帧率(4)--SF切换帧率">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="以下分析基于Android R. 简述上一章我们分析了SurfaceFlinger是如何根据Framework传入的帧率参数选择合适帧率的。 接来下我们详细看看SurfaceFlinger是如何通知硬件切换帧率的。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-02-26T19:54:03.000Z">
+<meta property="article:modified_time" content="2022-02-26T20:00:41.253Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Vsync">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>App申请帧率(4)--SF切换帧率 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          App申请帧率(4)--SF切换帧率
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:54:03 / 修改时间：04:00:41" itemprop="dateCreated datePublished" datetime="2022-02-27T03:54:03+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Vsync/" itemprop="url" rel="index"><span itemprop="name">Vsync</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/" class="post-meta-item leancloud_visitors" data-flag-title="App申请帧率(4)--SF切换帧率" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>以下分析基于Android R.</p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>上一章我们分析了SurfaceFlinger是如何根据Framework传入的帧率参数选择合适帧率的。</p>
+<p>接来下我们详细看看SurfaceFlinger是如何通知硬件切换帧率的。</p>
+<span id="more"></span>
+
+<h1 id="一-SurfaceFlinger接受帧率变化"><a href="#一-SurfaceFlinger接受帧率变化" class="headerlink" title="一. SurfaceFlinger接受帧率变化"></a>一. SurfaceFlinger接受帧率变化</h1><p>接上一章，从 SurfaceFlinger::setDesiredActiveConfig 开始. </p>
+<p>这里的ActiveConfigInfo就是SurfaceFlinger根据Framework传入的帧率范围以及各个Layer投票计算的最终帧率信息。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">ActiveConfigInfo</span> &#123;</span><br><span class="line">        HwcConfigIndexType configId;</span><br><span class="line">        Scheduler::ConfigEvent event = Scheduler::ConfigEvent::None;</span><br><span class="line"></span><br><span class="line">        <span class="type">bool</span> <span class="keyword">operator</span>!=(<span class="type">const</span> ActiveConfigInfo&amp; other) <span class="type">const</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> configId != other.configId || event != other.event;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-1-SurfaceFlinger-setDesiredActiveConfig"><a href="#1-1-SurfaceFlinger-setDesiredActiveConfig" class="headerlink" title="1.1 SurfaceFlinger.setDesiredActiveConfig"></a>1.1 SurfaceFlinger.setDesiredActiveConfig</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::setDesiredActiveConfig</span><span class="params">(<span class="type">const</span> ActiveConfigInfo&amp; info)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="keyword">auto</span>&amp; refreshRate = mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(info.configId);</span><br><span class="line">    mVsyncPeriod = refreshRate.<span class="built_in">getVsyncPeriod</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;setDesiredActiveConfig(%s)&quot;</span>, refreshRate.<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line"></span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mActiveConfigLock)</span></span>;</span><br><span class="line">    <span class="keyword">if</span> (mDesiredActiveConfigChanged) &#123;</span><br><span class="line">        <span class="comment">// 如果帧率切换正在发生，缓存此次帧率切换</span></span><br><span class="line">        <span class="type">const</span> Scheduler::ConfigEvent prevConfig = mDesiredActiveConfig.event;</span><br><span class="line">        mDesiredActiveConfig = info;</span><br><span class="line">        mDesiredActiveConfig.event = mDesiredActiveConfig.event | prevConfig;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 如果当前帧率已经是请求的帧率了，直接返回</span></span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span> display = <span class="built_in">getDefaultDisplayDeviceLocked</span>();</span><br><span class="line">        <span class="keyword">if</span> (!display || display-&gt;<span class="built_in">getActiveConfig</span>() == refreshRate.<span class="built_in">getConfigId</span>()) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 标记正在做帧率切换</span></span><br><span class="line">        mDesiredActiveConfigChanged = <span class="literal">true</span>;</span><br><span class="line">        <span class="comment">// 存储即将切换的帧率配置信息</span></span><br><span class="line">        mDesiredActiveConfig = info;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 1.2 触发HWC刷新而不重置空闲计时器。</span></span><br><span class="line">        <span class="built_in">repaintEverythingForHWC</span>();</span><br><span class="line">        <span class="comment">// 1.3 现在开始接收vsync样本，这可以检测到硬件周期切换。</span></span><br><span class="line">        mScheduler-&gt;<span class="built_in">resyncToHardwareVsync</span>(<span class="literal">true</span>, refreshRate.<span class="built_in">getVsyncPeriod</span>());</span><br><span class="line">        <span class="comment">// 1.4 调用onRefreshRateChangeCompleted, 通知更新偏移量</span></span><br><span class="line">        mVSyncModulator-&gt;<span class="built_in">onRefreshRateChangeInitiated</span>();</span><br><span class="line">        <span class="comment">// 保存即将更新的Fps</span></span><br><span class="line">        mPhaseConfiguration-&gt;<span class="built_in">setRefreshRateFps</span>(refreshRate.<span class="built_in">getFps</span>());</span><br><span class="line">        <span class="comment">// 1.5 再次更新偏移量, 不过这一次是根据即将更新的Fps拿到的固定偏移量</span></span><br><span class="line">        mVSyncModulator-&gt;<span class="built_in">setPhaseOffsets</span>(mPhaseConfiguration-&gt;<span class="built_in">getCurrentOffsets</span>());</span><br><span class="line">        mScheduler-&gt;<span class="built_in">setConfigChangePending</span>(<span class="literal">true</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mRefreshRateOverlay) &#123;</span><br><span class="line">        mRefreshRateOverlay-&gt;<span class="built_in">changeRefreshRate</span>(refreshRate);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-2-SurfaceFlinger-repaintEverythingForHWC"><a href="#1-2-SurfaceFlinger-repaintEverythingForHWC" class="headerlink" title="1.2 SurfaceFlinger.repaintEverythingForHWC"></a>1.2 SurfaceFlinger.repaintEverythingForHWC</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::repaintEverythingForHWC</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 标记全部重绘制</span></span><br><span class="line">    mRepaintEverything = <span class="literal">true</span>;</span><br><span class="line">    <span class="comment">// 通知Power模组, Display将更新，OEM厂商自行实现这个标准接口</span></span><br><span class="line">    mPowerAdvisor.<span class="built_in">notifyDisplayUpdateImminent</span>();</span><br><span class="line">    <span class="comment">// EventThread请求下一帧Vsync</span></span><br><span class="line">    mEventQueue-&gt;<span class="built_in">invalidate</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-3-Scheduler-resyncToHardwareVsync"><a href="#1-3-Scheduler-resyncToHardwareVsync" class="headerlink" title="1.3 Scheduler.resyncToHardwareVsync"></a>1.3 Scheduler.resyncToHardwareVsync</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Scheduler::resyncToHardwareVsync</span><span class="params">(<span class="type">bool</span> makeAvailable, <span class="type">nsecs_t</span> period)</span> </span>&#123;</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mHWVsyncLock)</span></span>;</span><br><span class="line">        <span class="keyword">if</span> (makeAvailable) &#123;</span><br><span class="line">            mHWVsyncAvailable = makeAvailable;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (!mHWVsyncAvailable) &#123;</span><br><span class="line">            <span class="comment">// 硬件Vsync被禁止，直接返回</span></span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (period &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 参数不合法</span></span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 通知到软件Vsync产生模块，更新Vsync周期</span></span><br><span class="line">    <span class="built_in">setVsyncPeriod</span>(period);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-1-Scheduler-setVsyncPeriod"><a href="#1-3-1-Scheduler-setVsyncPeriod" class="headerlink" title="1.3.1 Scheduler.setVsyncPeriod"></a>1.3.1 Scheduler.setVsyncPeriod</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Scheduler::setVsyncPeriod</span><span class="params">(<span class="type">nsecs_t</span> period)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mHWVsyncLock)</span></span>;</span><br><span class="line">    <span class="comment">// 1.3.2 更新软件Vsync周期</span></span><br><span class="line">    mPrimaryDispSync-&gt;<span class="built_in">setPeriod</span>(period);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!mPrimaryHWVsyncEnabled) &#123;</span><br><span class="line">        <span class="comment">// 硬件Vsync关闭的情况下, 直接更改软件vsync周期，这里我们加上是开启的</span></span><br><span class="line">        mPrimaryDispSync-&gt;<span class="built_in">beginResync</span>();</span><br><span class="line">        mEventControlThread-&gt;<span class="built_in">setVsyncEnabled</span>(<span class="literal">true</span>);</span><br><span class="line">        mPrimaryHWVsyncEnabled = <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>现在R上软件Vsync产生更改了架构，由Q上DispSync改成VSyncReactor, 不过原理不变就不分析了, 具体可以参考文章-SurfaceFlinger(2)–DispSync。</p>
+<p>可以通过将属性debug.sf.vsync_reactor置为false后重启，切回Q上的DispSync机制</p>
+<h3 id="1-3-2-VSyncReactor-setPeriod"><a href="#1-3-2-VSyncReactor-setPeriod" class="headerlink" title="1.3.2 VSyncReactor.setPeriod"></a>1.3.2 VSyncReactor.setPeriod</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncReactor::setPeriod</span><span class="params">(<span class="type">nsecs_t</span> period)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_INT64</span>(<span class="string">&quot;VSR-setPeriod&quot;</span>, period);</span><br><span class="line">    <span class="function">std::lock_guard <span class="title">lk</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    mLastHwVsync.<span class="built_in">reset</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// mSupportKernelIdleTimer的是由属性控制的，Google源码中默认是true的</span></span><br><span class="line">    <span class="comment">// PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.support_kernel_idle_timer=true</span></span><br><span class="line">    <span class="keyword">if</span> (!mSupportKernelIdleTimer &amp;&amp; period == <span class="built_in">getPeriod</span>()) &#123;</span><br><span class="line">        <span class="built_in">endPeriodTransition</span>();</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 开始更新</span></span><br><span class="line">        <span class="built_in">startPeriodTransition</span>(period);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-3-VSyncReactor-startPeriodTransition"><a href="#1-3-3-VSyncReactor-startPeriodTransition" class="headerlink" title="1.3.3 VSyncReactor.startPeriodTransition"></a>1.3.3 VSyncReactor.startPeriodTransition</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncReactor::startPeriodTransition</span><span class="params">(<span class="type">nsecs_t</span> newPeriod)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 标记各个变量，并记录待更新的Fps对应一帧的刷新时长</span></span><br><span class="line">    mPeriodConfirmationInProgress = <span class="literal">true</span>;</span><br><span class="line">    mPeriodTransitioningTo = newPeriod;</span><br><span class="line">    mMoreSamplesNeeded = <span class="literal">true</span>;</span><br><span class="line">    <span class="comment">// 忽略当前Fence，其实就是清空mUnfiredFences中的fence</span></span><br><span class="line">    <span class="built_in">setIgnorePresentFencesInternal</span>(<span class="literal">true</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncReactor::setIgnorePresentFencesInternal</span><span class="params">(<span class="type">bool</span> ignoration)</span> </span>&#123;</span><br><span class="line">    mInternalIgnoreFences = ignoration;</span><br><span class="line">    <span class="built_in">updateIgnorePresentFencesInternal</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncReactor::updateIgnorePresentFencesInternal</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (mExternalIgnoreFences || mInternalIgnoreFences) &#123;</span><br><span class="line">        mUnfiredFences.<span class="built_in">clear</span>();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-4-VSyncModulator-onRefreshRateChangeInitiated"><a href="#1-4-VSyncModulator-onRefreshRateChangeInitiated" class="headerlink" title="1.4 VSyncModulator.onRefreshRateChangeInitiated"></a>1.4 VSyncModulator.onRefreshRateChangeInitiated</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncModulator::onRefreshRateChangeInitiated</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (mRefreshRateChangePending) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    mRefreshRateChangePending = <span class="literal">true</span>;</span><br><span class="line">    <span class="built_in">updateOffsets</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncModulator::updateOffsets</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    <span class="built_in">updateOffsetsLocked</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncModulator::updateOffsetsLocked</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 1.4.1 选择偏移量</span></span><br><span class="line">    <span class="type">const</span> Offsets&amp; offsets = <span class="built_in">getNextOffsets</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.4.2 更新对应的偏移量，这个mPhaseOffsetControl其实就是Scheduler</span></span><br><span class="line">    mPhaseOffsetControl.<span class="built_in">setPhaseOffset</span>(mSfConnectionHandle, offsets.sf);</span><br><span class="line">    mPhaseOffsetControl.<span class="built_in">setPhaseOffset</span>(mAppConnectionHandle, offsets.app);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 更新偏移量</span></span><br><span class="line">    mOffsets = offsets;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这个trace的debug开关是由属性: debug.sf.vsync_trace_detailed_info 0/1 决定的</span></span><br><span class="line">    <span class="keyword">if</span> (!mTraceDetailedInfo) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> isEarly = &amp;offsets == &amp;mOffsetsConfig.early;</span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> isEarlyGl = &amp;offsets == &amp;mOffsetsConfig.earlyGl;</span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> isLate = &amp;offsets == &amp;mOffsetsConfig.late;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;Vsync-EarlyOffsetsOn&quot;</span>, isEarly);</span><br><span class="line">    <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;Vsync-EarlyGLOffsetsOn&quot;</span>, isEarlyGl);</span><br><span class="line">    <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;Vsync-LateOffsetsOn&quot;</span>, isLate);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-4-1-VSyncModulator-getNextOffsets"><a href="#1-4-1-VSyncModulator-getNextOffsets" class="headerlink" title="1.4.1 VSyncModulator.getNextOffsets"></a>1.4.1 VSyncModulator.getNextOffsets</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">const</span> VSyncModulator::Offsets&amp; <span class="title">VSyncModulator::getNextOffsets</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 如果正在进行刷新率更改，或者最近开始了一个事务，则使用early偏移量。</span></span><br><span class="line">    <span class="keyword">if</span> (mExplicitEarlyWakeup || mTransactionStart == Scheduler::TransactionStart::EarlyEnd ||</span><br><span class="line">        mRemainingEarlyFrameCount &gt; <span class="number">0</span> || mRefreshRateChangePending) &#123;</span><br><span class="line">        <span class="keyword">return</span> mOffsetsConfig.early;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (mRemainingRenderEngineUsageCount &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> mOffsetsConfig.earlyGl;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> mOffsetsConfig.late;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-4-2-DispSyncSource-setPhaseOffset"><a href="#1-4-2-DispSyncSource-setPhaseOffset" class="headerlink" title="1.4.2 DispSyncSource.setPhaseOffset"></a>1.4.2 DispSyncSource.setPhaseOffset</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">DispSyncSource::setPhaseOffset</span><span class="params">(<span class="type">nsecs_t</span> phaseOffset)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard <span class="title">lock</span><span class="params">(mVsyncMutex)</span></span>;</span><br><span class="line">    <span class="type">const</span> <span class="type">nsecs_t</span> period = mDispSync-&gt;<span class="built_in">getPeriod</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 正常来讲偏移量在 [-period, period) 之间</span></span><br><span class="line">    <span class="type">const</span> <span class="type">int</span> numPeriods = phaseOffset / period;</span><br><span class="line">    phaseOffset -= numPeriods * period;</span><br><span class="line">    <span class="keyword">if</span> (mPhaseOffset == phaseOffset) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mPhaseOffset = phaseOffset;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 尚未使能，就不需要通知给各个listener</span></span><br><span class="line">    <span class="keyword">if</span> (!mEnabled) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.4.3 DispSyncSource是继承了DispSync::Callback的</span></span><br><span class="line">    <span class="type">status_t</span> err =</span><br><span class="line">            mDispSync-&gt;<span class="built_in">changePhaseOffset</span>(<span class="built_in">static_cast</span>&lt;DispSync::Callback*&gt;(<span class="keyword">this</span>), mPhaseOffset);</span><br><span class="line">    <span class="keyword">if</span> (err != NO_ERROR) &#123;</span><br><span class="line">        <span class="built_in">ALOGE</span>(<span class="string">&quot;error changing vsync offset: %s (%d)&quot;</span>, <span class="built_in">strerror</span>(-err), err);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-4-3-VSyncReactor-changePhaseOffset"><a href="#1-4-3-VSyncReactor-changePhaseOffset" class="headerlink" title="1.4.3 VSyncReactor.changePhaseOffset"></a>1.4.3 VSyncReactor.changePhaseOffset</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">VSyncReactor::changePhaseOffset</span><span class="params">(DispSync::Callback* callback, <span class="type">nsecs_t</span> phase)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lk</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    <span class="keyword">auto</span> <span class="type">const</span> it = mCallbacks.<span class="built_in">find</span>(callback);</span><br><span class="line">    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(it == mCallbacks.<span class="built_in">end</span>(), <span class="string">&quot;callback was %p not registered&quot;</span>, callback);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 调用start，更新VSyncDispatchTimerQueue中相关信息</span></span><br><span class="line">    it-&gt;second-&gt;<span class="built_in">start</span>(phase);</span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-4-4-VSyncReactor-CallbackRepeater-start"><a href="#1-4-4-VSyncReactor-CallbackRepeater-start" class="headerlink" title="1.4.4 VSyncReactor.CallbackRepeater.start"></a>1.4.4 VSyncReactor.CallbackRepeater.start</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">start</span><span class="params">(<span class="type">nsecs_t</span> offset)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lk</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    mStopped = <span class="literal">false</span>;</span><br><span class="line">    mOffset = offset;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> <span class="type">const</span> schedule_result = mRegistration.<span class="built_in">schedule</span>(<span class="built_in">calculateWorkload</span>(), mLastCallTime);</span><br><span class="line">    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>((schedule_result != ScheduleResult::Scheduled),</span><br><span class="line">                        <span class="string">&quot;Error scheduling callback: rc %X&quot;</span>, schedule_result);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-4-5-VSyncCallbackRegistration-schedule"><a href="#1-4-5-VSyncCallbackRegistration-schedule" class="headerlink" title="1.4.5 VSyncCallbackRegistration.schedule"></a>1.4.5 VSyncCallbackRegistration.schedule</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">ScheduleResult <span class="title">VSyncCallbackRegistration::schedule</span><span class="params">(<span class="type">nsecs_t</span> workDuration, <span class="type">nsecs_t</span> earliestVsync)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (!mValidToken) &#123;</span><br><span class="line">        <span class="keyword">return</span> ScheduleResult::Error;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> mDispatch.<span class="built_in">get</span>().<span class="built_in">schedule</span>(mToken, workDuration, earliestVsync);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">ScheduleResult <span class="title">VSyncDispatchTimerQueue::schedule</span><span class="params">(CallbackToken token, <span class="type">nsecs_t</span> workDuration,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                 <span class="type">nsecs_t</span> earliestVsync)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> result = ScheduleResult::Error;</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="function">std::lock_guard&lt;<span class="title">decltype</span><span class="params">(mMutex)</span>&gt; <span class="title">lk</span><span class="params">(mMutex)</span></span>;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">auto</span> it = mCallbacks.<span class="built_in">find</span>(token);</span><br><span class="line">        <span class="keyword">if</span> (it == mCallbacks.<span class="built_in">end</span>()) &#123;</span><br><span class="line">            <span class="keyword">return</span> result;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">auto</span>&amp; callback = it-&gt;second;</span><br><span class="line">        <span class="keyword">auto</span> <span class="type">const</span> now = mTimeKeeper-&gt;<span class="built_in">now</span>();</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果计时器线程即将运行，通过回调计时器重新计算应用此工作更新，以避免取消即将触发的回调。</span></span><br><span class="line">        <span class="keyword">auto</span> <span class="type">const</span> rearmImminent = now &gt; mIntendedWakeupTime;</span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">CC_UNLIKELY</span>(rearmImminent)) &#123;</span><br><span class="line">            callback-&gt;<span class="built_in">addPendingWorkloadUpdate</span>(workDuration, earliestVsync);</span><br><span class="line">            <span class="keyword">return</span> ScheduleResult::Scheduled;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        result = callback-&gt;<span class="built_in">schedule</span>(workDuration, earliestVsync, mTracker, now);</span><br><span class="line">        <span class="keyword">if</span> (result == ScheduleResult::CannotSchedule) &#123;</span><br><span class="line">            <span class="keyword">return</span> result;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (callback-&gt;<span class="built_in">wakeupTime</span>() &lt; mIntendedWakeupTime - mTimerSlack) &#123;</span><br><span class="line">            <span class="built_in">rearmTimerSkippingUpdateFor</span>(now, it);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">ScheduleResult <span class="title">VSyncDispatchTimerQueueEntry::schedule</span><span class="params">(<span class="type">nsecs_t</span> workDuration, <span class="type">nsecs_t</span> earliestVsync,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                      VSyncTracker&amp; tracker, <span class="type">nsecs_t</span> now)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> nextVsyncTime =</span><br><span class="line">            tracker.<span class="built_in">nextAnticipatedVSyncTimeFrom</span>(std::<span class="built_in">max</span>(earliestVsync, now + workDuration));</span><br><span class="line"></span><br><span class="line">    <span class="type">bool</span> <span class="type">const</span> wouldSkipAVsyncTarget =</span><br><span class="line">            mArmedInfo &amp;&amp; (nextVsyncTime &gt; (mArmedInfo-&gt;mActualVsyncTime + mMinVsyncDistance));</span><br><span class="line">    <span class="keyword">if</span> (wouldSkipAVsyncTarget) &#123;</span><br><span class="line">        <span class="keyword">return</span> ScheduleResult::Scheduled;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="type">bool</span> <span class="type">const</span> alreadyDispatchedForVsync = mLastDispatchTime &amp;&amp;</span><br><span class="line">            ((*mLastDispatchTime + mMinVsyncDistance) &gt;= nextVsyncTime &amp;&amp;</span><br><span class="line">             (*mLastDispatchTime - mMinVsyncDistance) &lt;= nextVsyncTime);</span><br><span class="line">    <span class="keyword">if</span> (alreadyDispatchedForVsync) &#123;</span><br><span class="line">        nextVsyncTime =</span><br><span class="line">                tracker.<span class="built_in">nextAnticipatedVSyncTimeFrom</span>(*mLastDispatchTime + mMinVsyncDistance);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> <span class="type">const</span> nextWakeupTime = nextVsyncTime - workDuration;</span><br><span class="line">    mWorkDuration = workDuration;</span><br><span class="line">    mEarliestVsync = earliestVsync;</span><br><span class="line">    mArmedInfo = &#123;nextWakeupTime, nextVsyncTime&#125;;</span><br><span class="line">    <span class="keyword">return</span> ScheduleResult::Scheduled;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-5-VSyncModulator-setPhaseOffsets"><a href="#1-5-VSyncModulator-setPhaseOffsets" class="headerlink" title="1.5 VSyncModulator.setPhaseOffsets"></a>1.5 VSyncModulator.setPhaseOffsets</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">VSyncModulator::setPhaseOffsets</span><span class="params">(<span class="type">const</span> OffsetsConfig&amp; config)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    mOffsetsConfig = config;</span><br><span class="line">    <span class="comment">// 见 1.4 流程</span></span><br><span class="line">    <span class="built_in">updateOffsetsLocked</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里传入的OffsetsConfig是通过PhaseOffsets拿到的</p>
+<h3 id="1-5-1-PhaseOffsets-getCurrentOffsets"><a href="#1-5-1-PhaseOffsets-getCurrentOffsets" class="headerlink" title="1.5.1 PhaseOffsets.getCurrentOffsets"></a>1.5.1 PhaseOffsets.getCurrentOffsets</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">Offsets <span class="title">getCurrentOffsets</span><span class="params">()</span> <span class="type">const</span> <span class="keyword">override</span> </span>&#123; <span class="keyword">return</span> <span class="built_in">getOffsetsForRefreshRate</span>(mRefreshRateFps); &#125;</span><br><span class="line"></span><br><span class="line"><span class="function">PhaseOffsets::Offsets <span class="title">PhaseOffsets::getOffsetsForRefreshRate</span><span class="params">(<span class="type">float</span> fps)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> iter = std::<span class="built_in">find_if</span>(mOffsets.<span class="built_in">begin</span>(), mOffsets.<span class="built_in">end</span>(),</span><br><span class="line">                                   [&amp;fps](<span class="type">const</span> std::pair&lt;<span class="type">float</span>, Offsets&gt;&amp; candidateFps) &#123;</span><br><span class="line">                                       <span class="keyword">return</span> <span class="built_in">fpsEqualsWithMargin</span>(fps, candidateFps.first);</span><br><span class="line">                                   &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (iter != mOffsets.<span class="built_in">end</span>()) &#123;</span><br><span class="line">        <span class="keyword">return</span> iter-&gt;second;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Unknown refresh rate. This might happen if we get a hotplug event for an external display.</span></span><br><span class="line">    <span class="comment">// In this case just construct the offset.</span></span><br><span class="line">    <span class="built_in">ALOGW</span>(<span class="string">&quot;Can&#x27;t find offset for %.2f fps&quot;</span>, fps);</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">getPhaseOffsets</span>(fps, <span class="built_in">static_cast</span>&lt;<span class="type">nsecs_t</span>&gt;(<span class="number">1e9</span>f / fps));</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">PhaseOffsets::Offsets <span class="title">PhaseOffsets::getPhaseOffsets</span><span class="params">(<span class="type">float</span> fps, <span class="type">nsecs_t</span> vsyncPeriod)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 这里根据帧率大小，分两种情况获取偏移量，具体就不看了，和参数配置相关</span></span><br><span class="line">    <span class="keyword">if</span> (fps &gt; <span class="number">65.0f</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getHighFpsOffsets</span>(vsyncPeriod);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getDefaultOffsets</span>(vsyncPeriod);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>哦吼，到这里setDesiredActiveConfig的流程也算是差不多分析完了，主要做的事情也就下面这些：</p>
+<ol>
+<li>触发HWC刷新而不重置空闲计时器。</li>
+<li>软件Vsync产生模块记录更新的Vsync周期到mPeriodTransitioningTo中，且开始接收硬件vsync，这可以检测到硬件刷新率切换。</li>
+<li>调用onRefreshRateChangeCompleted, 通知更新偏移量</li>
+<li>保存即将更新的Fps到mPhaseConfiguration中</li>
+<li>再次根据即将更新的Fps拿到的固定偏移量更新偏移量</li>
+</ol>
+<h1 id="二-硬件切换帧率"><a href="#二-硬件切换帧率" class="headerlink" title="二. 硬件切换帧率"></a>二. 硬件切换帧率</h1><p>上面的流程跑完后，实际上硬件帧率在哪儿切换还是没有看到，包括mPeriodTransitioningTo是怎么更新到实际软件Vsync中的呢？</p>
+<p>注意到在步骤#1.2中也就是repaintEverythingForHWC会请求下一帧的Vsync，很自然的想法就是实际帧率切换应该是在下一帧到来的时候才开始的。</p>
+<p>我们知道SurfaceFlinger接受到Vsync信号后，会调用onMessageInvalidate（Q上是onMessageReceived）方法开始更新、合成Layer。</p>
+<p>回顾这个方法，很快就可以找到实际vsync切换在这一块代码中：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 首先注意到这个参数默认是false的，也就是说</span></span><br><span class="line"><span class="comment">// 调用setDesiredActiveConfig方法后的第一帧是无法进入该分支的</span></span><br><span class="line"><span class="comment">// 我们先跳过这段代码</span></span><br><span class="line"><span class="keyword">if</span> (mSetActiveConfigPending) &#123;</span><br><span class="line">    <span class="keyword">if</span> (framePending) &#123;</span><br><span class="line">        mEventQueue-&gt;<span class="built_in">invalidate</span>();</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 从HWC收到了当前的fence，假设它成功地更新了配置，因此更新SF各个状态</span></span><br><span class="line">    mSetActiveConfigPending = <span class="literal">false</span>;</span><br><span class="line">    <span class="comment">// 2.2 更新SurfaceFlinger的状态，此时HWC是已经更新了帧率</span></span><br><span class="line">    <span class="built_in">ON_MAIN_THREAD</span>(<span class="built_in">setActiveConfigInternal</span>());</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ......</span></span><br><span class="line"></span><br><span class="line">&#123;</span><br><span class="line">    Mutex::Autolock _l(mStateLock);</span><br><span class="line">    <span class="comment">// 因为Layer更新刷新率, 重新来选择刷新率</span></span><br><span class="line">    <span class="comment">// 这里涉及到Layer的VoteType、权限等记录，有兴趣自行研究</span></span><br><span class="line">    mScheduler-&gt;<span class="built_in">chooseRefreshRateForContent</span>();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 2.1 更新当前帧率设置</span></span><br><span class="line"><span class="built_in">ON_MAIN_THREAD</span>(<span class="built_in">performSetActiveConfig</span>());</span><br><span class="line"></span><br><span class="line"><span class="comment">// ......</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="2-1-SurfaceFlinger-performSetActiveConfig"><a href="#2-1-SurfaceFlinger-performSetActiveConfig" class="headerlink" title="2.1 SurfaceFlinger.performSetActiveConfig"></a>2.1 SurfaceFlinger.performSetActiveConfig</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::performSetActiveConfig</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;performSetActiveConfig&quot;</span>);</span><br><span class="line">    <span class="comment">// 判断mDesiredActiveConfigChanged是否为true，获取变量mDesiredActiveConfig</span></span><br><span class="line">    <span class="comment">// 否则返回nullopt, 说明不需要帧率切换</span></span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> desiredActiveConfig = <span class="built_in">getDesiredActiveConfig</span>();</span><br><span class="line">    <span class="keyword">if</span> (!desiredActiveConfig) &#123;</span><br><span class="line">        <span class="comment">// 如果不存在需要切换的帧率配置(mDesiredActiveConfig)，直接返回</span></span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span>&amp; refreshRate =</span><br><span class="line">            mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(desiredActiveConfig-&gt;configId);</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;performSetActiveConfig changing active config to %d(%s)&quot;</span>,</span><br><span class="line">          refreshRate.<span class="built_in">getConfigId</span>().<span class="built_in">value</span>(), refreshRate.<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> display = <span class="built_in">getDefaultDisplayDeviceLocked</span>();</span><br><span class="line">    <span class="keyword">if</span> (!display || display-&gt;<span class="built_in">getActiveConfig</span>() == desiredActiveConfig-&gt;configId) &#123;</span><br><span class="line">        <span class="comment">// 显示设备无效，或者已经处于请求的帧率模式下，标记帧率请求已经完成</span></span><br><span class="line">        <span class="built_in">desiredActiveConfigChangeDone</span>();</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 所需的活动配置已设置，它与当前使用的配置不同，但是在处理刷新时，允许的配置可能已更改。</span></span><br><span class="line">    <span class="comment">// 确保所需的配置仍然被允许</span></span><br><span class="line">    <span class="keyword">if</span> (!<span class="built_in">isDisplayConfigAllowed</span>(desiredActiveConfig-&gt;configId)) &#123;</span><br><span class="line">        <span class="built_in">desiredActiveConfigChangeDone</span>();</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mUpcomingActiveConfig = *desiredActiveConfig;</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> displayId = display-&gt;<span class="built_in">getId</span>();</span><br><span class="line">    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(!displayId);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;ActiveConfigFPS_HWC&quot;</span>, refreshRate.<span class="built_in">getFps</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// TODO(b/142753666) use constrains</span></span><br><span class="line">    hal::VsyncPeriodChangeConstraints constraints;</span><br><span class="line">    constraints.desiredTimeNanos = <span class="built_in">systemTime</span>();</span><br><span class="line">    constraints.seamlessRequired = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 2.1.1 通知HWC更新帧率</span></span><br><span class="line">    hal::VsyncPeriodChangeTimeline outTimeline;</span><br><span class="line">    <span class="keyword">auto</span> status =</span><br><span class="line">            <span class="built_in">getHwComposer</span>().<span class="built_in">setActiveConfigWithConstraints</span>(*displayId,</span><br><span class="line">                                                           mUpcomingActiveConfig.configId.<span class="built_in">value</span>(),</span><br><span class="line">                                                           constraints, &amp;outTimeline);</span><br><span class="line">    <span class="keyword">if</span> (status != NO_ERROR) &#123;</span><br><span class="line">        <span class="comment">// setActiveConfigWithConstraints may fail if a hotplug event is just about</span></span><br><span class="line">        <span class="comment">// to be sent. We just log the error in this case.</span></span><br><span class="line">        <span class="built_in">ALOGW</span>(<span class="string">&quot;setActiveConfigWithConstraints failed: %d&quot;</span>, status);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mScheduler-&gt;<span class="built_in">onNewVsyncPeriodChangeTimeline</span>(outTimeline);</span><br><span class="line">    <span class="comment">// 如果需要，Scheduler将向HWC提交一个空帧，回到onMessageInvalidate中处理</span></span><br><span class="line">    <span class="comment">// 也就是在下一帧会处理，距离调用setDesiredActiveConfig就是第二个帧了。</span></span><br><span class="line">    mSetActiveConfigPending = <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里做一些合法性判断，最重要的是告诉HWC去更新帧率了。</p>
+<h2 id="2-1-1-HWComposer-setActiveConfigWithConstraints"><a href="#2-1-1-HWComposer-setActiveConfigWithConstraints" class="headerlink" title="2.1.1 HWComposer.setActiveConfigWithConstraints"></a>2.1.1 HWComposer.setActiveConfigWithConstraints</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">HWComposer::setActiveConfigWithConstraints</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        DisplayId displayId, <span class="type">size_t</span> configId, <span class="type">const</span> hal::VsyncPeriodChangeConstraints&amp; constraints,</span></span></span><br><span class="line"><span class="params"><span class="function">        hal::VsyncPeriodChangeTimeline* outTimeline)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">RETURN_IF_INVALID_DISPLAY</span>(displayId, BAD_INDEX);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span>&amp; displayData = mDisplayData[displayId];</span><br><span class="line">    <span class="keyword">if</span> (displayData.configMap.<span class="built_in">count</span>(configId) == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="built_in">LOG_DISPLAY_ERROR</span>(displayId, (<span class="string">&quot;Invalid config &quot;</span> + std::<span class="built_in">to_string</span>(configId)).<span class="built_in">c_str</span>());</span><br><span class="line">        <span class="keyword">return</span> BAD_INDEX;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// hwcDisplay是HWC2::impl::Display，用来描述硬件显示设备的</span></span><br><span class="line">    <span class="keyword">auto</span> error =</span><br><span class="line">            displayData.hwcDisplay-&gt;<span class="built_in">setActiveConfigWithConstraints</span>(displayData.configMap[configId],</span><br><span class="line">                                                                   constraints, outTimeline);</span><br><span class="line">    <span class="built_in">RETURN_IF_HWC_ERROR</span>(error, displayId, UNKNOWN_ERROR);</span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-1-2-HWC2-impl-Display-setActiveConfigWithConstraints"><a href="#2-1-2-HWC2-impl-Display-setActiveConfigWithConstraints" class="headerlink" title="2.1.2 HWC2::impl::Display.setActiveConfigWithConstraints"></a>2.1.2 HWC2::impl::Display.setActiveConfigWithConstraints</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">Error <span class="title">Display::setActiveConfigWithConstraints</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::shared_ptr&lt;<span class="type">const</span> HWC2::Display::Config&gt;&amp; config,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> VsyncPeriodChangeConstraints&amp; constraints, VsyncPeriodChangeTimeline* outTimeline)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;[%&quot;</span> PRIu64 <span class="string">&quot;] setActiveConfigWithConstraints&quot;</span>, mId);</span><br><span class="line">    <span class="keyword">if</span> (config-&gt;<span class="built_in">getDisplayId</span>() != mId) &#123;</span><br><span class="line">        <span class="built_in">ALOGE</span>(<span class="string">&quot;setActiveConfigWithConstraints received config %u for the wrong display %&quot;</span> PRIu64</span><br><span class="line">              <span class="string">&quot; (expected %&quot;</span> PRIu64 <span class="string">&quot;)&quot;</span>,</span><br><span class="line">              config-&gt;<span class="built_in">getId</span>(), config-&gt;<span class="built_in">getDisplayId</span>(), mId);</span><br><span class="line">        <span class="keyword">return</span> Error::BAD_CONFIG;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 是否支持Vsync Period切换</span></span><br><span class="line">    <span class="comment">// 我们假设支持，其实不支持的话无非是换成调用setActiveConfig</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">isVsyncPeriodSwitchSupported</span>()) &#123;</span><br><span class="line">        Hwc2::IComposerClient::VsyncPeriodChangeConstraints hwc2Constraints;</span><br><span class="line">        hwc2Constraints.desiredTimeNanos = constraints.desiredTimeNanos;</span><br><span class="line">        hwc2Constraints.seamlessRequired = constraints.seamlessRequired;</span><br><span class="line"></span><br><span class="line">        Hwc2::VsyncPeriodChangeTimeline vsyncPeriodChangeTimeline = &#123;&#125;;</span><br><span class="line">        <span class="comment">// 2.2.2 通知HWComposer切换帧率</span></span><br><span class="line">        <span class="keyword">auto</span> intError =</span><br><span class="line">                mComposer.<span class="built_in">setActiveConfigWithConstraints</span>(mId, config-&gt;<span class="built_in">getId</span>(), hwc2Constraints,</span><br><span class="line">                                                         &amp;vsyncPeriodChangeTimeline);</span><br><span class="line">        outTimeline-&gt;newVsyncAppliedTimeNanos = vsyncPeriodChangeTimeline.newVsyncAppliedTimeNanos;</span><br><span class="line">        outTimeline-&gt;refreshRequired = vsyncPeriodChangeTimeline.refreshRequired;</span><br><span class="line">        outTimeline-&gt;refreshTimeNanos = vsyncPeriodChangeTimeline.refreshTimeNanos;</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">static_cast</span>&lt;Error&gt;(intError);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="2-1-3-ComposerHal-setActiveConfigWithConstraints"><a href="#2-1-3-ComposerHal-setActiveConfigWithConstraints" class="headerlink" title="2.1.3 ComposerHal.setActiveConfigWithConstraints"></a>2.1.3 ComposerHal.setActiveConfigWithConstraints</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">V2_4::Error <span class="title">Composer::setActiveConfigWithConstraints</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        Display display, Config config,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> IComposerClient::VsyncPeriodChangeConstraints&amp; vsyncPeriodChangeConstraints,</span></span></span><br><span class="line"><span class="params"><span class="function">        VsyncPeriodChangeTimeline* outTimeline)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">using</span> Error = V2_4::Error;</span><br><span class="line">    <span class="keyword">if</span> (!mClient_2_4) &#123;</span><br><span class="line">        <span class="keyword">return</span> Error::UNSUPPORTED;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    Error error = kDefaultError_2_4;</span><br><span class="line">    <span class="comment">// 转到composer service处理. 也就是给硬件厂商实现</span></span><br><span class="line">    mClient_2_4-&gt;<span class="built_in">setActiveConfigWithConstraints</span>(display, config, vsyncPeriodChangeConstraints,</span><br><span class="line">                                                [&amp;](<span class="type">const</span> <span class="keyword">auto</span>&amp; tmpError, <span class="type">const</span> <span class="keyword">auto</span>&amp; tmpTimeline) &#123;</span><br><span class="line">                                                    error = tmpError;</span><br><span class="line">                                                    <span class="keyword">if</span> (error != Error::NONE) &#123;</span><br><span class="line">                                                        <span class="keyword">return</span>;</span><br><span class="line">                                                    &#125;</span><br><span class="line"></span><br><span class="line">                                                    *outTimeline = tmpTimeline;</span><br><span class="line">                                                &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> error;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>到这里HWC切换帧率已经完成了。</p>
+<h2 id="2-2-SurfaceFlinger-setActiveConfigInternal"><a href="#2-2-SurfaceFlinger-setActiveConfigInternal" class="headerlink" title="2.2 SurfaceFlinger.setActiveConfigInternal"></a>2.2 SurfaceFlinger.setActiveConfigInternal</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::setActiveConfigInternal</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> display = <span class="built_in">getDefaultDisplayDeviceLocked</span>();</span><br><span class="line">    <span class="keyword">if</span> (!display) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span>&amp; oldRefreshRate =</span><br><span class="line">            mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(display-&gt;<span class="built_in">getActiveConfig</span>());</span><br><span class="line"></span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mActiveConfigLock)</span></span>;</span><br><span class="line">    <span class="comment">// 更新配置为最新的帧率信息</span></span><br><span class="line">    mRefreshRateConfigs-&gt;<span class="built_in">setCurrentConfigId</span>(mUpcomingActiveConfig.configId);</span><br><span class="line">    mRefreshRateStats-&gt;<span class="built_in">setConfigMode</span>(mUpcomingActiveConfig.configId);</span><br><span class="line">    <span class="comment">// 将新的帧率保存在DisplayDevice中</span></span><br><span class="line">    display-&gt;<span class="built_in">setActiveConfig</span>(mUpcomingActiveConfig.configId);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span>&amp; refreshRate =</span><br><span class="line">            mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(mUpcomingActiveConfig.configId);</span><br><span class="line">    <span class="keyword">if</span> (refreshRate.<span class="built_in">getVsyncPeriod</span>() != oldRefreshRate.<span class="built_in">getVsyncPeriod</span>()) &#123;</span><br><span class="line">        <span class="comment">// 前后帧率不一致，记录此次帧率切换，就是次数（refreshRateSwitches）+1</span></span><br><span class="line">        mTimeStats-&gt;<span class="built_in">incrementRefreshRateSwitches</span>();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 偏移量管理类也要更新FPS信息</span></span><br><span class="line">    mPhaseConfiguration-&gt;<span class="built_in">setRefreshRateFps</span>(refreshRate.<span class="built_in">getFps</span>());</span><br><span class="line">    <span class="comment">// HWC更新帧率了，偏移量再次更新</span></span><br><span class="line">    mVSyncModulator-&gt;<span class="built_in">setPhaseOffsets</span>(mPhaseConfiguration-&gt;<span class="built_in">getCurrentOffsets</span>());</span><br><span class="line">    <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;ActiveConfigFPS&quot;</span>, refreshRate.<span class="built_in">getFps</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这里的event就是:Scheduler::ConfigEvent::Changed</span></span><br><span class="line">    <span class="keyword">if</span> (mUpcomingActiveConfig.event != Scheduler::ConfigEvent::None) &#123;</span><br><span class="line">        <span class="type">const</span> <span class="type">nsecs_t</span> vsyncPeriod =</span><br><span class="line">                mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(mUpcomingActiveConfig.configId)</span><br><span class="line">                        .<span class="built_in">getVsyncPeriod</span>();</span><br><span class="line">        <span class="comment">// 更新AppEventThread中的Vsync间隔信息</span></span><br><span class="line">        mScheduler-&gt;<span class="built_in">onPrimaryDisplayConfigChanged</span>(mAppConnectionHandle, display-&gt;<span class="built_in">getId</span>()-&gt;value,</span><br><span class="line">                                                  mUpcomingActiveConfig.configId, vsyncPeriod);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>到此帧率切换的过程，差不多就告一段落，当然这里面还有很对细节的部分。</p>
+<p>比如硬件Vsync是怎么影响到VsyncRecator产生软件Vsync的，或者软件Vsync和硬件Vsync是怎么校准的。</p>
+<p>不过我们先总结一下：</p>
+<ol>
+<li>SurfaceFlinger收到setDesiredDisplayConfigSpecs更新帧率配置后，根据传入的帧率配置以及当前Layer选择一个最佳帧率</li>
+<li>将这个最佳帧率信息存储在mDesiredActiveConfig中，然后请求下一帧Vsync，顺便更新一下偏移量</li>
+<li>下一帧Vsync到来后，首先根据Layer再次计算一下最佳帧率，然后通知HWC更新帧率，在等待下一帧</li>
+<li>第二个Vsync到来后，实际此时硬件HWC的Vsync已经更新了，现在就是同步更新SurfaceFlinger中各个变量中的状态，然后通知给AppEventThread更新</li>
+</ol>
+<p>所以一个完整的帧率切换至少包含2个Vsync周期，不过这两个Vsync周期并不相同哦</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/" title="App申请帧率(4)--SF切换帧率">https://swallowjoe.github.io/2022/02/27/App申请帧率-4-SF切换帧率/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Vsync/" rel="tag"># Vsync</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" rel="prev" title="App申请帧率(3)--SF计算最佳帧率">
+      <i class="fa fa-chevron-left"></i> App申请帧率(3)--SF计算最佳帧率
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-SurfaceFlinger%E6%8E%A5%E5%8F%97%E5%B8%A7%E7%8E%87%E5%8F%98%E5%8C%96"><span class="nav-text">一. SurfaceFlinger接受帧率变化</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-SurfaceFlinger-setDesiredActiveConfig"><span class="nav-text">1.1 SurfaceFlinger.setDesiredActiveConfig</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-SurfaceFlinger-repaintEverythingForHWC"><span class="nav-text">1.2 SurfaceFlinger.repaintEverythingForHWC</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-Scheduler-resyncToHardwareVsync"><span class="nav-text">1.3 Scheduler.resyncToHardwareVsync</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-1-Scheduler-setVsyncPeriod"><span class="nav-text">1.3.1 Scheduler.setVsyncPeriod</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-2-VSyncReactor-setPeriod"><span class="nav-text">1.3.2 VSyncReactor.setPeriod</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-3-VSyncReactor-startPeriodTransition"><span class="nav-text">1.3.3 VSyncReactor.startPeriodTransition</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-VSyncModulator-onRefreshRateChangeInitiated"><span class="nav-text">1.4 VSyncModulator.onRefreshRateChangeInitiated</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-1-VSyncModulator-getNextOffsets"><span class="nav-text">1.4.1 VSyncModulator.getNextOffsets</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-2-DispSyncSource-setPhaseOffset"><span class="nav-text">1.4.2 DispSyncSource.setPhaseOffset</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-3-VSyncReactor-changePhaseOffset"><span class="nav-text">1.4.3 VSyncReactor.changePhaseOffset</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-4-VSyncReactor-CallbackRepeater-start"><span class="nav-text">1.4.4 VSyncReactor.CallbackRepeater.start</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-5-VSyncCallbackRegistration-schedule"><span class="nav-text">1.4.5 VSyncCallbackRegistration.schedule</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-VSyncModulator-setPhaseOffsets"><span class="nav-text">1.5 VSyncModulator.setPhaseOffsets</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-1-PhaseOffsets-getCurrentOffsets"><span class="nav-text">1.5.1 PhaseOffsets.getCurrentOffsets</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-%E7%A1%AC%E4%BB%B6%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87"><span class="nav-text">二. 硬件切换帧率</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-SurfaceFlinger-performSetActiveConfig"><span class="nav-text">2.1 SurfaceFlinger.performSetActiveConfig</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-1-HWComposer-setActiveConfigWithConstraints"><span class="nav-text">2.1.1 HWComposer.setActiveConfigWithConstraints</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-2-HWC2-impl-Display-setActiveConfigWithConstraints"><span class="nav-text">2.1.2 HWC2::impl::Display.setActiveConfigWithConstraints</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-3-ComposerHal-setActiveConfigWithConstraints"><span class="nav-text">2.1.3 ComposerHal.setActiveConfigWithConstraints</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-SurfaceFlinger-setActiveConfigInternal"><span class="nav-text">2.2 SurfaceFlinger.setActiveConfigInternal</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">20</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

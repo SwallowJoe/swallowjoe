@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="以下分析基于Android R. 简述上一章我们分析了App是如何通过更改一个小小的WindowManager的LayoutParam的属性，来影响Framework决策帧率变化的。 接来下我们详细看看SurfaceFlinger是如何根据Framework传入的帧率参数选择合适帧率的。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="App申请帧率(3)--SF计算最佳帧率">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="以下分析基于Android R. 简述上一章我们分析了App是如何通过更改一个小小的WindowManager的LayoutParam的属性，来影响Framework决策帧率变化的。 接来下我们详细看看SurfaceFlinger是如何根据Framework传入的帧率参数选择合适帧率的。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-02-26T19:53:53.000Z">
+<meta property="article:modified_time" content="2022-02-26T20:00:06.780Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Vsync">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>App申请帧率(3)--SF计算最佳帧率 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          App申请帧率(3)--SF计算最佳帧率
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:53:53 / 修改时间：04:00:06" itemprop="dateCreated datePublished" datetime="2022-02-27T03:53:53+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Vsync/" itemprop="url" rel="index"><span itemprop="name">Vsync</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" class="post-meta-item leancloud_visitors" data-flag-title="App申请帧率(3)--SF计算最佳帧率" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>以下分析基于Android R.</p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>上一章我们分析了App是如何通过更改一个小小的WindowManager的LayoutParam的属性，来影响Framework决策帧率变化的。</p>
+<p>接来下我们详细看看SurfaceFlinger是如何根据Framework传入的帧率参数选择合适帧率的。</p>
+<span id="more"></span>
+
+<h1 id="一-SurfaceFlinger接受帧率变化"><a href="#一-SurfaceFlinger接受帧率变化" class="headerlink" title="一. SurfaceFlinger接受帧率变化"></a>一. SurfaceFlinger接受帧率变化</h1><p>接上一章，从 SurfaceFlinger::setAllowedDisplayConfigs 开始. 但是Android R上入口函数些许变化：</p>
+<p>由SurfaceControl.setAllowedDisplayConfigs(getDisplayTokenLocked(), allowedPhysIndexes)</p>
+<p>&#x3D;》SurfaceControl.setDesiredDisplayConfigSpecs(displayToken, configSpecs);</p>
+<p>这里的configSpecs是DesiredDisplayConfigSpecs类型</p>
+<h2 id="1-1-SurfaceControl-setDesiredDisplayConfigSpecs"><a href="#1-1-SurfaceControl-setDesiredDisplayConfigSpecs" class="headerlink" title="1.1 SurfaceControl.setDesiredDisplayConfigSpecs"></a>1.1 SurfaceControl.setDesiredDisplayConfigSpecs</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="type">static</span> boolean <span class="title">setDesiredDisplayConfigSpecs</span><span class="params">(IBinder displayToken,</span></span></span><br><span class="line"><span class="params"><span class="function">        SurfaceControl.DesiredDisplayConfigSpecs desiredDisplayConfigSpecs)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (displayToken == null) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="built_in">IllegalArgumentException</span>(<span class="string">&quot;displayToken must not be null&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">nativeSetDesiredDisplayConfigSpecs</span>(displayToken, desiredDisplayConfigSpecs);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-1-1-android-view-SurfaceControl-nativeSetDesiredDisplayConfigSpecs"><a href="#1-1-1-android-view-SurfaceControl-nativeSetDesiredDisplayConfigSpecs" class="headerlink" title="1.1.1 android_view_SurfaceControl.nativeSetDesiredDisplayConfigSpecs"></a>1.1.1 android_view_SurfaceControl.nativeSetDesiredDisplayConfigSpecs</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> jboolean <span class="title">nativeSetDesiredDisplayConfigSpecs</span><span class="params">(JNIEnv* env, jclass clazz, jobject tokenObj,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                   jobject desiredDisplayConfigSpecs)</span> </span>&#123;</span><br><span class="line">    <span class="function">sp&lt;IBinder&gt; <span class="title">token</span><span class="params">(ibinderForJavaObject(env, tokenObj))</span></span>;</span><br><span class="line">    <span class="keyword">if</span> (token == <span class="literal">nullptr</span>) <span class="keyword">return</span> JNI_FALSE;</span><br><span class="line"></span><br><span class="line">    jint defaultConfig = env-&gt;<span class="built_in">GetIntField</span>(desiredDisplayConfigSpecs,</span><br><span class="line">                                          gDesiredDisplayConfigSpecsClassInfo.defaultConfig);</span><br><span class="line">    jfloat primaryRefreshRateMin =</span><br><span class="line">            env-&gt;<span class="built_in">GetFloatField</span>(desiredDisplayConfigSpecs,</span><br><span class="line">                               gDesiredDisplayConfigSpecsClassInfo.primaryRefreshRateMin);</span><br><span class="line">    jfloat primaryRefreshRateMax =</span><br><span class="line">            env-&gt;<span class="built_in">GetFloatField</span>(desiredDisplayConfigSpecs,</span><br><span class="line">                               gDesiredDisplayConfigSpecsClassInfo.primaryRefreshRateMax);</span><br><span class="line">    jfloat appRequestRefreshRateMin =</span><br><span class="line">            env-&gt;<span class="built_in">GetFloatField</span>(desiredDisplayConfigSpecs,</span><br><span class="line">                               gDesiredDisplayConfigSpecsClassInfo.appRequestRefreshRateMin);</span><br><span class="line">    jfloat appRequestRefreshRateMax =</span><br><span class="line">            env-&gt;<span class="built_in">GetFloatField</span>(desiredDisplayConfigSpecs,</span><br><span class="line">                               gDesiredDisplayConfigSpecsClassInfo.appRequestRefreshRateMax);</span><br><span class="line"></span><br><span class="line">    <span class="type">size_t</span> result = SurfaceComposerClient::<span class="built_in">setDesiredDisplayConfigSpecs</span>(token, defaultConfig,</span><br><span class="line">                                                                        primaryRefreshRateMin,</span><br><span class="line">                                                                        primaryRefreshRateMax,</span><br><span class="line">                                                                        appRequestRefreshRateMin,</span><br><span class="line">                                                                        appRequestRefreshRateMax);</span><br><span class="line">    <span class="keyword">return</span> result == NO_ERROR ? JNI_TRUE : JNI_FALSE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-1-2-SurfaceComposerClient-setDesiredDisplayConfigSpecs"><a href="#1-1-2-SurfaceComposerClient-setDesiredDisplayConfigSpecs" class="headerlink" title="1.1.2 SurfaceComposerClient.setDesiredDisplayConfigSpecs"></a>1.1.2 SurfaceComposerClient.setDesiredDisplayConfigSpecs</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">SurfaceComposerClient::setDesiredDisplayConfigSpecs</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; displayToken,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                             <span class="type">int32_t</span> defaultConfig,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                             <span class="type">float</span> primaryRefreshRateMin,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                             <span class="type">float</span> primaryRefreshRateMax,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                             <span class="type">float</span> appRequestRefreshRateMin,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                             <span class="type">float</span> appRequestRefreshRateMax)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 转到SurfaceFlinger</span></span><br><span class="line">    <span class="keyword">return</span> ComposerService::<span class="built_in">getComposerService</span>()</span><br><span class="line">            -&gt;<span class="built_in">setDesiredDisplayConfigSpecs</span>(displayToken, defaultConfig, primaryRefreshRateMin,</span><br><span class="line">                                           primaryRefreshRateMax, appRequestRefreshRateMin,</span><br><span class="line">                                           appRequestRefreshRateMax);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-2-SurfaceFlinger-setDesiredDisplayConfigSpecs"><a href="#1-2-SurfaceFlinger-setDesiredDisplayConfigSpecs" class="headerlink" title="1.2 SurfaceFlinger.setDesiredDisplayConfigSpecs"></a>1.2 SurfaceFlinger.setDesiredDisplayConfigSpecs</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">SurfaceFlinger::setDesiredDisplayConfigSpecs</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; displayToken,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                      <span class="type">int32_t</span> defaultConfig,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                      <span class="type">float</span> primaryRefreshRateMin,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                      <span class="type">float</span> primaryRefreshRateMax,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                      <span class="type">float</span> appRequestRefreshRateMin,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                      <span class="type">float</span> appRequestRefreshRateMax)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!displayToken) &#123;</span><br><span class="line">        <span class="keyword">return</span> BAD_VALUE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Lambda表达式</span></span><br><span class="line">    <span class="keyword">auto</span> future = <span class="built_in">schedule</span>([=]() -&gt; <span class="type">status_t</span> &#123;</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span> display = <span class="built_in">getDisplayDeviceLocked</span>(displayToken);</span><br><span class="line">        <span class="keyword">if</span> (!display) &#123;</span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;Attempt to set desired display configs for invalid display token %p&quot;</span>,</span><br><span class="line">                  displayToken.<span class="built_in">get</span>());</span><br><span class="line">            <span class="keyword">return</span> NAME_NOT_FOUND;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (display-&gt;<span class="built_in">isVirtual</span>()) &#123;</span><br><span class="line">            <span class="built_in">ALOGW</span>(<span class="string">&quot;Attempt to set desired display configs for virtual display&quot;</span>);</span><br><span class="line">            <span class="keyword">return</span> INVALID_OPERATION;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">using</span> Policy = scheduler::RefreshRateConfigs::Policy;</span><br><span class="line">            <span class="comment">// 初始化policy</span></span><br><span class="line">            <span class="type">const</span> Policy policy&#123;<span class="built_in">HwcConfigIndexType</span>(defaultConfig),</span><br><span class="line">                                &#123;primaryRefreshRateMin, primaryRefreshRateMax&#125;,</span><br><span class="line">                                &#123;appRequestRefreshRateMin, appRequestRefreshRateMax&#125;&#125;;</span><br><span class="line">            <span class="keyword">constexpr</span> <span class="type">bool</span> kOverridePolicy = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">return</span> <span class="built_in">setDesiredDisplayConfigSpecsInternal</span>(display, policy, kOverridePolicy);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> future.<span class="built_in">get</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-2-1-SurfaceFlinger-schedule"><a href="#1-2-1-SurfaceFlinger-schedule" class="headerlink" title="1.2.1 SurfaceFlinger.schedule"></a>1.2.1 SurfaceFlinger.schedule</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> F, <span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="function"><span class="keyword">inline</span> std::future&lt;T&gt; <span class="title">SurfaceFlinger::schedule</span><span class="params">(F&amp;&amp; f)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> [task, future] = <span class="built_in">makeTask</span>(std::<span class="built_in">move</span>(f));</span><br><span class="line">    mEventQueue-&gt;<span class="built_in">postMessage</span>(std::<span class="built_in">move</span>(task));</span><br><span class="line">    <span class="keyword">return</span> std::<span class="built_in">move</span>(future);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//  MessageQueue.h</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> F&gt;</span><br><span class="line"><span class="function"><span class="keyword">inline</span> <span class="keyword">auto</span> <span class="title">makeTask</span><span class="params">(F&amp;&amp; f)</span> </span>&#123;</span><br><span class="line">    sp&lt;Task&lt;F&gt;&gt; task = <span class="keyword">new</span> <span class="built_in">Task</span>&lt;F&gt;(std::<span class="built_in">move</span>(f));</span><br><span class="line">    <span class="keyword">return</span> std::<span class="built_in">make_pair</span>(task, task-&gt;mTask.<span class="built_in">get_future</span>());</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//  MessageQueue.h</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> F&gt;</span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Task</span> : <span class="keyword">public</span> MessageHandler &#123;</span><br><span class="line">    <span class="keyword">template</span> &lt;<span class="keyword">typename</span> G&gt;</span><br><span class="line">    <span class="function"><span class="keyword">friend</span> <span class="keyword">auto</span> <span class="title">makeTask</span><span class="params">(G&amp;&amp;)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">explicit</span> <span class="title">Task</span><span class="params">(F&amp;&amp; f)</span> : mTask(std::move(f)) &#123;</span>&#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">handleMessage</span><span class="params">(<span class="type">const</span> Message&amp;)</span> <span class="keyword">override</span> </span>&#123; <span class="built_in">mTask</span>(); &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">using</span> T = std::<span class="type">invoke_result_t</span>&lt;F&gt;;</span><br><span class="line">    std::packaged_task&lt;<span class="built_in">T</span>()&gt; mTask;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-3-SurfaceFlinger-setDesiredDisplayConfigSpecsInternal"><a href="#1-3-SurfaceFlinger-setDesiredDisplayConfigSpecsInternal" class="headerlink" title="1.3 SurfaceFlinger.setDesiredDisplayConfigSpecsInternal"></a>1.3 SurfaceFlinger.setDesiredDisplayConfigSpecsInternal</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">SurfaceFlinger::setDesiredDisplayConfigSpecsInternal</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> sp&lt;DisplayDevice&gt;&amp; display,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::optional&lt;scheduler::RefreshRateConfigs::Policy&gt;&amp; policy, <span class="type">bool</span> overridePolicy)</span> </span>&#123;</span><br><span class="line">    <span class="function">Mutex::Autolock <span class="title">lock</span><span class="params">(mStateLock)</span></span>;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// overridePolicy 一般都是false</span></span><br><span class="line">    <span class="type">status_t</span> setPolicyResult = overridePolicy</span><br><span class="line">            ? mRefreshRateConfigs-&gt;<span class="built_in">setOverridePolicy</span>(policy)</span><br><span class="line">            <span class="comment">// 1.3.1 更改当前帧率策略</span></span><br><span class="line">            : mRefreshRateConfigs-&gt;<span class="built_in">setDisplayManagerPolicy</span>(*policy);</span><br><span class="line">    <span class="keyword">if</span> (setPolicyResult &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> BAD_VALUE;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (setPolicyResult == scheduler::RefreshRateConfigs::CURRENT_POLICY_UNCHANGED) &#123;</span><br><span class="line">        <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">    &#125;</span><br><span class="line">    scheduler::RefreshRateConfigs::Policy currentPolicy = mRefreshRateConfigs-&gt;<span class="built_in">getCurrentPolicy</span>();</span><br><span class="line"></span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;Setting desired display config specs: defaultConfig: %d primaryRange: [%.0f %.0f]&quot;</span></span><br><span class="line">          <span class="string">&quot; expandedRange: [%.0f %.0f]&quot;</span>,</span><br><span class="line">          currentPolicy.defaultConfig.<span class="built_in">value</span>(), currentPolicy.primaryRange.min,</span><br><span class="line">          currentPolicy.primaryRange.max, currentPolicy.appRequestRange.min,</span><br><span class="line">          currentPolicy.appRequestRange.max);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// TODO(b/140204874): Leave the event in until we do proper testing with all apps that might</span></span><br><span class="line">    <span class="comment">// be depending in this callback.</span></span><br><span class="line">    <span class="type">const</span> <span class="type">nsecs_t</span> vsyncPeriod =</span><br><span class="line">            mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(display-&gt;<span class="built_in">getActiveConfig</span>())</span><br><span class="line">                    .<span class="built_in">getVsyncPeriod</span>();</span><br><span class="line">    mScheduler-&gt;<span class="built_in">onPrimaryDisplayConfigChanged</span>(mAppConnectionHandle, display-&gt;<span class="built_in">getId</span>()-&gt;value,</span><br><span class="line">                                              display-&gt;<span class="built_in">getActiveConfig</span>(), vsyncPeriod);</span><br><span class="line">    <span class="built_in">toggleKernelIdleTimer</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.3.3 获取configId</span></span><br><span class="line">    <span class="keyword">auto</span> configId = mScheduler-&gt;<span class="built_in">getPreferredConfigId</span>();</span><br><span class="line">    <span class="comment">// configId是std::optional&lt;HwcConfigIndexType&gt;类型的，这里判断是否存在值，一般存在</span></span><br><span class="line">    <span class="comment">// 根据HwcConfigIndexType获取实际的 RefreshRate 参数</span></span><br><span class="line">    <span class="keyword">auto</span>&amp; preferredRefreshRate = configId</span><br><span class="line">            ? mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(*configId)</span><br><span class="line">            <span class="comment">// <span class="doctag">NOTE:</span> Choose the default config ID, if Scheduler doesn&#x27;t have one in mind.</span></span><br><span class="line">            : mRefreshRateConfigs-&gt;<span class="built_in">getRefreshRateFromConfigId</span>(currentPolicy.defaultConfig);</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;trying to switch to Scheduler preferred config %d (%s)&quot;</span>,</span><br><span class="line">          preferredRefreshRate.<span class="built_in">getConfigId</span>().<span class="built_in">value</span>(), preferredRefreshRate.<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 判断RefreshRate是否合法</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">isDisplayConfigAllowed</span>(preferredRefreshRate.<span class="built_in">getConfigId</span>())) &#123;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;switching to Scheduler preferred config %d&quot;</span>,</span><br><span class="line">              preferredRefreshRate.<span class="built_in">getConfigId</span>().<span class="built_in">value</span>());</span><br><span class="line">        <span class="comment">// 1.4 设置帧率</span></span><br><span class="line">        <span class="built_in">setDesiredActiveConfig</span>(</span><br><span class="line">                &#123;preferredRefreshRate.<span class="built_in">getConfigId</span>(), Scheduler::ConfigEvent::Changed&#125;);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="built_in">LOG_ALWAYS_FATAL</span>(<span class="string">&quot;Desired config not allowed: %d&quot;</span>,</span><br><span class="line">                         preferredRefreshRate.<span class="built_in">getConfigId</span>().<span class="built_in">value</span>());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-1-RefreshRateConfigs-setDisplayManagerPolicy"><a href="#1-3-1-RefreshRateConfigs-setDisplayManagerPolicy" class="headerlink" title="1.3.1 RefreshRateConfigs.setDisplayManagerPolicy"></a>1.3.1 RefreshRateConfigs.setDisplayManagerPolicy</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">RefreshRateConfigs::setDisplayManagerPolicy</span><span class="params">(<span class="type">const</span> Policy&amp; policy)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard <span class="title">lock</span><span class="params">(mLock)</span></span>;</span><br><span class="line">    <span class="keyword">if</span> (!<span class="built_in">isPolicyValid</span>(policy)) &#123;</span><br><span class="line">        <span class="keyword">return</span> BAD_VALUE;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 获取当前策略，如果mOverridePolicy是false，也就是没有覆写</span></span><br><span class="line">    <span class="comment">// 就是用的mDisplayManagerPolicy</span></span><br><span class="line">    Policy previousPolicy = *<span class="built_in">getCurrentPolicyLocked</span>();</span><br><span class="line">    mDisplayManagerPolicy = policy;</span><br><span class="line">    <span class="keyword">if</span> (*<span class="built_in">getCurrentPolicyLocked</span>() == previousPolicy) &#123;</span><br><span class="line">        <span class="keyword">return</span> CURRENT_POLICY_UNCHANGED;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 1.3.2 根据策略构建最终刷新率</span></span><br><span class="line">    <span class="built_in">constructAvailableRefreshRates</span>();</span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-2-RefreshRateConfigs-constructAvailableRefreshRates"><a href="#1-3-2-RefreshRateConfigs-constructAvailableRefreshRates" class="headerlink" title="1.3.2 RefreshRateConfigs.constructAvailableRefreshRates"></a>1.3.2 RefreshRateConfigs.constructAvailableRefreshRates</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">RefreshRateConfigs::constructAvailableRefreshRates</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Filter configs based on current policy and sort based on vsync period</span></span><br><span class="line">    <span class="type">const</span> Policy* policy = <span class="built_in">getCurrentPolicyLocked</span>();</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; defaultConfig = mRefreshRates.<span class="built_in">at</span>(policy-&gt;defaultConfig)-&gt;hwcConfig;</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;constructAvailableRefreshRates: default %d group %d primaryRange=[%.2f %.2f]&quot;</span></span><br><span class="line">          <span class="string">&quot; appRequestRange=[%.2f %.2f]&quot;</span>,</span><br><span class="line">          policy-&gt;defaultConfig.<span class="built_in">value</span>(), defaultConfig-&gt;<span class="built_in">getConfigGroup</span>(), policy-&gt;primaryRange.min,</span><br><span class="line">          policy-&gt;primaryRange.max, policy-&gt;appRequestRange.min, policy-&gt;appRequestRange.max);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// lambuda A</span></span><br><span class="line">    <span class="keyword">auto</span> filterRefreshRates = [&amp;](<span class="type">float</span> min, <span class="type">float</span> max, <span class="type">const</span> <span class="type">char</span>* listName,</span><br><span class="line">                                  std::vector&lt;<span class="type">const</span> RefreshRate*&gt;* outRefreshRates) &#123;</span><br><span class="line">        <span class="comment">// lambuda B</span></span><br><span class="line">        <span class="built_in">getSortedRefreshRateList</span>(</span><br><span class="line">                [&amp;](<span class="type">const</span> RefreshRate&amp; refreshRate) <span class="built_in">REQUIRES</span>(mLock) &#123;</span><br><span class="line">                    <span class="type">const</span> <span class="keyword">auto</span>&amp; hwcConfig = refreshRate.hwcConfig;</span><br><span class="line"></span><br><span class="line">                    <span class="keyword">return</span> hwcConfig-&gt;<span class="built_in">getHeight</span>() == defaultConfig-&gt;<span class="built_in">getHeight</span>() &amp;&amp;</span><br><span class="line">                            hwcConfig-&gt;<span class="built_in">getWidth</span>() == defaultConfig-&gt;<span class="built_in">getWidth</span>() &amp;&amp;</span><br><span class="line">                            hwcConfig-&gt;<span class="built_in">getDpiX</span>() == defaultConfig-&gt;<span class="built_in">getDpiX</span>() &amp;&amp;</span><br><span class="line">                            hwcConfig-&gt;<span class="built_in">getDpiY</span>() == defaultConfig-&gt;<span class="built_in">getDpiY</span>() &amp;&amp;</span><br><span class="line">                            (policy-&gt;allowGroupSwitching ||</span><br><span class="line">                             hwcConfig-&gt;<span class="built_in">getConfigGroup</span>() == defaultConfig-&gt;<span class="built_in">getConfigGroup</span>()) &amp;&amp;</span><br><span class="line">                            refreshRate.<span class="built_in">inPolicy</span>(min, max);</span><br><span class="line">                &#125;,</span><br><span class="line">                outRefreshRates);</span><br><span class="line"></span><br><span class="line">        <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(outRefreshRates-&gt;<span class="built_in">empty</span>(),</span><br><span class="line">                            <span class="string">&quot;No matching configs for %s range: min=%.0f max=%.0f&quot;</span>, listName, min,</span><br><span class="line">                            max);</span><br><span class="line">        <span class="keyword">auto</span> stringifyRefreshRates = [&amp;]() -&gt; std::string &#123;</span><br><span class="line">            std::string str;</span><br><span class="line">            <span class="keyword">for</span> (<span class="keyword">auto</span> refreshRate : *outRefreshRates) &#123;</span><br><span class="line">                base::<span class="built_in">StringAppendF</span>(&amp;str, <span class="string">&quot;%s &quot;</span>, refreshRate-&gt;name.<span class="built_in">c_str</span>());</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">return</span> str;</span><br><span class="line">        &#125;;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;%s refresh rates: %s&quot;</span>, listName, <span class="built_in">stringifyRefreshRates</span>().<span class="built_in">c_str</span>());</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">filterRefreshRates</span>(policy-&gt;primaryRange.min, policy-&gt;primaryRange.max, <span class="string">&quot;primary&quot;</span>,</span><br><span class="line">                       &amp;mPrimaryRefreshRates);</span><br><span class="line">    <span class="built_in">filterRefreshRates</span>(policy-&gt;appRequestRange.min, policy-&gt;appRequestRange.max, <span class="string">&quot;app request&quot;</span>,</span><br><span class="line">                       &amp;mAppRequestRefreshRates);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">RefreshRateConfigs::getSortedRefreshRateList</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::function&lt;<span class="type">bool</span>(<span class="type">const</span> RefreshRate&amp;)&gt;&amp; shouldAddRefreshRate,</span></span></span><br><span class="line"><span class="params"><span class="function">        std::vector&lt;<span class="type">const</span> RefreshRate*&gt;* outRefreshRates)</span> </span>&#123;</span><br><span class="line">    outRefreshRates-&gt;<span class="built_in">clear</span>();</span><br><span class="line">    outRefreshRates-&gt;<span class="built_in">reserve</span>(mRefreshRates.<span class="built_in">size</span>());</span><br><span class="line">    <span class="comment">// 遍历所有可能的RefreshRate</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [type, refreshRate] : mRefreshRates) &#123;</span><br><span class="line">        <span class="comment">// 调用上面的lambuda B方法, 其实就是条件判断</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">shouldAddRefreshRate</span>(*refreshRate)) &#123;</span><br><span class="line">            <span class="built_in">ALOGV</span>(<span class="string">&quot;getSortedRefreshRateList: config %d added to list policy&quot;</span>,</span><br><span class="line">                  refreshRate-&gt;configId.<span class="built_in">value</span>());</span><br><span class="line">            outRefreshRates-&gt;<span class="built_in">push_back</span>(refreshRate.<span class="built_in">get</span>());</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 按照帧率大小排序，VsyncPeriod越大，Fps越小。</span></span><br><span class="line">    <span class="comment">// 这里就是按照Fps升序排序了</span></span><br><span class="line">    std::<span class="built_in">sort</span>(outRefreshRates-&gt;<span class="built_in">begin</span>(), outRefreshRates-&gt;<span class="built_in">end</span>(),</span><br><span class="line">              [](<span class="type">const</span> <span class="keyword">auto</span> refreshRate1, <span class="type">const</span> <span class="keyword">auto</span> refreshRate2) &#123;</span><br><span class="line">                  <span class="keyword">if</span> (refreshRate1-&gt;hwcConfig-&gt;<span class="built_in">getVsyncPeriod</span>() !=</span><br><span class="line">                      refreshRate2-&gt;hwcConfig-&gt;<span class="built_in">getVsyncPeriod</span>()) &#123;</span><br><span class="line">                      <span class="keyword">return</span> refreshRate1-&gt;hwcConfig-&gt;<span class="built_in">getVsyncPeriod</span>() &gt;</span><br><span class="line">                              refreshRate2-&gt;hwcConfig-&gt;<span class="built_in">getVsyncPeriod</span>();</span><br><span class="line">                  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                      <span class="keyword">return</span> refreshRate1-&gt;hwcConfig-&gt;<span class="built_in">getConfigGroup</span>() &gt;</span><br><span class="line">                              refreshRate2-&gt;hwcConfig-&gt;<span class="built_in">getConfigGroup</span>();</span><br><span class="line">                  &#125;</span><br><span class="line">              &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里吐槽一下，写的很丑。直接说明，在 mRefreshRates中寻找符合要求的configId(modeId)放入对应的集合中。</p>
+<p>这里说的符合要求是指：</p>
+<ol>
+<li>宽高与所设置的Policy中的defaultConfig的宽高一致</li>
+<li>其帧率在所设置的Policy的最小和最大帧率之中</li>
+</ol>
+<p>最终将结果保存在变量：mPrimaryRefreshRates以及mAppRequestRefreshRates中。</p>
+<h3 id="1-3-3-Scheduler-getPreferredConfigId"><a href="#1-3-3-Scheduler-getPreferredConfigId" class="headerlink" title="1.3.3 Scheduler.getPreferredConfigId"></a>1.3.3 Scheduler.getPreferredConfigId</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">std::optional&lt;HwcConfigIndexType&gt; <span class="title">Scheduler::getPreferredConfigId</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mFeatureStateLock)</span></span>;</span><br><span class="line">    <span class="comment">// Make sure that the default config ID is first updated, before returned.</span></span><br><span class="line">    <span class="comment">// mFeatures 是一个结构体</span></span><br><span class="line">    <span class="keyword">if</span> (mFeatures.configId.<span class="built_in">has_value</span>()) &#123;</span><br><span class="line">        <span class="comment">// configId是一个 std:optional的变量</span></span><br><span class="line">        <span class="comment">// 计算当前刷新率的configId</span></span><br><span class="line">        mFeatures.configId = <span class="built_in">calculateRefreshRateConfigIndexType</span>();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> mFeatures.configId;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这个地方原以为mFeatures.configId一般是存在value的，其实并不是。</p>
+<h3 id="1-3-4-Scheduler-calculateRefreshRateConfigIndexType"><a href="#1-3-4-Scheduler-calculateRefreshRateConfigIndexType" class="headerlink" title="1.3.4 Scheduler.calculateRefreshRateConfigIndexType"></a>1.3.4 Scheduler.calculateRefreshRateConfigIndexType</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// consideredSignals 的默认参数是nullptr的</span></span><br><span class="line"><span class="function">HwcConfigIndexType <span class="title">Scheduler::calculateRefreshRateConfigIndexType</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        scheduler::RefreshRateConfigs::GlobalSignals* consideredSignals)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> touchActive = mTouchTimer &amp;&amp; mFeatures.touch == TouchState::Active;</span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> idle = mIdleTimer &amp;&amp; mFeatures.idleTimer == TimerState::Expired;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="comment">// 1.3.5 获取最佳ConfigId, 根据framework传来的帧率范围, 以及当下Layer投票产生</span></span><br><span class="line">    <span class="keyword">return</span> mRefreshRateConfigs</span><br><span class="line">            .<span class="built_in">getBestRefreshRate</span>(mFeatures.contentRequirements, &#123;.touch = touchActive, .idle = idle&#125;,</span><br><span class="line">                                consideredSignals)</span><br><span class="line">            .<span class="built_in">getConfigId</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-5-RefreshRateConfigs-getBestRefreshRate"><a href="#1-3-5-RefreshRateConfigs-getBestRefreshRate" class="headerlink" title="1.3.5 RefreshRateConfigs.getBestRefreshRate"></a>1.3.5 RefreshRateConfigs.getBestRefreshRate</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br><span class="line">247</span><br><span class="line">248</span><br><span class="line">249</span><br><span class="line">250</span><br><span class="line">251</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">const</span> RefreshRate&amp; <span class="title">RefreshRateConfigs::getBestRefreshRate</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::vector&lt;LayerRequirement&gt;&amp; layers, <span class="type">const</span> GlobalSignals&amp; globalSignals,</span></span></span><br><span class="line"><span class="params"><span class="function">        GlobalSignals* outSignalsConsidered)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;getRefreshRateForContent %zu layers&quot;</span>, layers.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 注意传入的outSignalsConsidered是nullptr的</span></span><br><span class="line">    <span class="keyword">if</span> (outSignalsConsidered) *outSignalsConsidered = &#123;&#125;;</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> setTouchConsidered = [&amp;] &#123;</span><br><span class="line">        <span class="keyword">if</span> (outSignalsConsidered) &#123;</span><br><span class="line">            outSignalsConsidered-&gt;touch = <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> setIdleConsidered = [&amp;] &#123;</span><br><span class="line">        <span class="keyword">if</span> (outSignalsConsidered) &#123;</span><br><span class="line">            outSignalsConsidered-&gt;idle = <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="function">std::lock_guard <span class="title">lock</span><span class="params">(mLock)</span></span>;</span><br><span class="line">    <span class="comment">// 开始投票</span></span><br><span class="line">    <span class="comment">// 首先计算所有不同LayerVoteType的数量</span></span><br><span class="line">    <span class="comment">// 这里的Type稍后介绍</span></span><br><span class="line">    <span class="type">int</span> noVoteLayers = <span class="number">0</span>;</span><br><span class="line">    <span class="type">int</span> minVoteLayers = <span class="number">0</span>;</span><br><span class="line">    <span class="type">int</span> maxVoteLayers = <span class="number">0</span>;</span><br><span class="line">    <span class="type">int</span> explicitDefaultVoteLayers = <span class="number">0</span>;</span><br><span class="line">    <span class="type">int</span> explicitExactOrMultipleVoteLayers = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 记录最大的权重</span></span><br><span class="line">    <span class="type">float</span> maxExplicitWeight = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; layer : layers) &#123;</span><br><span class="line">        <span class="keyword">if</span> (layer.vote == LayerVoteType::NoVote) &#123;</span><br><span class="line">            noVoteLayers++;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (layer.vote == LayerVoteType::Min) &#123;</span><br><span class="line">            minVoteLayers++;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (layer.vote == LayerVoteType::Max) &#123;</span><br><span class="line">            maxVoteLayers++;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (layer.vote == LayerVoteType::ExplicitDefault) &#123;</span><br><span class="line">            explicitDefaultVoteLayers++;</span><br><span class="line">            maxExplicitWeight = std::<span class="built_in">max</span>(maxExplicitWeight, layer.weight);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (layer.vote == LayerVoteType::ExplicitExactOrMultiple) &#123;</span><br><span class="line">            explicitExactOrMultipleVoteLayers++;</span><br><span class="line">            maxExplicitWeight = std::<span class="built_in">max</span>(maxExplicitWeight, layer.weight);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> hasExplicitVoteLayers =</span><br><span class="line">            explicitDefaultVoteLayers &gt; <span class="number">0</span> || explicitExactOrMultipleVoteLayers &gt; <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// $1. 如果没有显式Layer, 考虑触摸事件, 如果存在触摸事件, 选择最大帧率</span></span><br><span class="line">    <span class="keyword">if</span> (globalSignals.touch &amp;&amp; !hasExplicitVoteLayers) &#123;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;TouchBoost - choose %s&quot;</span>, <span class="built_in">getMaxRefreshRateByPolicyLocked</span>().<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">        <span class="built_in">setTouchConsidered</span>();</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getMaxRefreshRateByPolicyLocked</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果刷新率范围由单个刷新率组成，那么只有当层显式请求不同的刷新率时，才能选择超出范围</span></span><br><span class="line">    <span class="type">const</span> Policy* policy = <span class="built_in">getCurrentPolicyLocked</span>();</span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> primaryRangeIsSingleRate = policy-&gt;primaryRange.min == policy-&gt;primaryRange.max;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// $2. 没有touch事件，屏幕处于idle状态, 刷新率存在一定范围或者不存在显示请求刷新率的Layer时</span></span><br><span class="line">    <span class="comment">// 选择最小帧率</span></span><br><span class="line">    <span class="keyword">if</span> (!globalSignals.touch &amp;&amp; globalSignals.idle &amp;&amp;</span><br><span class="line">        !(primaryRangeIsSingleRate &amp;&amp; hasExplicitVoteLayers)) &#123;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;Idle - choose %s&quot;</span>, <span class="built_in">getMinRefreshRateByPolicyLocked</span>().<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">        <span class="built_in">setIdleConsidered</span>();</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getMinRefreshRateByPolicyLocked</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// $3. 没有Layer或者所有Layer都没有投票(NoVote)时, 选择最大帧率？？？</span></span><br><span class="line">    <span class="keyword">if</span> (layers.<span class="built_in">empty</span>() || noVoteLayers == layers.<span class="built_in">size</span>()) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getMaxRefreshRateByPolicyLocked</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// $4. 存在Layer且所有Layer要么不投票，要么请求最小帧率时，选择最小帧率</span></span><br><span class="line">    <span class="keyword">if</span> (noVoteLayers + minVoteLayers == layers.<span class="built_in">size</span>()) &#123;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;all layers Min - choose %s&quot;</span>, <span class="built_in">getMinRefreshRateByPolicyLocked</span>().<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getMinRefreshRateByPolicyLocked</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// $5. 计算找到最佳刷新率</span></span><br><span class="line">    std::vector&lt;std::pair&lt;<span class="type">const</span> RefreshRate*, <span class="type">float</span>&gt;&gt; scores;</span><br><span class="line">    scores.<span class="built_in">reserve</span>(mAppRequestRefreshRates.<span class="built_in">size</span>());</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span> refreshRate : mAppRequestRefreshRates) &#123;</span><br><span class="line">        scores.<span class="built_in">emplace_back</span>(refreshRate, <span class="number">0.0f</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 遍历所有Layer</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; layer : layers) &#123;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;Calculating score for %s (%s, weight %.2f)&quot;</span>, layer.name.<span class="built_in">c_str</span>(),</span><br><span class="line">              <span class="built_in">layerVoteTypeString</span>(layer.vote).<span class="built_in">c_str</span>(), layer.weight);</span><br><span class="line">        <span class="comment">// 忽略不投票或者投票选择最小帧率的Layer</span></span><br><span class="line">        <span class="keyword">if</span> (layer.vote == LayerVoteType::NoVote || layer.vote == LayerVoteType::Min) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">auto</span> weight = layer.weight;</span><br><span class="line">        <span class="comment">// 注意这里还有一层循环，分别计算每个AppRequestRefreshRate的得分</span></span><br><span class="line">        <span class="keyword">for</span> (<span class="keyword">auto</span> i = <span class="number">0u</span>; i &lt; scores.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">            <span class="type">bool</span> inPrimaryRange =</span><br><span class="line">                    scores[i].first-&gt;<span class="built_in">inPolicy</span>(policy-&gt;primaryRange.min, policy-&gt;primaryRange.max);</span><br><span class="line">            <span class="keyword">if</span> ((primaryRangeIsSingleRate || !inPrimaryRange) &amp;&amp;</span><br><span class="line">                !(layer.focused &amp;&amp;</span><br><span class="line">                  (layer.vote == LayerVoteType::ExplicitDefault ||</span><br><span class="line">                   layer.vote == LayerVoteType::ExplicitExactOrMultiple))) &#123;</span><br><span class="line">                <span class="comment">// $$5.1 只有具有显式帧速率设置的聚焦层才允许对主范围之外的刷新率进行评分</span></span><br><span class="line">                <span class="comment">// 换句话说，只有ExplicitDefault或者ExplicitExactOrMultiple类型的Layer，且该Layer是有焦点的</span></span><br><span class="line">                <span class="comment">// 才允许投票超出刷新率请求范围的帧率</span></span><br><span class="line">                <span class="keyword">continue</span>;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// $$5.2 如果图层想要最大值，给更高的刷新率评分</span></span><br><span class="line">            <span class="keyword">if</span> (layer.vote == LayerVoteType::Max) &#123;</span><br><span class="line">                <span class="comment">// 用当前layer(app)请求的帧率除以最后一个layer(app)请求的帧率</span></span><br><span class="line">                <span class="comment">// 注意到mAppRequestRefreshRates中fps是按照升序排序的，最后一个是最大的</span></span><br><span class="line">                <span class="comment">// 所以这里就是用 当前请求的帧率除以最大的请求帧率得到一个 (0, 1] 的比值</span></span><br><span class="line">                <span class="type">const</span> <span class="keyword">auto</span> ratio = scores[i].first-&gt;fps / scores.<span class="built_in">back</span>().first-&gt;fps;</span><br><span class="line">                <span class="comment">// 使用比值的平方得到一个较低的分数 ==&gt; 为啥？</span></span><br><span class="line">                <span class="type">const</span> <span class="keyword">auto</span> layerScore = ratio * ratio;</span><br><span class="line">                <span class="built_in">ALOGV</span>(<span class="string">&quot;%s (Max, weight %.2f) gives %s score of %.2f&quot;</span>, layer.name.<span class="built_in">c_str</span>(), weight,</span><br><span class="line">                      scores[i].first-&gt;name.<span class="built_in">c_str</span>(), layerScore);</span><br><span class="line">                <span class="comment">// 将比值的平方乘上权重系数，作为该layer的分数</span></span><br><span class="line">                scores[i].second += weight * layerScore;</span><br><span class="line">                <span class="keyword">continue</span>;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 屏幕刷新率</span></span><br><span class="line">            <span class="type">const</span> <span class="keyword">auto</span> displayPeriod = scores[i].first-&gt;hwcConfig-&gt;<span class="built_in">getVsyncPeriod</span>();</span><br><span class="line">            <span class="comment">// Layer所需的刷新率</span></span><br><span class="line">            <span class="type">const</span> <span class="keyword">auto</span> layerPeriod = <span class="built_in">round</span>&lt;<span class="type">nsecs_t</span>&gt;(<span class="number">1e9</span>f / layer.desiredRefreshRate);</span><br><span class="line">            <span class="comment">// $$5.3 如果是ExplicitDefault类型的Layer</span></span><br><span class="line">            <span class="keyword">if</span> (layer.vote == LayerVoteType::ExplicitDefault) &#123;</span><br><span class="line">                <span class="type">const</span> <span class="keyword">auto</span> layerScore = [&amp;]() &#123;</span><br><span class="line">                    <span class="comment">// 找到Layer将渲染的实际速率，假设layerPeriod是渲染帧的最短时间</span></span><br><span class="line">                    <span class="keyword">auto</span> actualLayerPeriod = displayPeriod;</span><br><span class="line">                    <span class="type">int</span> multiplier = <span class="number">1</span>;</span><br><span class="line">                    <span class="comment">// 刷新时长依次翻倍，直到满足该Layer刷新的最低时长，也就是fps大小每次折半</span></span><br><span class="line">                    <span class="comment">// MARGIN_FOR_PERIOD_CALCULATION = 800us</span></span><br><span class="line">                    <span class="keyword">while</span> (layerPeriod &gt; actualLayerPeriod + MARGIN_FOR_PERIOD_CALCULATION) &#123;</span><br><span class="line">                        multiplier++;</span><br><span class="line">                        actualLayerPeriod = displayPeriod * multiplier;</span><br><span class="line">                    &#125;</span><br><span class="line">                    <span class="comment">// 此时layer分数为 layer所需的时长除以满足刷新要求的最长时长</span></span><br><span class="line">                    <span class="keyword">return</span> std::<span class="built_in">min</span>(<span class="number">1.0f</span>,</span><br><span class="line">                                    <span class="built_in">static_cast</span>&lt;<span class="type">float</span>&gt;(layerPeriod) /</span><br><span class="line">                                            <span class="built_in">static_cast</span>&lt;<span class="type">float</span>&gt;(actualLayerPeriod));</span><br><span class="line">                &#125;();</span><br><span class="line"></span><br><span class="line">                <span class="built_in">ALOGV</span>(<span class="string">&quot;%s (ExplicitDefault, weight %.2f) %.2fHz gives %s score of %.2f&quot;</span>,</span><br><span class="line">                      layer.name.<span class="built_in">c_str</span>(), weight, <span class="number">1e9</span>f / layerPeriod, scores[i].first-&gt;name.<span class="built_in">c_str</span>(),</span><br><span class="line">                      layerScore);</span><br><span class="line">                <span class="comment">// layer分数乘上权重作为该layer的最终分数</span></span><br><span class="line">                scores[i].second += weight * layerScore;</span><br><span class="line">                <span class="keyword">continue</span>;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// $$5.4 如果是ExplicitExactOrMultiple或者Heuristic类型的Layer</span></span><br><span class="line">            <span class="keyword">if</span> (layer.vote == LayerVoteType::ExplicitExactOrMultiple ||</span><br><span class="line">                layer.vote == LayerVoteType::Heuristic) &#123;</span><br><span class="line">                <span class="type">const</span> <span class="keyword">auto</span> layerScore = [&amp;] &#123;</span><br><span class="line">                    <span class="comment">// 计算我们需要多少个显示vSync来显示这个层的一个帧</span></span><br><span class="line">                    <span class="comment">// 其实就是计算 layerPeriod/displayPeriod 得到商和余数</span></span><br><span class="line">                    <span class="type">const</span> <span class="keyword">auto</span> [displayFramesQuot, displayFramesRem] =</span><br><span class="line">                            <span class="built_in">getDisplayFrames</span>(layerPeriod, displayPeriod);</span><br><span class="line">                    <span class="type">static</span> <span class="keyword">constexpr</span> <span class="type">size_t</span> MAX_FRAMES_TO_FIT =</span><br><span class="line">                            <span class="number">10</span>; <span class="comment">// Stop calculating when score &lt; 0.1</span></span><br><span class="line">                    <span class="keyword">if</span> (displayFramesRem == <span class="number">0</span>) &#123;</span><br><span class="line">                        <span class="comment">// 整除的时候，直接返回1?</span></span><br><span class="line">                        <span class="comment">// 说明layer请求的fps是比display的fps小，得分直接拉满</span></span><br><span class="line">                        <span class="keyword">return</span> <span class="number">1.0f</span>;</span><br><span class="line">                    &#125;</span><br><span class="line"></span><br><span class="line">                    <span class="keyword">if</span> (displayFramesQuot == <span class="number">0</span>) &#123;</span><br><span class="line">                        <span class="comment">// 当layer请求的fps比display中的fps要大的时候</span></span><br><span class="line">                        <span class="comment">// 返回layer period除以display period的商的十一分之一</span></span><br><span class="line">                        <span class="comment">// 比如 layer = 120Hz， display = 90Hz</span></span><br><span class="line">                        <span class="comment">//                    8.33333         1.0</span></span><br><span class="line">                        <span class="comment">//  return =  -----------  *   ----</span></span><br><span class="line">                        <span class="comment">//                     11.1111         11</span></span><br><span class="line">                        <span class="comment">// 为啥怎么算呢，这里分数的极限值也就是1/11，最大限度排除这个layer请求的帧率？</span></span><br><span class="line">                        <span class="keyword">return</span> (<span class="built_in">static_cast</span>&lt;<span class="type">float</span>&gt;(layerPeriod) /</span><br><span class="line">                                <span class="built_in">static_cast</span>&lt;<span class="type">float</span>&gt;(displayPeriod)) *</span><br><span class="line">                                (<span class="number">1.0f</span> / (MAX_FRAMES_TO_FIT + <span class="number">1</span>));</span><br><span class="line">                    &#125;</span><br><span class="line"></span><br><span class="line">                    <span class="comment">// layer所需的刷新率低于的显示刷新率，但又不是整数倍关系，检查它是否符合节奏</span></span><br><span class="line">                    <span class="comment">// 计算差值: 用 Pl 表述 layer period，Pd表示display period</span></span><br><span class="line">                    <span class="comment">// diff = | (Pl mod Pd) * 2 - Pd |</span></span><br><span class="line">                    <span class="comment">// 这里的意思是在计算多少帧内，display 刷新可以匹配 layer请求的刷新</span></span><br><span class="line">                    <span class="keyword">auto</span> diff = std::<span class="built_in">abs</span>(displayFramesRem - (displayPeriod - displayFramesRem));</span><br><span class="line">                    <span class="type">int</span> iter = <span class="number">2</span>;</span><br><span class="line">                    <span class="keyword">while</span> (diff &gt; MARGIN_FOR_PERIOD_CALCULATION &amp;&amp; iter &lt; MAX_FRAMES_TO_FIT) &#123;</span><br><span class="line">                        <span class="comment">// 循环计算，总结公式：</span></span><br><span class="line">                        <span class="comment">// 1. diff0 = 2 * (Pl mod Pd) - Pd, Pl &gt; Pd 且 K ∈ &#123;1,2,3,...,9&#125;</span></span><br><span class="line">                        <span class="comment">// 2. 当diff0 &gt; 0 时, diff = (Pl mod Pd) * 2^k - Pd * (2^k-1)</span></span><br><span class="line">                        <span class="comment">// 3. 当diff0 &lt; 0 时, diff = Pd - 2^k * (Pl mode Pd)</span></span><br><span class="line">                        diff = diff - (displayPeriod - diff);</span><br><span class="line">                        iter++;</span><br><span class="line">                    &#125;</span><br><span class="line"></span><br><span class="line">                    <span class="comment">// 得分取值范围是[0.1, 0.5]</span></span><br><span class="line">                    <span class="keyword">return</span> <span class="number">1.0f</span> / iter;</span><br><span class="line">                &#125;();</span><br><span class="line">                <span class="built_in">ALOGV</span>(<span class="string">&quot;%s (%s, weight %.2f) %.2fHz gives %s score of %.2f&quot;</span>, layer.name.<span class="built_in">c_str</span>(),</span><br><span class="line">                      <span class="built_in">layerVoteTypeString</span>(layer.vote).<span class="built_in">c_str</span>(), weight, <span class="number">1e9</span>f / layerPeriod,</span><br><span class="line">                      scores[i].first-&gt;name.<span class="built_in">c_str</span>(), layerScore);</span><br><span class="line">                <span class="comment">// 照例，乘上权重作为分数</span></span><br><span class="line">                scores[i].second += weight * layerScore;</span><br><span class="line">                <span class="keyword">continue</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// $6 如果存在请求最大帧率的layer就反向遍历</span></span><br><span class="line">    <span class="comment">// 找到得分最大的帧率</span></span><br><span class="line">    <span class="type">const</span> RefreshRate* bestRefreshRate = maxVoteLayers &gt; <span class="number">0</span></span><br><span class="line">            ? <span class="built_in">getBestRefreshRate</span>(scores.<span class="built_in">rbegin</span>(), scores.<span class="built_in">rend</span>())</span><br><span class="line">            : <span class="built_in">getBestRefreshRate</span>(scores.<span class="built_in">begin</span>(), scores.<span class="built_in">end</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 显示主刷新率没有范围，只有定值时</span></span><br><span class="line">    <span class="keyword">if</span> (primaryRangeIsSingleRate) &#123;</span><br><span class="line">        <span class="comment">// 如果没有layer参与评分，从显示主刷新范围选取最大值</span></span><br><span class="line">        <span class="comment">// 否则返回计算得出的最佳刷新率</span></span><br><span class="line">        <span class="keyword">if</span> (std::<span class="built_in">all_of</span>(scores.<span class="built_in">begin</span>(), scores.<span class="built_in">end</span>(),</span><br><span class="line">                        [](std::pair&lt;<span class="type">const</span> RefreshRate*, <span class="type">float</span>&gt; p) &#123; <span class="keyword">return</span> p.second == <span class="number">0</span>; &#125;)) &#123;</span><br><span class="line">            <span class="built_in">ALOGV</span>(<span class="string">&quot;layers not scored - choose %s&quot;</span>,</span><br><span class="line">                  <span class="built_in">getMaxRefreshRateByPolicyLocked</span>().<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">            <span class="keyword">return</span> <span class="built_in">getMaxRefreshRateByPolicyLocked</span>();</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> *bestRefreshRate;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果没有explicitDefaultLayers，请考虑touch事件。</span></span><br><span class="line">    <span class="comment">// ExplicitDefault主要是交互式的（与ExplicitExactOrMultiple相反），因此如果那些Layer发布了一个显式投票，</span></span><br><span class="line">    <span class="comment">// 那么存在touch事件，就不应该更改它。只有在触摸增强会增加刷新率超过正常选择时才应用。</span></span><br><span class="line">    <span class="type">const</span> RefreshRate&amp; touchRefreshRate = <span class="built_in">getMaxRefreshRateByPolicyLocked</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 存在touch事件，不存在ExplicitDefault的Layer且显示主范围刷新率最大值大于计算的刷新率时</span></span><br><span class="line">    <span class="comment">// 采用最大刷新率</span></span><br><span class="line">    <span class="keyword">if</span> (globalSignals.touch &amp;&amp; explicitDefaultVoteLayers == <span class="number">0</span> &amp;&amp;</span><br><span class="line">        bestRefreshRate-&gt;fps &lt; touchRefreshRate.fps) &#123;</span><br><span class="line">        <span class="built_in">setTouchConsidered</span>();</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;TouchBoost - choose %s&quot;</span>, touchRefreshRate.<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">        <span class="keyword">return</span> touchRefreshRate;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> *bestRefreshRate;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Emmmm…. 这一言难尽的代码。</p>
+<p>总结一下，在上层计算传入两个刷新率范围后，这里主要是根据Layer投票以及一系列判断得到最终所需的刷新率。</p>
+<p>说明一下几个概念：</p>
+<ol>
+<li>显示主范围刷新率: DisplayModeDirector中投票算出的包含所有请求帧率的最小范围</li>
+<li>layerPeriod: 根据当前layer.desiredRefreshRate计算出一帧的时长</li>
+<li>displayPeriod: 当前AppReqeustRefereshRate中HwcConfig计算的一帧时长</li>
+</ol>
+<p><strong>整个投票过程简述:</strong></p>
+<ol>
+<li>首先计算所有不同LayerVoteType的数量</li>
+<li>如果没有显式Layer,即ExplicitDefault和ExplicitExactOrMultiple类型,且存在触摸事件, 直接选择主范围刷新率最大帧率</li>
+<li>没有touch事件且屏幕处于idle状态, 刷新率存在一定范围或者不存在显示请求刷新率的Layer时, 选择主范围刷新率最小帧率</li>
+<li>没有Layer或者所有Layer都没有投票(NoVote)时, 选择最大帧率</li>
+<li>存在Layer且所有Layer要么不投票，要么请求最小帧率时，选择最小帧率</li>
+<li>当上述条件都不满足时，遍历所有Layer计算每个AppRequestRefreshRate的得分，找到最佳刷新率, 注意遍历时, 忽略不投票或者投票选择最小帧率的Layer<ol>
+<li>遍历所有AppRequestRefreshRate<ol>
+<li>只有ExplicitDefault或者ExplicitExactOrMultiple类型的Layer，且该Layer是有焦点的才允许投票超出刷新率请求范围的帧率，否则忽略该Layer</li>
+<li>如果Layer是Max类型<ol>
+<li>用当前layer(app)请求的帧率除以最后一个layer(app)请求的帧率,得到的比值的平方乘以权重，计入当前AppRequestRefreshRate的分数</li>
+</ol>
+</li>
+<li>如果是ExplicitDefault类型的Layer<ol>
+<li>找到Layer将渲染的实际速率，首先假设layer.desiredRefreshRate计算的Period是渲染帧的最短时间</li>
+<li>将该AppReqeustRefereshRate中的Display Period刷新时长依次翻倍，直到满足该Layer刷新的最低时长，也就是fps大小每次折半</li>
+<li>此时layer分数为 layer所需的时长除以满足刷新要求的最长时长在乘以权重计入当前AppRequestRefreshRate的分数</li>
+</ol>
+</li>
+<li>如果是ExplicitExactOrMultiple或者Heuristic类型的Layer<ol>
+<li>首先计算需要多少个显示vSync来显示这个层的一个帧，即计算 layerPeriod&#x2F;displayPeriod 得到商 quot 和余数 rem</li>
+<li>如果是整数倍关系，当前AppRequestRefreshRate的分数直接加上该Layer的权重</li>
+<li>当layer请求的fps比AppReqeustRefereshRate中的实际display的fps要大的时候，得分是layer period除以display period的商的十一分之一乘以layer的权重</li>
+<li>layer所需的刷新率低于的显示刷新率，但又不是整数倍关系时，用 Pl 表述 layer period，Pd表示display period<ol>
+<li>diff0 &#x3D; 2 * (Pl mod Pd) - Pd, Pl &gt; Pd 且 K ∈ {1,2,3,…,9}</li>
+<li>当diff0 &gt; 0 时, diff &#x3D; (Pl mod Pd) * 2^k - Pd * (2^k-1)</li>
+<li>当diff0 &lt; 0 时, diff &#x3D; Pd - 2^k * (Pl mode Pd)</li>
+<li>当diff小于800时(差值小于800us), 或者k&gt;9结束, 得分是当前Layer的权重乘以1&#x2F;(2K)</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+<li>如果存在请求最大帧率的layer就反向遍历,找到得分最大的帧率 bestRefreshRate</li>
+<li>如果显示主刷新率没有范围，比如最小值和最大值都是120Hz时<ol>
+<li>如果没有layer参与评分，从显示主刷新范围选取最大值</li>
+<li>否则返回计算得出的最佳刷新率</li>
+</ol>
+</li>
+<li>如果存在touch事件, 不存在ExplicitDefault的Layer且显示主范围刷新率最大值大于计算的刷新率时, 采用最大刷新率</li>
+<li>以上条件均不满足时，返回计算的bestRefreshRate</li>
+</ol>
+<p>好了，本次分析到此为止，接下来就是继续看SurfaceFlinger如何通知HWC硬件切换帧率了。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" title="App申请帧率(3)--SF计算最佳帧率">https://swallowjoe.github.io/2022/02/27/App申请帧率-3-SF计算最佳帧率/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Vsync/" rel="tag"># Vsync</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/" rel="prev" title="App申请帧率(2)--Framework选择最近帧率范围">
+      <i class="fa fa-chevron-left"></i> App申请帧率(2)--Framework选择最近帧率范围
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/" rel="next" title="App申请帧率(4)--SF切换帧率">
+      App申请帧率(4)--SF切换帧率 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-SurfaceFlinger%E6%8E%A5%E5%8F%97%E5%B8%A7%E7%8E%87%E5%8F%98%E5%8C%96"><span class="nav-text">一. SurfaceFlinger接受帧率变化</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-SurfaceControl-setDesiredDisplayConfigSpecs"><span class="nav-text">1.1 SurfaceControl.setDesiredDisplayConfigSpecs</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-1-android-view-SurfaceControl-nativeSetDesiredDisplayConfigSpecs"><span class="nav-text">1.1.1 android_view_SurfaceControl.nativeSetDesiredDisplayConfigSpecs</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-2-SurfaceComposerClient-setDesiredDisplayConfigSpecs"><span class="nav-text">1.1.2 SurfaceComposerClient.setDesiredDisplayConfigSpecs</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-SurfaceFlinger-setDesiredDisplayConfigSpecs"><span class="nav-text">1.2 SurfaceFlinger.setDesiredDisplayConfigSpecs</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-1-SurfaceFlinger-schedule"><span class="nav-text">1.2.1 SurfaceFlinger.schedule</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-SurfaceFlinger-setDesiredDisplayConfigSpecsInternal"><span class="nav-text">1.3 SurfaceFlinger.setDesiredDisplayConfigSpecsInternal</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-1-RefreshRateConfigs-setDisplayManagerPolicy"><span class="nav-text">1.3.1 RefreshRateConfigs.setDisplayManagerPolicy</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-2-RefreshRateConfigs-constructAvailableRefreshRates"><span class="nav-text">1.3.2 RefreshRateConfigs.constructAvailableRefreshRates</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-3-Scheduler-getPreferredConfigId"><span class="nav-text">1.3.3 Scheduler.getPreferredConfigId</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-4-Scheduler-calculateRefreshRateConfigIndexType"><span class="nav-text">1.3.4 Scheduler.calculateRefreshRateConfigIndexType</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-5-RefreshRateConfigs-getBestRefreshRate"><span class="nav-text">1.3.5 RefreshRateConfigs.getBestRefreshRate</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">20</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

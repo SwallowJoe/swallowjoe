@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="以下分析基于Android Q.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="App申请帧率(2)--Framework选择最近帧率范围">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="以下分析基于Android Q.">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-02-26T19:53:41.000Z">
+<meta property="article:modified_time" content="2022-02-26T19:58:50.653Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Vsync">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>App申请帧率(2)--Framework选择最近帧率范围 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          App申请帧率(2)--Framework选择最近帧率范围
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:53:41 / 修改时间：03:58:50" itemprop="dateCreated datePublished" datetime="2022-02-27T03:53:41+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Vsync/" itemprop="url" rel="index"><span itemprop="name">Vsync</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/" class="post-meta-item leancloud_visitors" data-flag-title="App申请帧率(2)--Framework选择最近帧率范围" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>以下分析基于Android Q.</p>
+<span id="more"></span>
+
+<h1 id="一-preferredDisplayModeId改变"><a href="#一-preferredDisplayModeId改变" class="headerlink" title="一. preferredDisplayModeId改变"></a>一. preferredDisplayModeId改变</h1><p>上篇文章讲到，只要将window的Param设置就可以更改屏幕分辨率：</p>
+<figure class="highlight kt"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">wmParams!!.preferredDisplayModeId = highestMode.modeId</span><br></pre></td></tr></table></figure>
+<p>代码是和实现的呢, 在App接受vsync信号后，会回调Choreographer.CALLBACK_TRAVERSAL，也就会调用到ViewRootImpl.doTraversal.</p>
+<p>调用栈如下:</p>
+<ol>
+<li>Choreographer.onVsync()</li>
+<li>Choreographer.doFrame() &#x2F;&#x2F; doCallbacks(Choreographer.CALLBACK_TRAVERSAL, frameTimeNanos);</li>
+<li>ViewRootImpl.doTraversal()</li>
+<li>ViewRootImpl.performTraversals()</li>
+<li>ViewRootImpl.relayoutWindow() &#x2F;&#x2F; 这里将当前Window的Attr传入WindowManagerService</li>
+<li>IWindowSession.relayout() &#x2F;&#x2F; 通过binder调用 Session.relayout</li>
+<li>WindowManagerService.relayoutWindow() &#x2F;&#x2F; 进入SystenServer进程</li>
+<li>WindowSurfacePlacer.performSurfacePlacement()</li>
+<li>WindowSurfacePlacer.performSurfacePlacementLoop()</li>
+<li>RootWindowContainer.performSurfacePlacement()</li>
+<li>RootWindowContainer.performSurfacePlacementNoTrace()</li>
+<li>RootWindowContainer.applySurfaceChangesTransaction()<ol>
+<li>DisplayContent.applySurfaceChangesTransaction()<ol>
+<li>DisplayContent.mApplySurfaceChangesTransaction &#x2F;&#x2F; 对所有window遍历执行，如果有属性变化响应变化</li>
+<li>DisplayManagerService.setDisplayProperties &#x2F;&#x2F; 计算并保存合适的modeId</li>
+</ol>
+</li>
+<li>DisplayManagerInternal.performTraversal(mDisplayTransaction) &#x2F;&#x2F; 应用modeId变化</li>
+</ol>
+</li>
+</ol>
+<h2 id="1-1-RootWindowContainer-applySurfaceChangesTransaction"><a href="#1-1-RootWindowContainer-applySurfaceChangesTransaction" class="headerlink" title="1.1 RootWindowContainer.applySurfaceChangesTransaction"></a>1.1 RootWindowContainer.applySurfaceChangesTransaction</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">applySurfaceChangesTransaction</span><span class="params">(<span class="type">boolean</span> recoveringMemory)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">count</span> <span class="operator">=</span> mChildren.size();</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">j</span> <span class="operator">=</span> <span class="number">0</span>; j &lt; count; ++j) &#123;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">DisplayContent</span> <span class="variable">dc</span> <span class="operator">=</span> mChildren.get(j);</span><br><span class="line">        <span class="comment">// 1.2 对每个display都计算变化</span></span><br><span class="line">        dc.applySurfaceChangesTransaction(recoveringMemory);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3.1 通知SurfaceFlinger改变ModeId</span></span><br><span class="line">    mWmService.mDisplayManagerInternal.performTraversal(mDisplayTransaction);</span><br><span class="line">    SurfaceControl.mergeToGlobalTransaction(mDisplayTransaction);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-2-DisplayContent-applySurfaceChangesTransaction"><a href="#1-2-DisplayContent-applySurfaceChangesTransaction" class="headerlink" title="1.2 DisplayContent.applySurfaceChangesTransaction()"></a>1.2 DisplayContent.applySurfaceChangesTransaction()</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">applySurfaceChangesTransaction</span><span class="params">(<span class="type">boolean</span> recoveringMemory)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    Trace.traceBegin(TRACE_TAG_WINDOW_MANAGER, <span class="string">&quot;applyWindowSurfaceChanges&quot;</span>);</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="comment">// 1.3 遍历所有window, 按照Z轴从上到下</span></span><br><span class="line">        forAllWindows(mApplySurfaceChangesTransaction, <span class="literal">true</span> <span class="comment">/* traverseTopToBottom */</span>);</span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">        Trace.traceEnd(TRACE_TAG_WINDOW_MANAGER);</span><br><span class="line">    &#125;</span><br><span class="line">    prepareSurfaces();</span><br><span class="line"></span><br><span class="line">    mLastHasContent = mTmpApplySurfaceChangesTransactionState.displayHasContent;</span><br><span class="line">    <span class="comment">// 1.4 应用需要Display属性变化</span></span><br><span class="line">    mWmService.mDisplayManagerInternal.setDisplayProperties(mDisplayId,</span><br><span class="line">            mLastHasContent,</span><br><span class="line">            mTmpApplySurfaceChangesTransactionState.preferredRefreshRate,</span><br><span class="line">            mTmpApplySurfaceChangesTransactionState.preferredModeId,</span><br><span class="line">            <span class="literal">true</span> <span class="comment">/* inTraversal, must call performTraversalInTrans... below */</span>);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="1-3-DisplayContent-mApplySurfaceChangesTransaction"><a href="#1-3-DisplayContent-mApplySurfaceChangesTransaction" class="headerlink" title="1.3 DisplayContent.mApplySurfaceChangesTransaction"></a>1.3 DisplayContent.mApplySurfaceChangesTransaction</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> Consumer&lt;WindowState&gt; mApplySurfaceChangesTransaction = w -&gt; &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">if</span> (!mTmpApplySurfaceChangesTransactionState.obscured) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 获取wmParams.preferredDisplayModeId中的modeId</span></span><br><span class="line">        <span class="keyword">final</span> <span class="type">int</span> <span class="variable">preferredModeId</span> <span class="operator">=</span> getDisplayPolicy().getRefreshRatePolicy()</span><br><span class="line">                .getPreferredModeId(w);</span><br><span class="line">        <span class="comment">// 注意这里是按照Z轴从上到下遍历Window，所以只会取第一个可见的有Surface的且被设置的window的modeId</span></span><br><span class="line">        <span class="keyword">if</span> (mTmpApplySurfaceChangesTransactionState.preferredModeId == <span class="number">0</span></span><br><span class="line">                &amp;&amp; preferredModeId != <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="comment">// 标记preferredModeId</span></span><br><span class="line">            mTmpApplySurfaceChangesTransactionState.preferredModeId = preferredModeId;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-4-DisplayManagerService-setDisplayProperties"><a href="#1-4-DisplayManagerService-setDisplayProperties" class="headerlink" title="1.4 DisplayManagerService.setDisplayProperties"></a>1.4 DisplayManagerService.setDisplayProperties</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">setDisplayProperties</span><span class="params">(<span class="type">int</span> displayId, <span class="type">boolean</span> hasContent,</span></span><br><span class="line"><span class="params">        <span class="type">float</span> requestedRefreshRate, <span class="type">int</span> requestedMode, <span class="type">boolean</span> inTraversal)</span> &#123;</span><br><span class="line">    setDisplayPropertiesInternal(displayId, hasContent, requestedRefreshRate,</span><br><span class="line">            requestedMode, inTraversal);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">setDisplayPropertiesInternal</span><span class="params">(<span class="type">int</span> displayId, <span class="type">boolean</span> hasContent,</span></span><br><span class="line"><span class="params">        <span class="type">float</span> requestedRefreshRate, <span class="type">int</span> requestedModeId, <span class="type">boolean</span> inTraversal)</span> &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (mSyncRoot) &#123;</span><br><span class="line">        <span class="type">LogicalDisplay</span> <span class="variable">display</span> <span class="operator">=</span> mLogicalDisplays.get(displayId);</span><br><span class="line">        <span class="keyword">if</span> (display == <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (display.hasContentLocked() != hasContent) &#123;</span><br><span class="line">            <span class="keyword">if</span> (DEBUG) &#123;</span><br><span class="line">                Slog.d(TAG, <span class="string">&quot;Display &quot;</span> + displayId + <span class="string">&quot; hasContent flag changed: &quot;</span></span><br><span class="line">                        + <span class="string">&quot;hasContent=&quot;</span> + hasContent + <span class="string">&quot;, inTraversal=&quot;</span> + inTraversal);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            display.setHasContentLocked(hasContent);</span><br><span class="line">            scheduleTraversalLocked(inTraversal);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 当应用仅仅设置了刷新率，而没有设置modeId时，需要找到一个合适的modeId</span></span><br><span class="line">        <span class="comment">// 为什么这么做呢，因为modeId不仅仅包含刷新率，还有分辨率。</span></span><br><span class="line">        <span class="comment">// 当请求刷新率变化时，是不能或不必要改变分辨率的，所以就需要找到分辨率不变的modeId</span></span><br><span class="line">        <span class="keyword">if</span> (requestedModeId == <span class="number">0</span> &amp;&amp; requestedRefreshRate != <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="comment">// Scan supported modes returned by display.getInfo() to find a mode with the same</span></span><br><span class="line">            <span class="comment">// size as the default display mode but with the specified refresh rate instead.</span></span><br><span class="line">            requestedModeId = display.getDisplayInfoLocked().findDefaultModeByRefreshRate(</span><br><span class="line">                    requestedRefreshRate);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 2.1 发现有应用请求Display改变modeId</span></span><br><span class="line">        mDisplayModeDirector.getAppRequestObserver().setAppRequestedMode(</span><br><span class="line">                displayId, requestedModeId);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="二-DisplayModeDirector"><a href="#二-DisplayModeDirector" class="headerlink" title="二. DisplayModeDirector"></a>二. DisplayModeDirector</h1><p>这个类是用于决策当前设备刷新率的</p>
+<h2 id="2-1-DisplayModeDirector-AppRequestObserver-setAppRequestedMode"><a href="#2-1-DisplayModeDirector-AppRequestObserver-setAppRequestedMode" class="headerlink" title="2.1 DisplayModeDirector.AppRequestObserver.setAppRequestedMode"></a>2.1 DisplayModeDirector.AppRequestObserver.setAppRequestedMode</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">setAppRequestedMode</span><span class="params">(<span class="type">int</span> displayId, <span class="type">int</span> modeId)</span> &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (mLock) &#123;</span><br><span class="line">        setAppRequestedModeLocked(displayId, modeId);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">setAppRequestedModeLocked</span><span class="params">(<span class="type">int</span> displayId, <span class="type">int</span> modeId)</span> &#123;</span><br><span class="line">    <span class="comment">// 做一个参数检查，确保displayId和modeId参数是可接受的</span></span><br><span class="line">    <span class="keyword">final</span> Display.<span class="type">Mode</span> <span class="variable">requestedMode</span> <span class="operator">=</span> findModeByIdLocked(displayId, modeId);</span><br><span class="line">    <span class="comment">// 如果当前displayId下的modeId已经是App所需的modeId，就不用继续了</span></span><br><span class="line">    <span class="keyword">if</span> (Objects.equals(requestedMode, mAppRequestedModeByDisplay.get(displayId))) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> Vote refreshRateVote;</span><br><span class="line">    <span class="keyword">final</span> Vote sizeVote;</span><br><span class="line">    <span class="keyword">if</span> (requestedMode != <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="comment">// 保存当前App设置的参数</span></span><br><span class="line">        mAppRequestedModeByDisplay.put(displayId, requestedMode);</span><br><span class="line">        <span class="type">float</span> <span class="variable">refreshRate</span> <span class="operator">=</span> requestedMode.getRefreshRate();</span><br><span class="line">        <span class="comment">// 创建刷新率Vote</span></span><br><span class="line">        refreshRateVote = Vote.forRefreshRates(refreshRate, refreshRate);</span><br><span class="line">        sizeVote = Vote.forSize(requestedMode.getPhysicalWidth(),</span><br><span class="line">                requestedMode.getPhysicalHeight());</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        mAppRequestedModeByDisplay.remove(displayId);</span><br><span class="line">        refreshRateVote = <span class="literal">null</span>;</span><br><span class="line">        sizeVote = <span class="literal">null</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    updateVoteLocked(displayId, Vote.PRIORITY_APP_REQUEST_REFRESH_RATE, refreshRateVote);</span><br><span class="line">    updateVoteLocked(displayId, Vote.PRIORITY_APP_REQUEST_SIZE, sizeVote);</span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-2-DisplayModeDirector-Vote-updateVoteLocked"><a href="#2-2-DisplayModeDirector-Vote-updateVoteLocked" class="headerlink" title="2.2 DisplayModeDirector.Vote.updateVoteLocked"></a>2.2 DisplayModeDirector.Vote.updateVoteLocked</h2><p>更新Vote策略</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">updateVoteLocked</span><span class="params">(<span class="type">int</span> displayId, <span class="type">int</span> priority, Vote vote)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (DEBUG) &#123;</span><br><span class="line">        Slog.i(TAG, <span class="string">&quot;updateVoteLocked(displayId=&quot;</span> + displayId</span><br><span class="line">                + <span class="string">&quot;, priority=&quot;</span> + Vote.priorityToString(priority)</span><br><span class="line">                + <span class="string">&quot;, vote=&quot;</span> + vote + <span class="string">&quot;)&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (priority &lt; Vote.MIN_PRIORITY || priority &gt; Vote.MAX_PRIORITY) &#123;</span><br><span class="line">        Slog.w(TAG, <span class="string">&quot;Received a vote with an invalid priority, ignoring:&quot;</span></span><br><span class="line">                + <span class="string">&quot; priority=&quot;</span> + Vote.priorityToString(priority)</span><br><span class="line">                + <span class="string">&quot;, vote=&quot;</span> + vote, <span class="keyword">new</span> <span class="title class_">Throwable</span>());</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 获取当前display的所有Vote</span></span><br><span class="line">    <span class="keyword">final</span> SparseArray&lt;Vote&gt; votes = getOrCreateVotesByDisplay(displayId);</span><br><span class="line">    <span class="comment">// 获取PRIORITY_APP_REQUEST_REFRESH_RATE优先级的Vote，不过根本没有用？</span></span><br><span class="line">    <span class="type">Vote</span> <span class="variable">currentVote</span> <span class="operator">=</span> votes.get(priority);</span><br><span class="line">    <span class="comment">// 传入的Vote不为空，说明有符合要求的ModeId,就保存，没有就移除当前优先级的Vote</span></span><br><span class="line">    <span class="keyword">if</span> (vote != <span class="literal">null</span>) &#123;</span><br><span class="line">        votes.put(priority, vote);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        votes.remove(priority);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (votes.size() == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">if</span> (DEBUG) &#123;</span><br><span class="line">            Slog.i(TAG, <span class="string">&quot;No votes left for display &quot;</span> + displayId + <span class="string">&quot;, removing.&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        mVotesByDisplay.remove(displayId);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 通知ModeId改变</span></span><br><span class="line">    notifyAllowedModesChangedLocked();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-3-DisplayModeDirector-Vote-notifyAllowedModesChangedLocked"><a href="#2-3-DisplayModeDirector-Vote-notifyAllowedModesChangedLocked" class="headerlink" title="2.3 DisplayModeDirector.Vote.notifyAllowedModesChangedLocked"></a>2.3 DisplayModeDirector.Vote.notifyAllowedModesChangedLocked</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">notifyAllowedModesChangedLocked</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mListener != <span class="literal">null</span> &amp;&amp; !mHandler.hasMessages(MSG_ALLOWED_MODES_CHANGED)) &#123;</span><br><span class="line">        <span class="comment">// We need to post this to a handler to avoid calling out while holding the lock</span></span><br><span class="line">        <span class="comment">// since we know there are things that both listen for changes as well as provide</span></span><br><span class="line">        <span class="comment">// information. If we did call out while holding the lock, then there&#x27;s no guaranteed</span></span><br><span class="line">        <span class="comment">// lock order and we run the real of risk deadlock.</span></span><br><span class="line">        <span class="type">Message</span> <span class="variable">msg</span> <span class="operator">=</span> mHandler.obtainMessage(MSG_ALLOWED_MODES_CHANGED, mListener);</span><br><span class="line">        msg.sendToTarget();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> <span class="keyword">class</span> <span class="title class_">DisplayModeDirectorHandler</span> <span class="keyword">extends</span> <span class="title class_">Handler</span> &#123;</span><br><span class="line">    DisplayModeDirectorHandler(Looper looper) &#123;</span><br><span class="line">        <span class="built_in">super</span>(looper, <span class="literal">null</span>, <span class="literal">true</span> <span class="comment">/*async*/</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">handleMessage</span><span class="params">(Message msg)</span> &#123;</span><br><span class="line">        <span class="keyword">switch</span> (msg.what) &#123;</span><br><span class="line">            <span class="keyword">case</span> MSG_ALLOWED_MODES_CHANGED:</span><br><span class="line">                <span class="type">Listener</span> <span class="variable">listener</span> <span class="operator">=</span> (Listener) msg.obj;</span><br><span class="line">                listener.onAllowedDisplayModesChanged();</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            ......</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>转到DisplayThread线程处理，也就是回调onAllowedDisplayModesChanged.<br>这里的mListener是调用DisplayModeDirector.setListener设置的，这个是在DisplayManagerService中:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment">    * Called when the system is ready to go.</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">systemReady</span><span class="params">(<span class="type">boolean</span> safeMode, <span class="type">boolean</span> onlyCore)</span> &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (mSyncRoot) &#123;</span><br><span class="line">        mSafeMode = safeMode;</span><br><span class="line">        mOnlyCore = onlyCore;</span><br><span class="line">        mSystemReady = <span class="literal">true</span>;</span><br><span class="line">        <span class="comment">// Just in case the top inset changed before the system was ready. At this point, any</span></span><br><span class="line">        <span class="comment">// relevant configuration should be in place.</span></span><br><span class="line">        recordTopInsetLocked(mLogicalDisplays.get(Display.DEFAULT_DISPLAY));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这里：</span></span><br><span class="line">    mDisplayModeDirector.setListener(<span class="keyword">new</span> <span class="title class_">AllowedDisplayModeObserver</span>());</span><br><span class="line">    mDisplayModeDirector.start(mSensorManager);</span><br><span class="line"></span><br><span class="line">    mHandler.sendEmptyMessage(MSG_REGISTER_ADDITIONAL_DISPLAY_ADAPTERS);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-4-DisplayManagerService-onAllowedDisplayModesChangedInternal"><a href="#2-4-DisplayManagerService-onAllowedDisplayModesChangedInternal" class="headerlink" title="2.4 DisplayManagerService.onAllowedDisplayModesChangedInternal"></a>2.4 DisplayManagerService.onAllowedDisplayModesChangedInternal</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">onAllowedDisplayModesChangedInternal</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">boolean</span> <span class="variable">changed</span> <span class="operator">=</span> <span class="literal">false</span>;</span><br><span class="line">    <span class="keyword">synchronized</span> (mSyncRoot) &#123;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">int</span> <span class="variable">count</span> <span class="operator">=</span> mLogicalDisplays.size();</span><br><span class="line">        <span class="comment">// 遍历所有的Display，依次设置</span></span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; count; i++) &#123;</span><br><span class="line">            <span class="type">LogicalDisplay</span> <span class="variable">display</span> <span class="operator">=</span> mLogicalDisplays.valueAt(i);</span><br><span class="line">            <span class="type">int</span> <span class="variable">displayId</span> <span class="operator">=</span> mLogicalDisplays.keyAt(i);</span><br><span class="line">            <span class="comment">// 2.5 获取displayId对应的ModeIds</span></span><br><span class="line">            <span class="type">int</span>[] allowedModes = mDisplayModeDirector.getAllowedModes(displayId);</span><br><span class="line">            <span class="comment">// Note that order is important here since not all display devices are capable of</span></span><br><span class="line">            <span class="comment">// automatically switching, so we do actually want to check for equality and not</span></span><br><span class="line">            <span class="comment">// just equivalent contents (regardless of order).</span></span><br><span class="line">            <span class="keyword">if</span> (!Arrays.equals(allowedModes, display.getAllowedDisplayModesLocked())) &#123;</span><br><span class="line">                <span class="comment">// 保存modeId集，以便判断是否有modeId变化，这个判断条件内getAllowedDisplayModesLocked</span></span><br><span class="line">                <span class="comment">// 拿到的modeId数组就是上一次在这里保存的</span></span><br><span class="line">                display.setAllowedDisplayModesLocked(allowedModes);</span><br><span class="line">                changed = <span class="literal">true</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 有改变, 请求下一次Vsync, 以确保通知到SurfaceFlinger有modeId更改</span></span><br><span class="line">        <span class="keyword">if</span> (changed) &#123;</span><br><span class="line">            scheduleTraversalLocked(<span class="literal">false</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-5-DisplayModeDirector-getAllowedModes"><a href="#2-5-DisplayModeDirector-getAllowedModes" class="headerlink" title="2.5 DisplayModeDirector.getAllowedModes"></a>2.5 DisplayModeDirector.getAllowedModes</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@NonNull</span></span><br><span class="line"><span class="keyword">public</span> <span class="type">int</span>[] getAllowedModes(<span class="type">int</span> displayId) &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (mLock) &#123;</span><br><span class="line">        <span class="comment">// 取出displayId对应的所有Vote，注意这里包含GLOBAL_ID(-1), 即全局生效的Vote</span></span><br><span class="line">        SparseArray&lt;Vote&gt; votes = getVotesLocked(displayId);</span><br><span class="line">        Display.Mode[] modes = mSupportedModesByDisplay.get(displayId);</span><br><span class="line">        Display.<span class="type">Mode</span> <span class="variable">defaultMode</span> <span class="operator">=</span> mDefaultModeByDisplay.get(displayId);</span><br><span class="line">        <span class="keyword">if</span> (modes == <span class="literal">null</span> || defaultMode == <span class="literal">null</span>) &#123;</span><br><span class="line">            Slog.e(TAG, <span class="string">&quot;Asked about unknown display, returning empty allowed set! (id=&quot;</span></span><br><span class="line">                    + displayId + <span class="string">&quot;)&quot;</span>);</span><br><span class="line">            <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">int</span>[<span class="number">0</span>];</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 2.5.1 计算</span></span><br><span class="line">        <span class="keyword">return</span> getAllowedModesLocked(votes, modes, defaultMode);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>计算displayId对应允许的可自由切换的modeId列表</p>
+<h3 id="2-5-1-DisplayModeDirector-getAllowedModesLocked"><a href="#2-5-1-DisplayModeDirector-getAllowedModesLocked" class="headerlink" title="2.5.1 DisplayModeDirector.getAllowedModesLocked"></a>2.5.1 DisplayModeDirector.getAllowedModesLocked</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@NonNull</span></span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span>[] getAllowedModesLocked(<span class="meta">@NonNull</span> SparseArray&lt;Vote&gt; votes,</span><br><span class="line">        <span class="meta">@NonNull</span> Display.Mode[] modes, <span class="meta">@NonNull</span> Display.Mode defaultMode) &#123;</span><br><span class="line">    <span class="comment">// 从最低优先级开始遍历，不过为什么会有两层循环？</span></span><br><span class="line">    <span class="type">int</span> <span class="variable">lowestConsideredPriority</span> <span class="operator">=</span> Vote.MIN_PRIORITY;</span><br><span class="line">    <span class="keyword">while</span> (lowestConsideredPriority &lt;= Vote.MAX_PRIORITY) &#123;</span><br><span class="line">        <span class="type">float</span> <span class="variable">minRefreshRate</span> <span class="operator">=</span> <span class="number">0f</span>;</span><br><span class="line">        <span class="type">float</span> <span class="variable">maxRefreshRate</span> <span class="operator">=</span> Float.POSITIVE_INFINITY;</span><br><span class="line">        <span class="type">int</span> <span class="variable">height</span> <span class="operator">=</span> Vote.INVALID_SIZE;</span><br><span class="line">        <span class="type">int</span> <span class="variable">width</span> <span class="operator">=</span> Vote.INVALID_SIZE;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 从优先级最大的开始遍历</span></span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">priority</span> <span class="operator">=</span> Vote.MAX_PRIORITY;</span><br><span class="line">                priority &gt;= lowestConsideredPriority;</span><br><span class="line">                priority--) &#123;</span><br><span class="line">            <span class="type">Vote</span> <span class="variable">vote</span> <span class="operator">=</span> votes.get(priority);</span><br><span class="line">            <span class="keyword">if</span> (vote == <span class="literal">null</span>) &#123;</span><br><span class="line">                <span class="keyword">continue</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 刷新率最小值取两者中的较大值</span></span><br><span class="line">            minRefreshRate = Math.max(minRefreshRate, vote.minRefreshRate);</span><br><span class="line">            <span class="comment">// 刷新率最大值取两者中的较小值</span></span><br><span class="line">            maxRefreshRate = Math.min(maxRefreshRate, vote.maxRefreshRate);</span><br><span class="line">            <span class="comment">// 显示大小只需要取第一个值</span></span><br><span class="line">            <span class="keyword">if</span> (height == Vote.INVALID_SIZE &amp;&amp; width == Vote.INVALID_SIZE</span><br><span class="line">                    &amp;&amp; vote.height &gt; <span class="number">0</span> &amp;&amp; vote.width &gt; <span class="number">0</span>) &#123;</span><br><span class="line">                width = vote.width;</span><br><span class="line">                height = vote.height;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// If we don&#x27;t have anything specifying the width / height of the display, just use the</span></span><br><span class="line">        <span class="comment">// default width and height. We don&#x27;t want these switching out from underneath us since</span></span><br><span class="line">        <span class="comment">// it&#x27;s a pretty disruptive behavior.</span></span><br><span class="line">        <span class="keyword">if</span> (height == Vote.INVALID_SIZE || width == Vote.INVALID_SIZE) &#123;</span><br><span class="line">            width = defaultMode.getPhysicalWidth();</span><br><span class="line">            height = defaultMode.getPhysicalHeight();</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 2.5.2 获取可取的mode</span></span><br><span class="line">        <span class="type">int</span>[] availableModes =</span><br><span class="line">                filterModes(modes, width, height, minRefreshRate, maxRefreshRate);</span><br><span class="line">        <span class="keyword">if</span> (availableModes.length &gt; <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> availableModes;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 当前优先级下没有找到合适的modeId时，提高优先级重新搜索</span></span><br><span class="line">        lowestConsideredPriority++;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// If we still haven&#x27;t found anything that matches our current set of votes, just fall back</span></span><br><span class="line">    <span class="comment">// to the default mode.</span></span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">int</span>[] &#123; defaultMode.getModeId() &#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里刷新率的算法是，遍历所有优先级的Vote，最终的minRefreshRate取所有Vote的最小刷新率中的最大值。<br>maxRefreshRate取所有Vote中最大刷新率的最小值。</p>
+<p>这里有个地方一开始比较难理解，就是为什么是用双层循环，而且第一层循环是从优先级最低的开始，最内层是优先级最大的开始。不着急我们先看#2.5.2</p>
+<h3 id="2-5-2-DisplayModeDirector-filterModes"><a href="#2-5-2-DisplayModeDirector-filterModes" class="headerlink" title="2.5.2 DisplayModeDirector.filterModes"></a>2.5.2 DisplayModeDirector.filterModes</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="type">int</span>[] filterModes(Display.Mode[] supportedModes,</span><br><span class="line">        <span class="type">int</span> width, <span class="type">int</span> height, <span class="type">float</span> minRefreshRate, <span class="type">float</span> maxRefreshRate) &#123;</span><br><span class="line">    ArrayList&lt;Display.Mode&gt; availableModes = <span class="keyword">new</span> <span class="title class_">ArrayList</span>&lt;&gt;();</span><br><span class="line">    <span class="keyword">for</span> (Display.Mode mode : supportedModes) &#123;</span><br><span class="line">        <span class="keyword">if</span> (mode.getPhysicalWidth() != width || mode.getPhysicalHeight() != height) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">float</span> <span class="variable">refreshRate</span> <span class="operator">=</span> mode.getRefreshRate();</span><br><span class="line">        <span class="comment">// EPSILON = 0.001f</span></span><br><span class="line">        <span class="comment">// 为啥会有这呢，因为小数计算会有误差</span></span><br><span class="line">        <span class="comment">// 比如60Hz的刷新的vsync间隔是16.666666ms</span></span><br><span class="line">        <span class="comment">// 计算得来的refreshRate就是：1000/16.666666 = 60.0000024</span></span><br><span class="line">        <span class="comment">// 不是恰好为60，所以需要去掉这个误差</span></span><br><span class="line">        <span class="keyword">if</span> (refreshRate &lt; (minRefreshRate - EPSILON)</span><br><span class="line">                || refreshRate &gt; (maxRefreshRate + EPSILON)) &#123;</span><br><span class="line">            <span class="comment">// 当该mode的刷新率不符合边界条件时，抛弃该mode</span></span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        availableModes.add(mode);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">size</span> <span class="operator">=</span> availableModes.size();</span><br><span class="line">    <span class="type">int</span>[] availableModeIds = <span class="keyword">new</span> <span class="title class_">int</span>[size];</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; size; i++) &#123;</span><br><span class="line">        availableModeIds[i] = availableModes.get(i).getModeId();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 返回符合要求的modeId集合</span></span><br><span class="line">    <span class="keyword">return</span> availableModeIds;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>其实实际推演一下就不难理解了, 假设我们有如下Votes:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">mSupportedModesByDisplay:</span><br><span class="line">    0 -&gt; [</span><br><span class="line">        &#123;id=1, width=1080, height=2376, fps=60.000004&#125;, </span><br><span class="line">        &#123;id=2, width=1440, height=3168, fps=120.00001&#125;, </span><br><span class="line">        &#123;id=3, width=1440, height=3168, fps=60.000004&#125;, </span><br><span class="line">        &#123;id=4, width=1080, height=2376, fps=120.00001&#125;]</span><br><span class="line"></span><br><span class="line">  mVotesByDisplay:</span><br><span class="line">    -1:</span><br><span class="line">      PRIORITY_LOW_POWER_MODE -&gt; Vote&#123;width=-1, height=-1, minRefreshRate=0.0, maxRefreshRate=60.0&#125;</span><br><span class="line">      PRIORITY_USER_SETTING_PEAK_REFRESH_RATE -&gt; Vote&#123;width=-1, height=-1, minRefreshRate=0.0, maxRefreshRate=120.0&#125;</span><br><span class="line">      PRIORITY_USER_SETTING_MIN_REFRESH_RATE -&gt; Vote&#123;width=-1, height=-1, minRefreshRate=0.0, maxRefreshRate=Infinity&#125;</span><br><span class="line">    0:</span><br><span class="line">      PRIORITY_APP_REQUEST_SIZE -&gt; Vote&#123;width=1080, height=2376, minRefreshRate=0.0, maxRefreshRate=Infinity&#125;</span><br><span class="line">      PRIORITY_APP_REQUEST_REFRESH_RATE -&gt; Vote&#123;width=-1, height=-1, minRefreshRate=120.00001, maxRefreshRate=120.00001&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>注意这里的优先级:</p>
+<table>
+<thead>
+<tr>
+<th>name</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PRIORITY_LOW_BRIGHTNESS</td>
+<td>0</td>
+</tr>
+<tr>
+<td>PRIORITY_USER_SETTING_MIN_REFRESH_RATE</td>
+<td>1</td>
+</tr>
+<tr>
+<td>PRIORITY_APP_REQUEST_REFRESH_RATE</td>
+<td>2</td>
+</tr>
+<tr>
+<td>PRIORITY_APP_REQUEST_SIZE</td>
+<td>3</td>
+</tr>
+<tr>
+<td>PRIORITY_USER_SETTING_PEAK_REFRESH_RATE</td>
+<td>4</td>
+</tr>
+<tr>
+<td>PRIORITY_LOW_POWER_MODE</td>
+<td>5</td>
+</tr>
+</tbody></table>
+<p><strong>当外层循环第一次执行时</strong>：lowestConsideredPriority &#x3D; PRIORITY_LOW_BRIGHTNESS &#x3D; 0</p>
+<p>内层循环会遍历所有Vote(包含-1，和当前displayId,这里是0):</p>
+<p>算出的minRefreshRate &#x3D; Infinity, maxRefreshRate &#x3D;0</p>
+<p>当然，在filterModes中是找不到合适的mode的，所以优先级+1，继续搜索</p>
+<p><strong>外层循环第二次执行时</strong>：lowestConsideredPriority &#x3D; PRIORITY_USER_SETTING_MIN_REFRESH_RATE &#x3D; 1</p>
+<p>此时排除优先级为0的所有Vote，其实结果还是一样，所以lowestConsideredPriority继续+1</p>
+<p><strong>外层循环第三次执行时</strong>：lowestConsideredPriority &#x3D; PRIORITY_APP_REQUEST_REFRESH_RATE &#x3D; 2</p>
+<p>此时排除优先级小于PRIORITY_APP_REQUEST_REFRESH_RATE的所有Vote，结果还是一样，所以lowestConsideredPriority继续+1</p>
+<p><strong>外层循环第四次执行时</strong>：lowestConsideredPriority &#x3D; PRIORITY_APP_REQUEST_SIZE &#x3D; 3</p>
+<p>此时排除优先级小于PRIORITY_APP_REQUEST_SIZE的所有Vote，结果还是一样，所以lowestConsideredPriority继续+1</p>
+<p><strong>外层循环第五次执行时</strong>：lowestConsideredPriority &#x3D; PRIORITY_USER_SETTING_PEAK_REFRESH_RATE &#x3D; 4</p>
+<p>此时排除优先级小于PRIORITY_USER_SETTING_PEAK_REFRESH_RATE的所有Vote</p>
+<p>内层循环其实只有两个选项：</p>
+<p>PRIORITY_LOW_POWER_MODE -&gt; Vote{width&#x3D;-1, height&#x3D;-1, minRefreshRate&#x3D;0.0, maxRefreshRate&#x3D;60.0}</p>
+<p>PRIORITY_USER_SETTING_PEAK_REFRESH_RATE -&gt; Vote{width&#x3D;-1, height&#x3D;-1, minRefreshRate&#x3D;0.0, maxRefreshRate&#x3D;120.0}</p>
+<p>此时结果为minRefreshRate &#x3D; 60, maxRefreshRate &#x3D;0，当然还是没有有效的modeId</p>
+<p><strong>外层循环第六次执行时</strong>：lowestConsideredPriority &#x3D; PRIORITY_LOW_POWER_MODE &#x3D; 5</p>
+<p>只有选项：PRIORITY_LOW_POWER_MODE -&gt; Vote{width&#x3D;-1, height&#x3D;-1, minRefreshRate&#x3D;0.0, maxRefreshRate&#x3D;60.0}</p>
+<p>所以最终的minRefreshRate &#x3D; 0.0, maxRefreshRate &#x3D; 60.0，width&#x3D;1080, height&#x3D;2376</p>
+<p>最后满足条件的modeId就只有mSupportedModesByDisplay中的0了.</p>
+<p>最终算出来了modeId, 这里面计算复杂，弯弯绕绕，为什么Google如此设计呢，个人猜测是为了尽可能满足低优先级下的刷新率要求，并不是优先级最高就能决定modeId的取值,<br>而是找到尽快满足更多优先级下合适刷新率的modeId集提供给SurfaceFlinger选择.</p>
+<p>继续往下看，framework将这个modeId集传给SurfaceFlinger.</p>
+<h1 id="三-通知SurfaceFlinger变化"><a href="#三-通知SurfaceFlinger变化" class="headerlink" title="三. 通知SurfaceFlinger变化"></a>三. 通知SurfaceFlinger变化</h1><h2 id="3-1-DisplayManagerInternal-performTraversal"><a href="#3-1-DisplayManagerInternal-performTraversal" class="headerlink" title="3.1 DisplayManagerInternal.performTraversal"></a>3.1 DisplayManagerInternal.performTraversal</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">performTraversal</span><span class="params">(SurfaceControl.Transaction t)</span> &#123;</span><br><span class="line">    performTraversalInternal(t);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-2-DisplayManagerService-performTraversalInternal"><a href="#3-2-DisplayManagerService-performTraversalInternal" class="headerlink" title="3.2 DisplayManagerService.performTraversalInternal"></a>3.2 DisplayManagerService.performTraversalInternal</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@VisibleForTesting</span></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">performTraversalInternal</span><span class="params">(SurfaceControl.Transaction t)</span> &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (mSyncRoot) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!mPendingTraversal) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        mPendingTraversal = <span class="literal">false</span>;</span><br><span class="line">        <span class="comment">// 3.2.1 通知SF有相关状态变化</span></span><br><span class="line">        performTraversalLocked(t);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// List is self-synchronized copy-on-write.</span></span><br><span class="line">    <span class="keyword">for</span> (DisplayTransactionListener listener : mDisplayTransactionListeners) &#123;</span><br><span class="line">        listener.onDisplayTransaction(t);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-1-DisplayManagerService-performTraversalLocked"><a href="#3-2-1-DisplayManagerService-performTraversalLocked" class="headerlink" title="3.2.1 DisplayManagerService.performTraversalLocked"></a>3.2.1 DisplayManagerService.performTraversalLocked</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">performTraversalLocked</span><span class="params">(SurfaceControl.Transaction t)</span> &#123;</span><br><span class="line">    <span class="comment">// Clear all viewports before configuring displays so that we can keep</span></span><br><span class="line">    <span class="comment">// track of which ones we have configured.</span></span><br><span class="line">    clearViewportsLocked();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3.2.2 对每个Display都做配置</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">count</span> <span class="operator">=</span> mDisplayDevices.size();</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; count; i++) &#123;</span><br><span class="line">        <span class="type">DisplayDevice</span> <span class="variable">device</span> <span class="operator">=</span> mDisplayDevices.get(i);</span><br><span class="line">        <span class="comment">// 与SurfaceFlinger通信，这里的device我们视为默认的LocalDisplayDevice</span></span><br><span class="line">        configureDisplayLocked(t, device);</span><br><span class="line">        device.performTraversalLocked(t);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-2-DisplayManagerService-configureDisplayLocked"><a href="#3-2-2-DisplayManagerService-configureDisplayLocked" class="headerlink" title="3.2.2 DisplayManagerService.configureDisplayLocked"></a>3.2.2 DisplayManagerService.configureDisplayLocked</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">configureDisplayLocked</span><span class="params">(SurfaceControl.Transaction t, DisplayDevice device)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 拿到对应LogicalDisplay</span></span><br><span class="line">    <span class="type">LogicalDisplay</span> <span class="variable">display</span> <span class="operator">=</span> findLogicalDisplayForDeviceLocked(device);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 3.2.3 应用状态变化</span></span><br><span class="line">    display.configureDisplayLocked(t, device, info.state == Display.STATE_OFF);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-3-LogicalDisplay-configureDisplayLocked"><a href="#3-2-3-LogicalDisplay-configureDisplayLocked" class="headerlink" title="3.2.3 LogicalDisplay.configureDisplayLocked"></a>3.2.3 LogicalDisplay.configureDisplayLocked</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">configureDisplayLocked</span><span class="params">(SurfaceControl.Transaction t,</span></span><br><span class="line"><span class="params">        DisplayDevice device,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> isBlanked)</span> &#123;</span><br><span class="line">    <span class="comment">// Set the layer stack.</span></span><br><span class="line">    device.setLayerStackLocked(t, isBlanked ? BLANK_LAYER_STACK : mLayerStack);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3.3 应用配置变化，注意这里的device是LocalDisplayDevice</span></span><br><span class="line">    <span class="keyword">if</span> (device == mPrimaryDisplayDevice) &#123;</span><br><span class="line">        device.setAllowedDisplayModesLocked(mAllowedDisplayModes);</span><br><span class="line">        device.setRequestedColorModeLocked(mRequestedColorMode);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// Reset to default for non primary displays</span></span><br><span class="line">        device.setAllowedDisplayModesLocked(<span class="keyword">new</span> <span class="title class_">int</span>[] &#123;<span class="number">0</span>&#125;);</span><br><span class="line">        device.setRequestedColorModeLocked(<span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-3-LocalDisplayAdapter-LocalDisplayDevice-setAllowedDisplayModesLocked"><a href="#3-3-LocalDisplayAdapter-LocalDisplayDevice-setAllowedDisplayModesLocked" class="headerlink" title="3.3 LocalDisplayAdapter.LocalDisplayDevice.setAllowedDisplayModesLocked"></a>3.3 LocalDisplayAdapter.LocalDisplayDevice.setAllowedDisplayModesLocked</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">setAllowedDisplayModesLocked</span><span class="params">(<span class="type">int</span>[] modes)</span> &#123;</span><br><span class="line">    updateAllowedModesLocked(modes);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">updateAllowedModesLocked</span><span class="params">(<span class="type">int</span>[] allowedModes)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (Arrays.equals(allowedModes, mAllowedModeIds) &amp;&amp; !mAllowedModeIdsInvalid) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (updateAllowedModesInternalLocked(allowedModes)) &#123;</span><br><span class="line">        updateDeviceInfoLocked();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">updateAllowedModesInternalLocked</span><span class="params">(<span class="type">int</span>[] allowedModes)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (DEBUG) &#123;</span><br><span class="line">        Slog.w(TAG, <span class="string">&quot;updateAllowedModesInternalLocked(allowedModes=&quot;</span></span><br><span class="line">                + Arrays.toString(allowedModes) + <span class="string">&quot;)&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="type">int</span>[] allowedPhysIndexes = <span class="keyword">new</span> <span class="title class_">int</span>[allowedModes.length];</span><br><span class="line">    <span class="type">int</span> <span class="variable">size</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 将modeId转化为物理modeId，简单来说就是 physicalId = modeId - 1</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> modeId : allowedModes) &#123;</span><br><span class="line">        <span class="type">int</span> <span class="variable">physIndex</span> <span class="operator">=</span> findDisplayInfoIndexLocked(modeId);</span><br><span class="line">        <span class="keyword">if</span> (physIndex &lt; <span class="number">0</span>) &#123;</span><br><span class="line">            Slog.w(TAG, <span class="string">&quot;Requested mode ID &quot;</span> + modeId + <span class="string">&quot; not available,&quot;</span></span><br><span class="line">                    + <span class="string">&quot; dropping from allowed set.&quot;</span>);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            allowedPhysIndexes[size++] = physIndex;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 3.4 通过SurfaceControl通知SurfaceFlinger有modeId变化，binder通信</span></span><br><span class="line">    SurfaceControl.setAllowedDisplayConfigs(getDisplayTokenLocked(), allowedPhysIndexes);</span><br><span class="line">    <span class="type">int</span> <span class="variable">activePhysIndex</span> <span class="operator">=</span> SurfaceControl.getActiveConfig(getDisplayTokenLocked());</span><br><span class="line">    <span class="keyword">return</span> updateActiveModeLocked(activePhysIndex);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-4-SurfaceControl-setAllowedDisplayConfigs"><a href="#3-4-SurfaceControl-setAllowedDisplayConfigs" class="headerlink" title="3.4 SurfaceControl.setAllowedDisplayConfigs"></a>3.4 SurfaceControl.setAllowedDisplayConfigs</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">native</span> <span class="type">boolean</span> <span class="title function_">nativeSetAllowedDisplayConfigs</span><span class="params">(IBinder displayToken,</span></span><br><span class="line"><span class="params">                                                                 <span class="type">int</span>[] allowedConfigs)</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="type">boolean</span> <span class="title function_">setAllowedDisplayConfigs</span><span class="params">(IBinder displayToken, <span class="type">int</span>[] allowedConfigs)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (displayToken == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(<span class="string">&quot;displayToken must not be null&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (allowedConfigs == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(<span class="string">&quot;allowedConfigs must not be null&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// JNI调用</span></span><br><span class="line">    <span class="keyword">return</span> nativeSetAllowedDisplayConfigs(displayToken, allowedConfigs);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-5-android-view-SurfaceControl-nativeSetAllowedDisplayConfigs"><a href="#3-5-android-view-SurfaceControl-nativeSetAllowedDisplayConfigs" class="headerlink" title="3.5 android_view_SurfaceControl::nativeSetAllowedDisplayConfigs"></a>3.5 android_view_SurfaceControl::nativeSetAllowedDisplayConfigs</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> jboolean <span class="title">nativeSetAllowedDisplayConfigs</span><span class="params">(JNIEnv* env, jclass clazz,</span></span></span><br><span class="line"><span class="params"><span class="function">        jobject tokenObj, jintArray configArray)</span> </span>&#123;</span><br><span class="line">    <span class="function">sp&lt;IBinder&gt; <span class="title">token</span><span class="params">(ibinderForJavaObject(env, tokenObj))</span></span>;</span><br><span class="line">    <span class="keyword">if</span> (token == <span class="literal">nullptr</span>) <span class="keyword">return</span> JNI_FALSE;</span><br><span class="line"></span><br><span class="line">    std::vector&lt;<span class="type">int32_t</span>&gt; allowedConfigs;</span><br><span class="line">    jsize configArraySize = env-&gt;<span class="built_in">GetArrayLength</span>(configArray);</span><br><span class="line">    allowedConfigs.<span class="built_in">reserve</span>(configArraySize);</span><br><span class="line"></span><br><span class="line">    jint* configArrayElements = env-&gt;<span class="built_in">GetIntArrayElements</span>(configArray, <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; configArraySize; i++) &#123;</span><br><span class="line">        allowedConfigs.<span class="built_in">push_back</span>(configArrayElements[i]);</span><br><span class="line">    &#125;</span><br><span class="line">    env-&gt;<span class="built_in">ReleaseIntArrayElements</span>(configArray, configArrayElements, <span class="number">0</span>);</span><br><span class="line">    <span class="comment">// 3.5.1 通过SurfaceComposerClient</span></span><br><span class="line">    <span class="type">size_t</span> result = SurfaceComposerClient::<span class="built_in">setAllowedDisplayConfigs</span>(token, allowedConfigs);</span><br><span class="line">    <span class="keyword">return</span> result == NO_ERROR ? JNI_TRUE : JNI_FALSE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-5-1-SurfaceComposerClient-setAllowedDisplayConfigs"><a href="#3-5-1-SurfaceComposerClient-setAllowedDisplayConfigs" class="headerlink" title="3.5.1 SurfaceComposerClient::setAllowedDisplayConfigs"></a>3.5.1 SurfaceComposerClient::setAllowedDisplayConfigs</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">SurfaceComposerClient::setAllowedDisplayConfigs</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> sp&lt;IBinder&gt;&amp; displayToken, <span class="type">const</span> std::vector&lt;<span class="type">int32_t</span>&gt;&amp; allowedConfigs)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 通过binder调用到SurfaceFlinger</span></span><br><span class="line">    <span class="keyword">return</span> ComposerService::<span class="built_in">getComposerService</span>()-&gt;<span class="built_in">setAllowedDisplayConfigs</span>(displayToken,</span><br><span class="line">                                                                           allowedConfigs);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-6-SurfaceFlinger-setAllowedDisplayConfigs"><a href="#3-6-SurfaceFlinger-setAllowedDisplayConfigs" class="headerlink" title="3.6 SurfaceFlinger::setAllowedDisplayConfigs"></a>3.6 SurfaceFlinger::setAllowedDisplayConfigs</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">SurfaceFlinger::setAllowedDisplayConfigs</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; displayToken,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                  <span class="type">const</span> std::vector&lt;<span class="type">int32_t</span>&gt;&amp; allowedConfigs)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!displayToken || allowedConfigs.<span class="built_in">empty</span>()) &#123;</span><br><span class="line">        <span class="keyword">return</span> BAD_VALUE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mDebugDisplayConfigSetByBackdoor) &#123;</span><br><span class="line">        <span class="comment">// ignore this request as config is overridden by backdoor</span></span><br><span class="line">        <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">postMessageSync</span>(<span class="keyword">new</span> <span class="built_in">LambdaMessage</span>([&amp;]() &#123;</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span> display = <span class="built_in">getDisplayDeviceLocked</span>(displayToken);</span><br><span class="line">        <span class="keyword">if</span> (!display) &#123;</span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;Attempt to set allowed display configs for invalid display token %p&quot;</span>,</span><br><span class="line">                  displayToken.<span class="built_in">get</span>());</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (display-&gt;<span class="built_in">isVirtual</span>()) &#123;</span><br><span class="line">            <span class="built_in">ALOGW</span>(<span class="string">&quot;Attempt to set allowed display configs for virtual display&quot;</span>);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            Mutex::Autolock <span class="built_in">lock</span>(mStateLock);</span><br><span class="line">            <span class="built_in">setAllowedDisplayConfigsInternal</span>(display, allowedConfigs);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>好了，app设置屏幕显示刷新的流程就走完了，接下来就是SurfaceFlinger去和硬件交互，通知切换刷新率了。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/" title="App申请帧率(2)--Framework选择最近帧率范围">https://swallowjoe.github.io/2022/02/27/App申请帧率-2-Framework选择最近帧率范围/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Vsync/" rel="tag"># Vsync</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/" rel="prev" title="App申请帧率(1)--简述">
+      <i class="fa fa-chevron-left"></i> App申请帧率(1)--简述
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" rel="next" title="App申请帧率(3)--SF计算最佳帧率">
+      App申请帧率(3)--SF计算最佳帧率 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-preferredDisplayModeId%E6%94%B9%E5%8F%98"><span class="nav-text">一. preferredDisplayModeId改变</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-RootWindowContainer-applySurfaceChangesTransaction"><span class="nav-text">1.1 RootWindowContainer.applySurfaceChangesTransaction</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-DisplayContent-applySurfaceChangesTransaction"><span class="nav-text">1.2 DisplayContent.applySurfaceChangesTransaction()</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-DisplayContent-mApplySurfaceChangesTransaction"><span class="nav-text">1.3 DisplayContent.mApplySurfaceChangesTransaction</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-DisplayManagerService-setDisplayProperties"><span class="nav-text">1.4 DisplayManagerService.setDisplayProperties</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-DisplayModeDirector"><span class="nav-text">二. DisplayModeDirector</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-DisplayModeDirector-AppRequestObserver-setAppRequestedMode"><span class="nav-text">2.1 DisplayModeDirector.AppRequestObserver.setAppRequestedMode</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-DisplayModeDirector-Vote-updateVoteLocked"><span class="nav-text">2.2 DisplayModeDirector.Vote.updateVoteLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-DisplayModeDirector-Vote-notifyAllowedModesChangedLocked"><span class="nav-text">2.3 DisplayModeDirector.Vote.notifyAllowedModesChangedLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-DisplayManagerService-onAllowedDisplayModesChangedInternal"><span class="nav-text">2.4 DisplayManagerService.onAllowedDisplayModesChangedInternal</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-DisplayModeDirector-getAllowedModes"><span class="nav-text">2.5 DisplayModeDirector.getAllowedModes</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-5-1-DisplayModeDirector-getAllowedModesLocked"><span class="nav-text">2.5.1 DisplayModeDirector.getAllowedModesLocked</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-5-2-DisplayModeDirector-filterModes"><span class="nav-text">2.5.2 DisplayModeDirector.filterModes</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-%E9%80%9A%E7%9F%A5SurfaceFlinger%E5%8F%98%E5%8C%96"><span class="nav-text">三. 通知SurfaceFlinger变化</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-DisplayManagerInternal-performTraversal"><span class="nav-text">3.1 DisplayManagerInternal.performTraversal</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-DisplayManagerService-performTraversalInternal"><span class="nav-text">3.2 DisplayManagerService.performTraversalInternal</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-1-DisplayManagerService-performTraversalLocked"><span class="nav-text">3.2.1 DisplayManagerService.performTraversalLocked</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-2-DisplayManagerService-configureDisplayLocked"><span class="nav-text">3.2.2 DisplayManagerService.configureDisplayLocked</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-3-LogicalDisplay-configureDisplayLocked"><span class="nav-text">3.2.3 LogicalDisplay.configureDisplayLocked</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-LocalDisplayAdapter-LocalDisplayDevice-setAllowedDisplayModesLocked"><span class="nav-text">3.3 LocalDisplayAdapter.LocalDisplayDevice.setAllowedDisplayModesLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-SurfaceControl-setAllowedDisplayConfigs"><span class="nav-text">3.4 SurfaceControl.setAllowedDisplayConfigs</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-5-android-view-SurfaceControl-nativeSetAllowedDisplayConfigs"><span class="nav-text">3.5 android_view_SurfaceControl::nativeSetAllowedDisplayConfigs</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-5-1-SurfaceComposerClient-setAllowedDisplayConfigs"><span class="nav-text">3.5.1 SurfaceComposerClient::setAllowedDisplayConfigs</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-6-SurfaceFlinger-setAllowedDisplayConfigs"><span class="nav-text">3.6 SurfaceFlinger::setAllowedDisplayConfigs</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">20</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
