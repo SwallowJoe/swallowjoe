@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简介接上文，首先回顾一下IBinder相关接口的类图：  现在我们Client进程已经拿到Server端IDemoInterface中的IBinder对象，但是这个IBinder对象到底是哪个呢，Stub本身？还是Proxy亦或是Proxy中的mRemote？ 还是看sayHello的调用过程先: 123456789101112override fun onServiceConnected(p">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Binder(2)--sayHello之BinderProxy的创建过程">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简介接上文，首先回顾一下IBinder相关接口的类图：  现在我们Client进程已经拿到Server端IDemoInterface中的IBinder对象，但是这个IBinder对象到底是哪个呢，Stub本身？还是Proxy亦或是Proxy中的mRemote？ 还是看sayHello的调用过程先: 123456789101112override fun onServiceConnected(p">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/1_1_DemoInterface%E7%B1%BB%E5%9B%BE.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_1_IBinder%E7%B1%BB%E5%9B%BE.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_2_NativeIBinder%E7%B1%BB%E5%9B%BE.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_3_IBinder%E7%B1%BB%E5%9B%BE_JavaBBinder.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_4_IBinder%E5%85%A8%E7%B1%BB%E5%9B%BE.png">
+<meta property="article:published_time" content="2022-04-04T02:38:09.000Z">
+<meta property="article:modified_time" content="2022-04-04T02:50:23.037Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Binder">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/1_1_DemoInterface%E7%B1%BB%E5%9B%BE.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Binder(2)--sayHello之BinderProxy的创建过程 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Binder(2)--sayHello之BinderProxy的创建过程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 10:38:09 / 修改时间：10:50:23" itemprop="dateCreated datePublished" datetime="2022-04-04T10:38:09+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Binder/" itemprop="url" rel="index"><span itemprop="name">Binder</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/" class="post-meta-item leancloud_visitors" data-flag-title="Binder(2)--sayHello之BinderProxy的创建过程" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+
+<h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>接上文，首先回顾一下IBinder相关接口的类图：</p>
+<p><img src="/images/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/1_1_DemoInterface%E7%B1%BB%E5%9B%BE.png" alt="DemoInterfac"></p>
+<p>现在我们Client进程已经拿到Server端IDemoInterface中的IBinder对象，但是这个IBinder对象到底是哪个呢，Stub本身？还是Proxy亦或是Proxy中的mRemote？</p>
+<p>还是看sayHello的调用过程先:</p>
+<figure class="highlight kt"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">onServiceConnected</span><span class="params">(p0: <span class="type">ComponentName</span>?, p1: <span class="type">IBinder</span>?)</span></span> &#123;</span><br><span class="line">    Log.d(<span class="string">&quot;Client&quot;</span>, <span class="string">&quot;DemoService connected&quot;</span>)</span><br><span class="line">    <span class="comment">// 远程服务连接成功，打个招呼</span></span><br><span class="line">    <span class="comment">// 1.1 这个asInterface是做了什么操作呢？</span></span><br><span class="line">    <span class="keyword">val</span> mProxyBinder = IDemoInterface.Stub.asInterface(p1)</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="comment">// 2.1 sayHello!</span></span><br><span class="line">        mProxyBinder.sayHello(<span class="number">5000</span>, <span class="string">&quot;Hello?&quot;</span>)</span><br><span class="line">    &#125; <span class="keyword">catch</span> (e:RemoteException) &#123;</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<span id="more"></span>
+
+<h1 id="一-asInterface方法"><a href="#一-asInterface方法" class="headerlink" title="一. asInterface方法"></a>一. asInterface方法</h1><h2 id="1-1-IDemoInterface-Stub-asInterface"><a href="#1-1-IDemoInterface-Stub-asInterface" class="headerlink" title="1.1 IDemoInterface.Stub.asInterface"></a>1.1 IDemoInterface.Stub.asInterface</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> com.oneplus.opbench.server.IDemoInterface <span class="title function_">asInterface</span><span class="params">(android.os.IBinder obj)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">if</span> ((obj==<span class="literal">null</span>)) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 1.2 生成IInterface</span></span><br><span class="line">    android.os.<span class="type">IInterface</span> <span class="variable">iin</span> <span class="operator">=</span> obj.queryLocalInterface(DESCRIPTOR);</span><br><span class="line">    <span class="keyword">if</span> (((iin!=<span class="literal">null</span>)&amp;&amp;(iin <span class="keyword">instanceof</span> com.oneplus.opbench.server.IDemoInterface))) &#123;</span><br><span class="line">        <span class="keyword">return</span> ((com.oneplus.opbench.server.IDemoInterface)iin);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 1.3 转换成Proxy对象</span></span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">com</span>.oneplus.opbench.server.IDemoInterface.Stub.Proxy(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这个方法是自动生成的，看起来就是通过IBinder生成一个IInterface或者Proxy？</p>
+<h2 id="1-2-Binder-queryLocalInterface"><a href="#1-2-Binder-queryLocalInterface" class="headerlink" title="1.2 Binder.queryLocalInterface"></a>1.2 Binder.queryLocalInterface</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="meta">@Nullable</span> IInterface <span class="title function_">queryLocalInterface</span><span class="params">(<span class="meta">@NonNull</span> String descriptor)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mDescriptor != <span class="literal">null</span> &amp;&amp; mDescriptor.equals(descriptor)) &#123;</span><br><span class="line">        <span class="keyword">return</span> mOwner;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">attachInterface</span><span class="params">(<span class="meta">@Nullable</span> IInterface owner, <span class="meta">@Nullable</span> String descriptor)</span> &#123;</span><br><span class="line">    mOwner = owner;</span><br><span class="line">    mDescriptor = descriptor;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>看类图我们也知道，只有Binder实现了IBinder接口，而也只有IDemoInterface.Stub继承了Binder。这么说起来，SystemServer回传的IBinder对象实际上是服务端的IDemoInterface.Stub？然而mOwner此时还是null的，注意我们现在在Client进程中。这里我们直接debug client进程发现queryLocalInterface返回的null值，而且传入的IBinder的类型居然是BinderProxy的！这里什么时候返回非null，传入的IBinder是什么时候变成BinderProxy的呢，先留个疑问。</p>
+<p><img src="/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_1_IBinder%E7%B1%BB%E5%9B%BE.png" alt="2_1_IBinder类图"></p>
+<h2 id="1-3-创建IDemoInterface-Stub-Proxy对象"><a href="#1-3-创建IDemoInterface-Stub-Proxy对象" class="headerlink" title="1.3 创建IDemoInterface.Stub.Proxy对象"></a>1.3 创建IDemoInterface.Stub.Proxy对象</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> android.os.IBinder mRemote;</span><br><span class="line">Proxy(android.os.IBinder remote)</span><br><span class="line">&#123;</span><br><span class="line">  mRemote = remote;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>明白了，现在这个mRemote对象实际上是指代的BinderProxy!</p>
+<h1 id="二-sayHello"><a href="#二-sayHello" class="headerlink" title="二. sayHello"></a>二. sayHello</h1><h2 id="2-1-Proxy-sayHello"><a href="#2-1-Proxy-sayHello" class="headerlink" title="2.1 Proxy.sayHello"></a>2.1 Proxy.sayHello</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span> <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">sayHello</span><span class="params">(<span class="type">long</span> aLong, java.lang.String aString)</span> <span class="keyword">throws</span> android.os.RemoteException</span><br><span class="line">&#123;</span><br><span class="line">  android.os.<span class="type">Parcel</span> <span class="variable">_data</span> <span class="operator">=</span> android.os.Parcel.obtain();</span><br><span class="line">  android.os.<span class="type">Parcel</span> <span class="variable">_reply</span> <span class="operator">=</span> android.os.Parcel.obtain();</span><br><span class="line">  <span class="keyword">try</span> &#123;</span><br><span class="line">    <span class="comment">// 按顺序写入参数, 注意DESCRIPTOR</span></span><br><span class="line">    _data.writeInterfaceToken(DESCRIPTOR);</span><br><span class="line">    _data.writeLong(aLong);</span><br><span class="line">    _data.writeString(aString);</span><br><span class="line">    <span class="comment">// 2.2 实质上是mRemote起作用的，在1.3中我们通过Debug知道这个其实是BinderProxy对象</span></span><br><span class="line">    <span class="type">boolean</span> <span class="variable">_status</span> <span class="operator">=</span> mRemote.transact(Stub.TRANSACTION_sayHello, _data, _reply, <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">if</span> (!_status &amp;&amp; getDefaultImpl() != <span class="literal">null</span>) &#123;</span><br><span class="line">      getDefaultImpl().sayHello(aLong, aString);</span><br><span class="line">      <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    _reply.readException();</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">finally</span> &#123;</span><br><span class="line">    _reply.recycle();</span><br><span class="line">    _data.recycle();</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-2-BinderProxy-transact"><a href="#2-2-BinderProxy-transact" class="headerlink" title="2.2 BinderProxy.transact"></a>2.2 BinderProxy.transact</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">transact</span><span class="params">(<span class="type">int</span> code, Parcel data, Parcel reply, <span class="type">int</span> flags)</span> <span class="keyword">throws</span> RemoteException &#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="comment">// 2.3 忽略其他代码，这个是call了一个native方法，通过JNI调用</span></span><br><span class="line">        <span class="keyword">return</span> transactNative(code, data, reply, flags);</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-3-android-util-Binder-cpp-android-os-BinderProxy-transact"><a href="#2-3-android-util-Binder-cpp-android-os-BinderProxy-transact" class="headerlink" title="2.3 android_util_Binder.cpp#android_os_BinderProxy_transact"></a>2.3 android_util_Binder.cpp#android_os_BinderProxy_transact</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> jboolean <span class="title">android_os_BinderProxy_transact</span><span class="params">(JNIEnv* env, jobject obj,</span></span></span><br><span class="line"><span class="params"><span class="function">        jint code, jobject dataObj, jobject replyObj, jint flags)</span> <span class="comment">// throws RemoteException</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="comment">// 2.3.1 首先从名字中可以推出是获取远程通信的目标</span></span><br><span class="line">    IBinder* target = <span class="built_in">getBPNativeData</span>(env, obj)-&gt;mObject.<span class="built_in">get</span>();</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="comment">// 2.3.2 继续</span></span><br><span class="line">    <span class="type">status_t</span> err = target-&gt;<span class="built_in">transact</span>(code, *data, reply, flags);</span><br><span class="line">    <span class="comment">// .....</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-3-1-android-util-Binder-cpp-getBPNativeData"><a href="#2-3-1-android-util-Binder-cpp-getBPNativeData" class="headerlink" title="2.3.1 android_util_Binder.cpp#getBPNativeData"></a>2.3.1 android_util_Binder.cpp#getBPNativeData</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">BinderProxyNativeData</span> &#123;</span><br><span class="line">    <span class="comment">// Both fields are constant and not null once javaObjectForIBinder returns this as</span></span><br><span class="line">    <span class="comment">// part of a BinderProxy.</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// The native IBinder proxied by this BinderProxy.</span></span><br><span class="line">    sp&lt;IBinder&gt; mObject;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Death recipients for mObject. Reference counted only because DeathRecipients</span></span><br><span class="line">    <span class="comment">// hold a weak reference that can be temporarily promoted.</span></span><br><span class="line">    sp&lt;DeathRecipientList&gt; mOrgue;  <span class="comment">// Death recipients for mObject.</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">struct</span> <span class="title class_">binderproxy_offsets_t</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// Class state.</span></span><br><span class="line">    jclass mClass;</span><br><span class="line">    jmethodID mGetInstance;</span><br><span class="line">    jmethodID mSendDeathNotice;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Object state.</span></span><br><span class="line">    jfieldID mNativeData;  <span class="comment">// Field holds native pointer to BinderProxyNativeData.</span></span><br><span class="line">&#125; gBinderProxyOffsets;</span><br><span class="line"></span><br><span class="line"><span class="function">BinderProxyNativeData* <span class="title">getBPNativeData</span><span class="params">(JNIEnv* env, jobject obj)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 其实就是读取BinderProxy对象中保存的long类型的mNativeData数据</span></span><br><span class="line">    <span class="comment">// 然后强制转换成BinderProxyNativeData类型</span></span><br><span class="line">    <span class="keyword">return</span> (BinderProxyNativeData *) env-&gt;<span class="built_in">GetLongField</span>(obj, gBinderProxyOffsets.mNativeData);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里并不知道BinderProxy从哪儿来的，Native层也没有定义，应该就是指代java层的BinderProxy。</p>
+<h3 id="2-3-2-IBinder-transact"><a href="#2-3-2-IBinder-transact" class="headerlink" title="2.3.2 IBinder#transact"></a>2.3.2 IBinder#transact</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">virtual</span> <span class="type">status_t</span>        <span class="title">transact</span><span class="params">(   <span class="type">uint32_t</span> code,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        <span class="type">const</span> Parcel&amp; data,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        Parcel* reply,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        <span class="type">uint32_t</span> flags = <span class="number">0</span>)</span> </span>= <span class="number">0</span>;</span><br></pre></td></tr></table></figure>
+<p>这里我们知道getBpNativeData中的mObject是IBinder类型的。但是是一个虚函数，没有具体实现，怎么往下查呢。</p>
+<p>Native的Debug方式也有，但是总归不方便，那我们先梳理一下Native层关于IBinder的类图吧。注意现在我们还是在Client进程内的。</p>
+<p><img src="/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_2_NativeIBinder%E7%B1%BB%E5%9B%BE.png" alt="2_2_NativeIBinder类图"></p>
+<p>IBinder相关类之间的关系大致理清楚了，从这个函数名称getBPNativeData可以猜出来应该是指代的BpBinder!</p>
+<p>但是怎么确认呢，那我们回到Client App和Server App建立通信的过程中，溯源BinderProxy。</p>
+<h1 id="三-BinderProxy的创建过程"><a href="#三-BinderProxy的创建过程" class="headerlink" title="三. BinderProxy的创建过程"></a>三. BinderProxy的创建过程</h1><h2 id="3-1-publishServiceLocked"><a href="#3-1-publishServiceLocked" class="headerlink" title="3.1 publishServiceLocked"></a>3.1 publishServiceLocked</h2><ol>
+<li>ServerApp:        ActivityThread.handleBindService(BindServiceData data)</li>
+<li>SystemServer: ActivityManagerService.publishService(IBinder token, Intent intent, IBinder service)</li>
+<li>SystemServer: ActiveService.publishServiceLocked(ServiceRecord r, Intent intent, IBinder service)</li>
+</ol>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">handleBindService</span><span class="params">(BindServiceData data)</span> &#123;</span><br><span class="line">    <span class="comment">// 这个mService就是Service在被调用onCreate方法的时候存入的</span></span><br><span class="line">    <span class="type">Service</span> <span class="variable">s</span> <span class="operator">=</span> mServices.get(data.token);</span><br><span class="line">    <span class="keyword">if</span> (DEBUG_SERVICE)</span><br><span class="line">        Slog.v(TAG, <span class="string">&quot;handleBindService s=&quot;</span> + s + <span class="string">&quot; rebind=&quot;</span> + data.rebind);</span><br><span class="line">    <span class="keyword">if</span> (s != <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            data.intent.setExtrasClassLoader(s.getClassLoader());</span><br><span class="line">            data.intent.prepareToEnterProcess();</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">                <span class="keyword">if</span> (!data.rebind) &#123;</span><br><span class="line">                    <span class="comment">// 3.1.1 所以这个onBind，就是Service中我们实现的onBind方法了</span></span><br><span class="line">                    <span class="comment">// 这里的binder就是对应我们实现的IDemoInterface.Stub</span></span><br><span class="line">                    <span class="type">IBinder</span> <span class="variable">binder</span> <span class="operator">=</span> s.onBind(data.intent);</span><br><span class="line">                    <span class="comment">// 告诉SystemServer该服务已准备就绪</span></span><br><span class="line">                    ActivityManager.getService().publishService(</span><br><span class="line">                            data.token, data.intent, binder);</span><br><span class="line">                &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                    <span class="comment">// 这里就是rebind</span></span><br><span class="line">                    s.onRebind(data.intent);</span><br><span class="line">                    ActivityManager.getService().serviceDoneExecuting(</span><br><span class="line">                            data.token, SERVICE_DONE_EXECUTING_ANON, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">        <span class="comment">// ......</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-1-1-服务端的Stub初始化"><a href="#3-1-1-服务端的Stub初始化" class="headerlink" title="3.1.1 服务端的Stub初始化"></a>3.1.1 服务端的Stub初始化</h3><figure class="highlight kt"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">DemoBinder</span>:<span class="type">IDemoInterface.Stub</span></span>() &#123;</span><br><span class="line">    <span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">sayHello</span><span class="params">(aLong: <span class="type">Long</span>, aString: <span class="type">String</span>?)</span></span> &#123;</span><br><span class="line">        Log.d(<span class="string">&quot;DemoService&quot;</span>, <span class="string">&quot;<span class="variable">$aString</span>:<span class="variable">$aLong</span>&quot;</span>)</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 看看这个Stub的初始化过程</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">val</span> binder = DemoBinder()</span><br><span class="line"></span><br><span class="line"><span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">onBind</span><span class="params">(intent: <span class="type">Intent</span>?)</span></span>: IBinder? &#123;</span><br><span class="line">    <span class="comment">// 所以Service中的onBind含义就是通知到AMS</span></span><br><span class="line">    <span class="comment">// 本服务已准备继续，随时可以工作</span></span><br><span class="line">    <span class="keyword">return</span> binder</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>还要注意的是，初始化DemoBinder过程，会调用父类的构造函数哦：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="title function_">Stub</span><span class="params">()</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="built_in">this</span>.attachInterface(<span class="built_in">this</span>, DESCRIPTOR);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">attachInterface</span><span class="params">(<span class="meta">@Nullable</span> IInterface owner, <span class="meta">@Nullable</span> String descriptor)</span> &#123;</span><br><span class="line">    <span class="comment">// 噢噢，这个mOwner就是在这里保存的！</span></span><br><span class="line">    <span class="comment">// 它代表的就是IDemoInterface.Stub类的对象，其实就是DemoBinder</span></span><br><span class="line">    mOwner = owner;</span><br><span class="line">    mDescriptor = descriptor;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但是这里还是没有找到BinderProxy对象的创建。不过我们知道，Binder通信是通过往Parcel中写入数据的；</p>
+<p>而AMS.publishService函数中最后一个参数就是IBinder类型的。</p>
+<h2 id="3-2-publishService写入参数"><a href="#3-2-publishService写入参数" class="headerlink" title="3.2 publishService写入参数"></a>3.2 publishService写入参数</h2><p>通过查看IActivityManager.aidl文件编译后生成的IActivityManager.Stub.Proxy.class(想想为啥不是Stub而是Proxy)文件可以知道这个函数的具体内容：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">publishService</span><span class="params">(IBinder token, Intent intent, IBinder service)</span> <span class="keyword">throws</span> RemoteException &#123;</span><br><span class="line">  <span class="type">Parcel</span> <span class="variable">_data</span> <span class="operator">=</span> Parcel.obtain();</span><br><span class="line">  <span class="type">Parcel</span> <span class="variable">_reply</span> <span class="operator">=</span> Parcel.obtain();</span><br><span class="line">  <span class="keyword">try</span> &#123;</span><br><span class="line">    _data.writeInterfaceToken(<span class="string">&quot;android.app.IActivityManager&quot;</span>);</span><br><span class="line">    _data.writeStrongBinder(token);</span><br><span class="line">    <span class="keyword">if</span> (intent != <span class="literal">null</span>) &#123;</span><br><span class="line">      _data.writeInt(<span class="number">1</span>);</span><br><span class="line">      intent.writeToParcel(_data, <span class="number">0</span>);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      _data.writeInt(<span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 3.1.3 IBinder对象是通过writeStrongBinder方法写入的</span></span><br><span class="line">    <span class="comment">// 注意这个IBinder就是Service实现的onBind方法中返回的, 就是IDemoInterface.Stub类型</span></span><br><span class="line">    _data.writeStrongBinder(service);</span><br><span class="line">    <span class="type">boolean</span> <span class="variable">_status</span> <span class="operator">=</span> <span class="built_in">this</span>.mRemote.transact(<span class="number">32</span>, _data, _reply, <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">if</span> (!_status &amp;&amp; IActivityManager.Stub.getDefaultImpl() != <span class="literal">null</span>) &#123;</span><br><span class="line">      IActivityManager.Stub.getDefaultImpl().publishService(token, intent, service);</span><br><span class="line">      <span class="keyword">return</span>;</span><br><span class="line">    &#125; </span><br><span class="line">    _reply.readException();</span><br><span class="line">  &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">    _reply.recycle();</span><br><span class="line">    _data.recycle();</span><br><span class="line">  &#125; </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-1-Parcel-writeStrongBinder"><a href="#3-2-1-Parcel-writeStrongBinder" class="headerlink" title="3.2.1 Parcel.writeStrongBinder"></a>3.2.1 Parcel.writeStrongBinder</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="keyword">void</span> <span class="title function_">writeStrongBinder</span><span class="params">(IBinder val)</span> &#123;</span><br><span class="line">    <span class="comment">// 这里的mNativePtr就是此Parcel在Native的对应标识</span></span><br><span class="line">    nativeWriteStrongBinder(mNativePtr, val);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>看样子直接去了Native层干活去了。</p>
+<h3 id="3-2-2-android-os-Parcel-android-os-Parcel-writeStrongBinder"><a href="#3-2-2-android-os-Parcel-android-os-Parcel-writeStrongBinder" class="headerlink" title="3.2.2 android_os_Parcel#android_os_Parcel_writeStrongBinder"></a>3.2.2 android_os_Parcel#android_os_Parcel_writeStrongBinder</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">void</span> <span class="title">android_os_Parcel_writeStrongBinder</span><span class="params">(JNIEnv* env, jclass clazz, jlong nativePtr, jobject object)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 转成Native的Parcel</span></span><br><span class="line">    Parcel* parcel = <span class="built_in">reinterpret_cast</span>&lt;Parcel*&gt;(nativePtr);</span><br><span class="line">    <span class="keyword">if</span> (parcel != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="comment">// 3.2.2.1 注意这个ibinderForJavaObject方法，将java层IBinder转成Native层的</span></span><br><span class="line">        <span class="comment">// 3.2.3 然后是保存这个Native的IBinder</span></span><br><span class="line">        <span class="type">const</span> <span class="type">status_t</span> err = parcel-&gt;<span class="built_in">writeStrongBinder</span>(<span class="built_in">ibinderForJavaObject</span>(env, object));</span><br><span class="line">        <span class="keyword">if</span> (err != NO_ERROR) &#123;</span><br><span class="line">            <span class="built_in">signalExceptionForError</span>(env, clazz, err);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="3-2-2-1-android-util-Binder-ibinderForJavaObject"><a href="#3-2-2-1-android-util-Binder-ibinderForJavaObject" class="headerlink" title="3.2.2.1 android_util_Binder#ibinderForJavaObject"></a>3.2.2.1 android_util_Binder#ibinderForJavaObject</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;IBinder&gt; <span class="title">ibinderForJavaObject</span><span class="params">(JNIEnv* env, jobject obj)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (obj == <span class="literal">NULL</span>) <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Instance of Binder?</span></span><br><span class="line">    <span class="keyword">if</span> (env-&gt;<span class="built_in">IsInstanceOf</span>(obj, gBinderOffsets.mClass)) &#123;</span><br><span class="line">        JavaBBinderHolder* jbh = (JavaBBinderHolder*)</span><br><span class="line">            env-&gt;<span class="built_in">GetLongField</span>(obj, gBinderOffsets.mObject);</span><br><span class="line">        <span class="comment">// 3.2.2.2 返回一个IBinder</span></span><br><span class="line">        <span class="keyword">return</span> jbh-&gt;<span class="built_in">get</span>(env, obj);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Instance of BinderProxy?</span></span><br><span class="line">    <span class="keyword">if</span> (env-&gt;<span class="built_in">IsInstanceOf</span>(obj, gBinderProxyOffsets.mClass)) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getBPNativeData</span>(env, obj)-&gt;mObject;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">ALOGW</span>(<span class="string">&quot;ibinderForJavaObject: %p is not a Binder object&quot;</span>, obj);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这块首次出现了BinderProxy，不过当前我们还处于Service App进程对吧，而且上层传入的IBinder明显只是一个IDemoInterface.Stub类型。</p>
+<p>所以这里还是将这个jobject转换成了JavaBBinderHolder！不过我们有理由猜测，BinderProxy是在AMS所处的SystemServer进程中转换的。</p>
+<h4 id="3-2-2-2-android-util-Binder-JavaBBinderHolder-get"><a href="#3-2-2-2-android-util-Binder-JavaBBinderHolder-get" class="headerlink" title="3.2.2.2 android_util_Binder#JavaBBinderHolder#get"></a>3.2.2.2 android_util_Binder#JavaBBinderHolder#get</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;JavaBBinder&gt; <span class="title">get</span><span class="params">(JNIEnv* env, jobject obj)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    AutoMutex _l(mLock);</span><br><span class="line">    sp&lt;JavaBBinder&gt; b = mBinder.<span class="built_in">promote</span>();</span><br><span class="line">    <span class="keyword">if</span> (b == <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="comment">// 3.2.2.3 创建JavaBBinder</span></span><br><span class="line">        b = <span class="keyword">new</span> <span class="built_in">JavaBBinder</span>(env, obj);</span><br><span class="line">        <span class="keyword">if</span> (mVintf) &#123;</span><br><span class="line">            ::android::internal::Stability::<span class="built_in">markVintf</span>(b.<span class="built_in">get</span>());</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (mExtension != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            b.<span class="built_in">get</span>()-&gt;<span class="built_in">setExtension</span>(mExtension);</span><br><span class="line">        &#125;</span><br><span class="line">        mBinder = b;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;Creating JavaBinder %p (refs %p) for Object %p, weakCount=%&quot;</span> PRId32 <span class="string">&quot;\n&quot;</span>,</span><br><span class="line">                b.<span class="built_in">get</span>(), b-&gt;<span class="built_in">getWeakRefs</span>(), obj, b-&gt;<span class="built_in">getWeakRefs</span>()-&gt;<span class="built_in">getWeakCount</span>());</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 直接返回的JavaBBinder,说明JavaBBinder继承了IBinder</span></span><br><span class="line">    <span class="keyword">return</span> b;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="3-2-2-3-创建Native层的IBinder对象-JavaBBinder"><a href="#3-2-2-3-创建Native层的IBinder对象-JavaBBinder" class="headerlink" title="3.2.2.3 创建Native层的IBinder对象-JavaBBinder"></a>3.2.2.3 创建Native层的IBinder对象-JavaBBinder</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">JavaBBinder</span>(JNIEnv* env, jobject <span class="comment">/* Java Binder */</span> object)</span><br><span class="line">        : <span class="built_in">mVM</span>(<span class="built_in">jnienv_to_javavm</span>(env)), <span class="built_in">mObject</span>(env-&gt;<span class="built_in">NewGlobalRef</span>(object))</span><br><span class="line">&#123;</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;Creating JavaBBinder %p\n&quot;</span>, <span class="keyword">this</span>);</span><br><span class="line">    <span class="comment">// 这些先不管</span></span><br><span class="line">    gNumLocalRefsCreated.<span class="built_in">fetch_add</span>(<span class="number">1</span>, std::memory_order_relaxed);</span><br><span class="line">    <span class="built_in">gcIfManyNewRefs</span>(env);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>我们在看看现在Native层和IBinder有关系的类的类图:</p>
+<p><img src="/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_3_IBinder%E7%B1%BB%E5%9B%BE_JavaBBinder.png" alt="2_3_IBinder类图_JavaBBinder.png"></p>
+<p>果然JavaBBinder继承了IBinder。回到#3.2.2中，继续往下就是writeStrongBinder了。</p>
+<h3 id="3-2-3-Parcel-writeStrongBinder"><a href="#3-2-3-Parcel-writeStrongBinder" class="headerlink" title="3.2.3 Parcel#writeStrongBinder"></a>3.2.3 Parcel#writeStrongBinder</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::writeStrongBinder</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; val)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">flattenBinder</span>(val);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::flattenBinder</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; binder)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    flat_binder_object obj;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="keyword">if</span> (binder != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">        <span class="comment">// 3.2.3.1 是local还是remote？</span></span><br><span class="line">        BBinder *local = binder-&gt;<span class="built_in">localBinder</span>();</span><br><span class="line">        <span class="keyword">if</span> (!local) &#123;</span><br><span class="line">            BpBinder *proxy = binder-&gt;<span class="built_in">remoteBinder</span>();</span><br><span class="line">            <span class="keyword">if</span> (proxy == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">                <span class="built_in">ALOGE</span>(<span class="string">&quot;null proxy&quot;</span>);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="type">const</span> <span class="type">int32_t</span> handle = proxy ? proxy-&gt;<span class="built_in">handle</span>() : <span class="number">0</span>;</span><br><span class="line">            obj.hdr.type = BINDER_TYPE_HANDLE;</span><br><span class="line">            obj.binder = <span class="number">0</span>; <span class="comment">/* Don&#x27;t pass uninitialized stack data to a remote process */</span></span><br><span class="line">            obj.handle = handle;</span><br><span class="line">            obj.cookie = <span class="number">0</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">// 进入！</span></span><br><span class="line">            <span class="keyword">if</span> (local-&gt;<span class="built_in">isRequestingSid</span>()) &#123;</span><br><span class="line">                obj.flags |= FLAT_BINDER_FLAG_TXN_SECURITY_CTX;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 注意这里的type，是BINDER_TYPE_BINDER！</span></span><br><span class="line">            obj.hdr.type = BINDER_TYPE_BINDER;</span><br><span class="line">            <span class="comment">// 保存BBinder的弱引用，这个是干啥用的?</span></span><br><span class="line">            obj.binder = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uintptr_t</span>&gt;(local-&gt;<span class="built_in">getWeakRefs</span>());</span><br><span class="line">            <span class="comment">// 保存BBinder对象</span></span><br><span class="line">            obj.cookie = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uintptr_t</span>&gt;(local);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        obj.hdr.type = BINDER_TYPE_BINDER;</span><br><span class="line">        obj.binder = <span class="number">0</span>;</span><br><span class="line">        obj.cookie = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3.2.4 完成IBinder的写入</span></span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">finishFlattenBinder</span>(binder, obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里对local和remote存在不同的处理方式，不过我们先仅仅关注其中一个分支。</p>
+<h4 id="3-2-3-1-IBinder-localBinder"><a href="#3-2-3-1-IBinder-localBinder" class="headerlink" title="3.2.3.1 IBinder#localBinder"></a>3.2.3.1 IBinder#localBinder</h4><p>我们这里的IBinder就是JavaBBinder类的对象，前面我们看过了JavaBBinder的初始化</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">BBinder* <span class="title">IBinder::localBinder</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 注意IBinder调用的是这个</span></span><br><span class="line"><span class="function">BBinder* <span class="title">BBinder::localBinder</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>因为这里的IBinder指针是指向其子类的子类JavaBBinder,然后其子类BBinder实现了虚函数localBinder，而JavaBBinder并没有。</p>
+<p>所以这里是local的！</p>
+<h3 id="3-2-4-Parcel-finishFlattenBinder"><a href="#3-2-4-Parcel-finishFlattenBinder" class="headerlink" title="3.2.4 Parcel#finishFlattenBinder"></a>3.2.4 Parcel#finishFlattenBinder</h3><p>flatten的意思是压平，其实可以理解为打包，将JavaBBinder打包然后发送出去。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::finishFlattenBinder</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> sp&lt;IBinder&gt;&amp; binder, <span class="type">const</span> flat_binder_object&amp; flat)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 写入内存区域，这一块没有接触过，暂时先不管，后面研究</span></span><br><span class="line">    <span class="comment">// 理解为将IBinder保存到内存中的某个特定区域</span></span><br><span class="line">    <span class="type">status_t</span> status = <span class="built_in">writeObject</span>(flat, <span class="literal">false</span>);</span><br><span class="line">    <span class="keyword">if</span> (status != OK) <span class="keyword">return</span> status;</span><br><span class="line"></span><br><span class="line">    internal::Stability::<span class="built_in">tryMarkCompilationUnit</span>(binder.<span class="built_in">get</span>());</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">writeInt32</span>(internal::Stability::<span class="built_in">get</span>(binder.<span class="built_in">get</span>()));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>到这里我们知道了Java层的IBinder对象是如何通过Parcel保存到Native中的。</p>
+<h2 id="3-3-SystemServer接收参数"><a href="#3-3-SystemServer接收参数" class="headerlink" title="3.3 SystemServer接收参数"></a>3.3 SystemServer接收参数</h2><p>这里我们先不去细究通信的过程，因为这本身就是一次Binder通信。先看AMS收到Server App发布Service的IBinder对象是什么。</p>
+<p>还是通过看编译后生成的IActivityManager.Stub.Class文件中对应的publishService方法，注意我们现在切换到了SystemServer进程(忽略进程切换过程)。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">onTransact</span><span class="params">(<span class="type">int</span> code, Parcel data, Parcel reply, <span class="type">int</span> flags)</span> <span class="keyword">throws</span> RemoteException &#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    data.enforceInterface(descriptor);</span><br><span class="line">    <span class="comment">// 读取IBinder对象，不过这个是token, 不是我们想要的Service的IBinder</span></span><br><span class="line">    <span class="comment">// 用过Binder通信知道，是按顺序来读写的，所以我们看最后一个IBinder</span></span><br><span class="line">    iBinder11 = data.readStrongBinder();</span><br><span class="line">    <span class="keyword">if</span> (<span class="number">0</span> != data.readInt()) &#123;</span><br><span class="line">      intent6 = (Intent)Intent.CREATOR.createFromParcel(data);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      intent6 = <span class="literal">null</span>;</span><br><span class="line">    &#125; </span><br><span class="line">    <span class="comment">// 3.3.1 这里就是我们想要的Service的IBinder了</span></span><br><span class="line">    iBinder26 = data.readStrongBinder();</span><br><span class="line">    publishService(iBinder11, intent6, iBinder26);</span><br><span class="line">    reply.writeNoException();</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="3-3-1-Parcel-readStrongBinder"><a href="#3-3-1-Parcel-readStrongBinder" class="headerlink" title="3.3.1 Parcel.readStrongBinder"></a>3.3.1 Parcel.readStrongBinder</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> IBinder <span class="title function_">readStrongBinder</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> nativeReadStrongBinder(mNativePtr);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>还是直接切到Native.</p>
+<h3 id="3-3-2-android-os-Parcel-android-os-Parcel-readStrongBinder"><a href="#3-3-2-android-os-Parcel-android-os-Parcel-readStrongBinder" class="headerlink" title="3.3.2 android_os_Parcel#android_os_Parcel_readStrongBinder"></a>3.3.2 android_os_Parcel#android_os_Parcel_readStrongBinder</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> jobject <span class="title">android_os_Parcel_readStrongBinder</span><span class="params">(JNIEnv* env, jclass clazz, jlong nativePtr)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    Parcel* parcel = <span class="built_in">reinterpret_cast</span>&lt;Parcel*&gt;(nativePtr);</span><br><span class="line">    <span class="keyword">if</span> (parcel != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="comment">// 3.3.2.1 先看Parce-&gt;readStrongBinder</span></span><br><span class="line">        <span class="comment">// 3.3.3  将IBinder转换成jobject</span></span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">javaObjectForIBinder</span>(env, parcel-&gt;<span class="built_in">readStrongBinder</span>());</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="3-3-2-1-Parcel-readStrongBinder"><a href="#3-3-2-1-Parcel-readStrongBinder" class="headerlink" title="3.3.2.1 Parcel#readStrongBinder"></a>3.3.2.1 Parcel#readStrongBinder</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;IBinder&gt; <span class="title">Parcel::readStrongBinder</span><span class="params">()</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    sp&lt;IBinder&gt; val;</span><br><span class="line">    <span class="comment">// 暂时不明确IBinder指代的是具体哪个子类吼</span></span><br><span class="line">    <span class="built_in">readNullableStrongBinder</span>(&amp;val);</span><br><span class="line">    <span class="keyword">return</span> val;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::readStrongBinder</span><span class="params">(sp&lt;IBinder&gt;* val)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">status_t</span> status = <span class="built_in">readNullableStrongBinder</span>(val);</span><br><span class="line">    <span class="keyword">if</span> (status == OK &amp;&amp; !val-&gt;<span class="built_in">get</span>()) &#123;</span><br><span class="line">        status = UNEXPECTED_NULL;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> status;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::readNullableStrongBinder</span><span class="params">(sp&lt;IBinder&gt;* val)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 来了，解压的过程</span></span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">unflattenBinder</span>(val);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="3-3-2-2-Parcel-unflattenBinder"><a href="#3-3-2-2-Parcel-unflattenBinder" class="headerlink" title="3.3.2.2 Parcel#unflattenBinder"></a>3.3.2.2 Parcel#unflattenBinder</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::unflattenBinder</span><span class="params">(sp&lt;IBinder&gt;* out)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 从内存区域中读取当前位置的数据</span></span><br><span class="line">    <span class="type">const</span> flat_binder_object* flat = <span class="built_in">readObject</span>(<span class="literal">false</span>);</span><br><span class="line">    <span class="comment">// 存在</span></span><br><span class="line">    <span class="keyword">if</span> (flat) &#123;</span><br><span class="line">        <span class="keyword">switch</span> (flat-&gt;hdr.type) &#123;</span><br><span class="line">            <span class="comment">// 我们在flatten中的Type就是这个！</span></span><br><span class="line">            <span class="keyword">case</span> BINDER_TYPE_BINDER: &#123;</span><br><span class="line">                <span class="comment">// 转成IBinder，没有问题，我们存入的JavaBBinder，其父类的父类就是IBinder</span></span><br><span class="line">                sp&lt;IBinder&gt; binder = <span class="built_in">reinterpret_cast</span>&lt;IBinder*&gt;(flat-&gt;cookie);</span><br><span class="line">                <span class="comment">// 3.3.2.3 完成数据解压</span></span><br><span class="line">                <span class="keyword">return</span> <span class="built_in">finishUnflattenBinder</span>(binder, out);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">case</span> BINDER_TYPE_HANDLE: &#123;</span><br><span class="line">                sp&lt;IBinder&gt; binder =</span><br><span class="line">                    ProcessState::<span class="built_in">self</span>()-&gt;<span class="built_in">getStrongProxyForHandle</span>(flat-&gt;handle);</span><br><span class="line">                <span class="keyword">return</span> <span class="built_in">finishUnflattenBinder</span>(binder, out);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> BAD_TYPE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这个地方留个心眼哦，这里的flat-&gt;hdr.type真的还是原来的BINDER_TYPE_BINDER吗？</p>
+<h4 id="3-3-2-3-Parcel-finishUnflattenBinder"><a href="#3-3-2-3-Parcel-finishUnflattenBinder" class="headerlink" title="3.3.2.3 Parcel#finishUnflattenBinder"></a>3.3.2.3 Parcel#finishUnflattenBinder</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::finishUnflattenBinder</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="type">const</span> sp&lt;IBinder&gt;&amp; binder, sp&lt;IBinder&gt;* out)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int32_t</span> stability;</span><br><span class="line">    <span class="type">status_t</span> status = <span class="built_in">readInt32</span>(&amp;stability);</span><br><span class="line">    <span class="keyword">if</span> (status != OK) <span class="keyword">return</span> status;</span><br><span class="line"></span><br><span class="line">    status = internal::Stability::<span class="built_in">set</span>(binder.<span class="built_in">get</span>(), stability, <span class="literal">true</span> <span class="comment">/*log*/</span>);</span><br><span class="line">    <span class="keyword">if</span> (status != OK) <span class="keyword">return</span> status;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// out指向这个内存区域</span></span><br><span class="line">    *out = binder;</span><br><span class="line">    <span class="keyword">return</span> OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>所以这个IBinder到底是什么类型的呢？先回到#3.3.2中，继续readStrongBinder的过程</p>
+<h3 id="3-3-3-android-util-Binder-javaObjectForIBinder"><a href="#3-3-3-android-util-Binder-javaObjectForIBinder" class="headerlink" title="3.3.3 android_util_Binder#javaObjectForIBinder"></a>3.3.3 android_util_Binder#javaObjectForIBinder</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">jobject <span class="title">javaObjectForIBinder</span><span class="params">(JNIEnv* env, <span class="type">const</span> sp&lt;IBinder&gt;&amp; val)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="comment">// 3.3.3.1 这里决定是不是直接返回JavaBBinder的类型</span></span><br><span class="line">    <span class="keyword">if</span> (val-&gt;<span class="built_in">checkSubclass</span>(&amp;gBinderOffsets)) &#123;</span><br><span class="line">        <span class="comment">// It&#x27;s a JavaBBinder created by ibinderForJavaObject. Already has Java object.</span></span><br><span class="line">        jobject object = <span class="built_in">static_cast</span>&lt;JavaBBinder*&gt;(val.<span class="built_in">get</span>())-&gt;<span class="built_in">object</span>();</span><br><span class="line">        <span class="built_in">LOGDEATH</span>(<span class="string">&quot;objectForBinder %p: it&#x27;s our own %p!\n&quot;</span>, val.<span class="built_in">get</span>(), object);</span><br><span class="line">        <span class="keyword">return</span> object;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3.3.4 终于看到和BinderProxy相关的了, 至少名字上看都有关系</span></span><br><span class="line">    BinderProxyNativeData* nativeData = <span class="keyword">new</span> <span class="built_in">BinderProxyNativeData</span>();</span><br><span class="line">    nativeData-&gt;mOrgue = <span class="keyword">new</span> DeathRecipientList;</span><br><span class="line">    <span class="comment">// 将从内存中读取的IBinder对象存起来</span></span><br><span class="line">    nativeData-&gt;mObject = val;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3.3.5 调用到java方法mGetInstance，生成BinderProxy！</span></span><br><span class="line">    jobject object = env-&gt;<span class="built_in">CallStaticObjectMethod</span>(gBinderProxyOffsets.mClass,</span><br><span class="line">            gBinderProxyOffsets.mGetInstance, (jlong) nativeData, (jlong) val.<span class="built_in">get</span>());</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="comment">// 所以这里最终返回是BinderProxy对象对应JNI的jobject.</span></span><br><span class="line">    <span class="keyword">return</span> object;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="3-3-3-1-IBinder-checkSubclass"><a href="#3-3-3-1-IBinder-checkSubclass" class="headerlink" title="3.3.3.1 IBinder#checkSubclass"></a>3.3.3.1 IBinder#checkSubclass</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">IBinder::checkSubclass</span><span class="params">(<span class="type">const</span> <span class="type">void</span>* <span class="comment">/*subclassID*/</span>)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// JavaBBinder:</span></span><br><span class="line"><span class="function"><span class="type">bool</span>    <span class="title">checkSubclass</span><span class="params">(<span class="type">const</span> <span class="type">void</span>* subclassID)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 3.3.3.2 gBinderOffsets的初始化</span></span><br><span class="line">    <span class="keyword">return</span> subclassID == &amp;gBinderOffsets;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里思考一个问题，注意我们现在已经处于SystemServer进程了，这里的IBinder指向一块内存区域，是从Server App中拷贝而来的，与JavaBBinder数据保持一致。</p>
+<p>那我们强制转换转成了IBinder，然后调用IBinder中的函数是调用IBinder中函数实现还是JavaBBinder中的函数实现呢？</p>
+<h4 id="3-3-3-2-android-util-Binder-int-register-android-os-Binder"><a href="#3-3-3-2-android-util-Binder-int-register-android-os-Binder" class="headerlink" title="3.3.3.2 android_util_Binder#int_register_android_os_Binder"></a>3.3.3.2 android_util_Binder#int_register_android_os_Binder</h4><p>首先gBinderOffsets是bindernative_offsets_t类型的结构体，其在int_register_android_os_Binder中被填充数据。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">int</span> <span class="title">int_register_android_os_Binder</span><span class="params">(JNIEnv* env)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    jclass clazz = <span class="built_in">FindClassOrDie</span>(env, kBinderPathName);</span><br><span class="line"></span><br><span class="line">    gBinderOffsets.mClass = <span class="built_in">MakeGlobalRefOrDie</span>(env, clazz);</span><br><span class="line">    gBinderOffsets.mExecTransact = <span class="built_in">GetMethodIDOrDie</span>(env, clazz, <span class="string">&quot;execTransact&quot;</span>, <span class="string">&quot;(IJJI)Z&quot;</span>);</span><br><span class="line">    gBinderOffsets.mGetInterfaceDescriptor = <span class="built_in">GetMethodIDOrDie</span>(env, clazz, <span class="string">&quot;getInterfaceDescriptor&quot;</span>,</span><br><span class="line">        <span class="string">&quot;()Ljava/lang/String;&quot;</span>);</span><br><span class="line">    gBinderOffsets.mObject = <span class="built_in">GetFieldIDOrDie</span>(env, clazz, <span class="string">&quot;mObject&quot;</span>, <span class="string">&quot;J&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">RegisterMethodsOrDie</span>(</span><br><span class="line">        env, kBinderPathName,</span><br><span class="line">        gBinderMethods, <span class="built_in">NELEM</span>(gBinderMethods));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>我们知道，在Java中，每个进程都有自己的虚拟机环境，所以对于不同进程来说，JNIEnv肯定也是不同的，这就导致gBinderOffsets也是不同的。</p>
+<p>所以对于3.3.3.1中checkSubclass来说，返回的就是false了。</p>
+<h3 id="3-3-4-创建BinderProxyNativeData"><a href="#3-3-4-创建BinderProxyNativeData" class="headerlink" title="3.3.4 创建BinderProxyNativeData"></a>3.3.4 创建BinderProxyNativeData</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">BinderProxyNativeData</span> &#123;</span><br><span class="line">    <span class="comment">// Both fields are constant and not null once javaObjectForIBinder returns this as</span></span><br><span class="line">    <span class="comment">// part of a BinderProxy.</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// The native IBinder proxied by this BinderProxy.</span></span><br><span class="line">    sp&lt;IBinder&gt; mObject;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Death recipients for mObject. Reference counted only because DeathRecipients</span></span><br><span class="line">    <span class="comment">// hold a weak reference that can be temporarily promoted.</span></span><br><span class="line">    sp&lt;DeathRecipientList&gt; mOrgue;  <span class="comment">// Death recipients for mObject.</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>哦噢，空欢喜？这里只是一个结构体，将IBinder和DeathRecipientList组合起来。</p>
+<h3 id="3-3-5-gBinderProxyOffsets-mGetInstance-x3D-gt-BinderProxy-getInstance"><a href="#3-3-5-gBinderProxyOffsets-mGetInstance-x3D-gt-BinderProxy-getInstance" class="headerlink" title="3.3.5 gBinderProxyOffsets.mGetInstance &#x3D;&gt; BinderProxy.getInstance"></a>3.3.5 gBinderProxyOffsets.mGetInstance &#x3D;&gt; BinderProxy.getInstance</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> BinderProxy <span class="title function_">getInstance</span><span class="params">(<span class="type">long</span> nativeData, <span class="type">long</span> iBinder)</span> &#123;</span><br><span class="line">    BinderProxy result;</span><br><span class="line">    <span class="keyword">synchronized</span> (sProxyMap) &#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            result = sProxyMap.get(iBinder);</span><br><span class="line">            <span class="keyword">if</span> (result != <span class="literal">null</span>) &#123;</span><br><span class="line">                <span class="keyword">return</span> result;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 创建BinderProxy对象！</span></span><br><span class="line">            result = <span class="keyword">new</span> <span class="title class_">BinderProxy</span>(nativeData);</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Throwable e) &#123;</span><br><span class="line">            <span class="comment">// We&#x27;re throwing an exception (probably OOME); don&#x27;t drop nativeData.</span></span><br><span class="line">            NativeAllocationRegistry.applyFreeFunction(NoImagePreloadHolder.sNativeFinalizer,</span><br><span class="line">                    nativeData);</span><br><span class="line">            <span class="keyword">throw</span> e;</span><br><span class="line">        &#125;</span><br><span class="line">        NoImagePreloadHolder.sRegistry.registerNativeAllocation(result, nativeData);</span><br><span class="line">        <span class="comment">// The registry now owns nativeData, even if registration threw an exception.</span></span><br><span class="line">        sProxyMap.set(iBinder, result);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="title function_">BinderProxy</span><span class="params">(<span class="type">long</span> nativeData)</span> &#123;</span><br><span class="line">    <span class="comment">// 所以这个nativeData原来是代表的BinderProxyNativeData</span></span><br><span class="line">    mNativeData = nativeData;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过JNI调用到Java方法，最终生成BinderProxy对象。</p>
+<h1 id="四-总结"><a href="#四-总结" class="headerlink" title="四. 总结"></a>四. 总结</h1><p>到这里我们就理清了BinderProxy这个是怎么来的了。总结一下：</p>
+<ol>
+<li>Server App实现Service的onBind方法，返回一个IBinder对象，这个IBinder对象是继承了某个aidl接口的Stub类，记为StubIBinder</li>
+<li>Server App调用publishService，将StubIBinder通过一系列方法，在Native层转成JavaBBinder，保存在Parce的内存区域中</li>
+<li>Binder驱动拷贝Parcel并将其传给SystemServer进程(这个过程我们稍后分析)</li>
+<li>SystemServer接收到Parcel内存数据，将其中JavaBBinder所在的内存区域强制转成IBinder类型，并将其保存为Java层的BinderProxy对象</li>
+</ol>
+<p>同理我们知道Client App通过调用bindService获取了一个IBinder对象，那这个IBinder对象也是BinderProxy类型的, 只不过这里有点点小差异:</p>
+<p>SystemServer通过IServiceConnection向Client App发送Server App注册的BinderProxy对象时，在Parcel.writeStrongBinder过程中，存入cookie的是BinderProxy:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;IBinder&gt; <span class="title">ibinderForJavaObject</span><span class="params">(JNIEnv* env, jobject obj)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (obj == <span class="literal">NULL</span>) <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 是否为Binder对象</span></span><br><span class="line">    <span class="keyword">if</span> (env-&gt;<span class="built_in">IsInstanceOf</span>(obj, gBinderOffsets.mClass)) &#123;</span><br><span class="line">        JavaBBinderHolder* jbh = (JavaBBinderHolder*)</span><br><span class="line">            env-&gt;<span class="built_in">GetLongField</span>(obj, gBinderOffsets.mObject);</span><br><span class="line">        <span class="keyword">return</span> jbh-&gt;<span class="built_in">get</span>(env, obj);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 是否为BinderProxy对象</span></span><br><span class="line">    <span class="keyword">if</span> (env-&gt;<span class="built_in">IsInstanceOf</span>(obj, gBinderProxyOffsets.mClass)) &#123;</span><br><span class="line">        <span class="comment">// SystemServer向Client App发送Server App的BinderProxy对象，走这里</span></span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">getBPNativeData</span>(env, obj)-&gt;mObject;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">ALOGW</span>(<span class="string">&quot;ibinderForJavaObject: %p is not a Binder object&quot;</span>, obj);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>那么在接下来打包flattenBinder的过程中, type 的类型其实是 BINDER_TYPE_HANDLE</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::flattenBinder</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; binder)</span></span></span><br><span class="line"><span class="function">    <span class="comment">// ......</span></span></span><br><span class="line"><span class="function">        <span class="comment">// 注意此时我们身处SystemServer进程，传入的IBinder实际上是对应BinderProxy</span></span></span><br><span class="line"><span class="function">        BBinder *local </span>= binder-&gt;<span class="built_in">localBinder</span>();</span><br><span class="line">        <span class="keyword">if</span> (!local) &#123;</span><br><span class="line">            BpBinder *proxy = binder-&gt;<span class="built_in">remoteBinder</span>();</span><br><span class="line">            <span class="keyword">if</span> (proxy == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">                <span class="built_in">ALOGE</span>(<span class="string">&quot;null proxy&quot;</span>);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="type">const</span> <span class="type">int32_t</span> handle = proxy ? proxy-&gt;<span class="built_in">handle</span>() : <span class="number">0</span>;</span><br><span class="line">            obj.hdr.type = BINDER_TYPE_HANDLE;</span><br><span class="line">            obj.binder = <span class="number">0</span>; <span class="comment">/* Don&#x27;t pass uninitialized stack data to a remote process */</span></span><br><span class="line">            obj.handle = handle;</span><br><span class="line">            obj.cookie = <span class="number">0</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">if</span> (local-&gt;<span class="built_in">isRequestingSid</span>()) &#123;</span><br><span class="line">                obj.flags |= FLAT_BINDER_FLAG_TXN_SECURITY_CTX;</span><br><span class="line">            &#125;</span><br><span class="line">            obj.hdr.type = BINDER_TYPE_BINDER;</span><br><span class="line">            obj.binder = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uintptr_t</span>&gt;(local-&gt;<span class="built_in">getWeakRefs</span>());</span><br><span class="line">            obj.cookie = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uintptr_t</span>&gt;(local);</span><br><span class="line">        &#125;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="4-1-新的疑问"><a href="#4-1-新的疑问" class="headerlink" title="4.1 新的疑问"></a>4.1 新的疑问</h2><p>哦吼，新的问题来了，这个binder-&gt;localBinder()调用的到底是那个方法呢？IBinder, BBinder中都有实现。</p>
+<p>如果是直接拷贝的话，那么按理说也是会调用到BBinder的localBinder，这样这里还是个local!</p>
+<p>如果拷贝后在新进程中调用的是IBinder的localBinder，那么接下来的remoteBinder也是IBinder的，还是返回null！</p>
+<p>这样也说不通，因为如果remoteBinder返回的也是空，那么打包后传入的信息就不能识别Server App的IDemoInterface了。</p>
+<p>这里曾困扰我一段时间，这个IBinder到底是什么是我们理解Binder通信的基础。</p>
+<p>按照网上一大堆的文章来说，从Binder通信到了另一个进程，那么BBinder就会转成了BpBinder。</p>
+<p>然而我们梳理了上层代码，并没有发现这个转变过程。在Parcel整个压缩和解包的过程中都没有发现将IBinder强制转成BpBinder。</p>
+<h2 id="4-2-binder驱动"><a href="#4-2-binder驱动" class="headerlink" title="4.2 binder驱动"></a>4.2 binder驱动</h2><p>其实这里是在驱动层做的处理：android&#x2F;kernel&#x2F;msm-4.19&#x2F;drivers&#x2F;android&#x2F;binder.c</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">void</span> <span class="title">binder_transaction</span><span class="params">(<span class="keyword">struct</span> binder_proc *proc,</span></span></span><br><span class="line"><span class="params"><span class="function">			       <span class="keyword">struct</span> binder_thread *thread,</span></span></span><br><span class="line"><span class="params"><span class="function">			       <span class="keyword">struct</span> binder_transaction_data *tr, <span class="type">int</span> reply,</span></span></span><br><span class="line"><span class="params"><span class="function">			       <span class="type">binder_size_t</span> extra_buffers_size)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="keyword">for</span> (buffer_offset = off_start_offset; buffer_offset &lt; off_end_offset;</span><br><span class="line">            buffer_offset += <span class="built_in">sizeof</span>(<span class="type">binder_size_t</span>)) &#123;</span><br><span class="line">        <span class="comment">// ......</span></span><br><span class="line">        <span class="keyword">switch</span> (hdr-&gt;type) &#123;</span><br><span class="line">            <span class="keyword">case</span> BINDER_TYPE_BINDER:</span><br><span class="line">            <span class="keyword">case</span> BINDER_TYPE_WEAK_BINDER: &#123;</span><br><span class="line">                <span class="keyword">struct</span> <span class="title class_">flat_binder_object</span> *fp;</span><br><span class="line"></span><br><span class="line">                fp = <span class="built_in">to_flat_binder_object</span>(hdr);</span><br><span class="line">                ret = <span class="built_in">binder_translate_binder</span>(fp, t, thread);</span><br><span class="line">                <span class="comment">// ......</span></span><br><span class="line">        &#125;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">static</span> <span class="type">int</span> <span class="title">binder_translate_binder</span><span class="params">(<span class="keyword">struct</span> flat_binder_object *fp,</span></span></span><br><span class="line"><span class="params"><span class="function">				   <span class="keyword">struct</span> binder_transaction *t,</span></span></span><br><span class="line"><span class="params"><span class="function">				   <span class="keyword">struct</span> binder_thread *thread)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="keyword">if</span> (fp-&gt;hdr.type == BINDER_TYPE_BINDER)</span><br><span class="line">        <span class="comment">// 这里，如果读取的hdr.type是BINDER_TYPE_BINDER</span></span><br><span class="line">        <span class="comment">// 将会被改成BINDER_TYPE_HANDLE！！！</span></span><br><span class="line">        fp-&gt;hdr.type = BINDER_TYPE_HANDLE;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        fp-&gt;hdr.type = BINDER_TYPE_WEAK_HANDLE;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在驱动层传输数据的时候会加工一次！怪不得上层找不到任何信息，这个可真的是太容易误导了。</p>
+<h2 id="4-3-SystemServer-x3D-gt-Parcel-unflattenBinder"><a href="#4-3-SystemServer-x3D-gt-Parcel-unflattenBinder" class="headerlink" title="4.3 SystemServer &#x3D;&gt; Parcel#unflattenBinder"></a>4.3 SystemServer &#x3D;&gt; Parcel#unflattenBinder</h2><p>所以在 #3.3.2.2 中 Parcel#unflattenBinder 解包数据时，对IBinder对象的处理是另外一条路径了：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">Parcel::unflattenBinder</span><span class="params">(sp&lt;IBinder&gt;* out)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 从内存区域中读取当前位置的数据</span></span><br><span class="line">    <span class="type">const</span> flat_binder_object* flat = <span class="built_in">readObject</span>(<span class="literal">false</span>);</span><br><span class="line">    <span class="comment">// 存在</span></span><br><span class="line">    <span class="keyword">if</span> (flat) &#123;</span><br><span class="line">        <span class="keyword">switch</span> (flat-&gt;hdr.type) &#123;</span><br><span class="line">            <span class="keyword">case</span> BINDER_TYPE_BINDER: &#123;</span><br><span class="line">                sp&lt;IBinder&gt; binder = <span class="built_in">reinterpret_cast</span>&lt;IBinder*&gt;(flat-&gt;cookie);</span><br><span class="line">                <span class="keyword">return</span> <span class="built_in">finishUnflattenBinder</span>(binder, out);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">case</span> BINDER_TYPE_HANDLE: &#123;</span><br><span class="line">                <span class="comment">// 注意此时收到的数据是经过Binder驱动加工过的，我们现在是在SystemServer进程</span></span><br><span class="line">                <span class="comment">// 所以这个hdr.type从BINDER_TYPE_BINDER转成了BINDER_TYPE_HANDLE！</span></span><br><span class="line">                <span class="comment">// 这里解包，注意flat_binder_object这个结构体，他里面的binder和handle是被组合成union结构的!</span></span><br><span class="line">                <span class="comment">// 所以封包的时候写存入的binder就是此时读取的handle，这也代表了Server App中对应的BBinder</span></span><br><span class="line">                sp&lt;IBinder&gt; binder =</span><br><span class="line">                    ProcessState::<span class="built_in">self</span>()-&gt;<span class="built_in">getStrongProxyForHandle</span>(flat-&gt;handle);</span><br><span class="line">                <span class="comment">// 这里我们在回到#3.3.2中android_os_Parcel#android_os_Parcel_readStrongBinder</span></span><br><span class="line">                <span class="comment">// 就可以知道，其实SystemServer自始至终都是保存了来自Server App的BBinder相同数据但是转成了BpBinder的IBinder对象</span></span><br><span class="line">                <span class="keyword">return</span> <span class="built_in">finishUnflattenBinder</span>(binder, out);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> BAD_TYPE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里有个疑问吼，我们看这个flat_binder_object结构的内容:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> __u32 <span class="type">binder_size_t</span>;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">flat_binder_object</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">binder_object_header</span>	<span class="title">hdr</span>;</span></span><br><span class="line">	__u32				flags;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* 8 bytes of data. */</span></span><br><span class="line">	<span class="class"><span class="keyword">union</span> &#123;</span></span><br><span class="line">		<span class="type">binder_uintptr_t</span>	binder;	<span class="comment">/* local object */</span></span><br><span class="line">		__u32			handle;	<span class="comment">/* remote object */</span></span><br><span class="line">	&#125;;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* extra data associated with local object */</span></span><br><span class="line">	<span class="type">binder_uintptr_t</span>	cookie;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>这个handle是一个__u32类型的数据，说明该变量占4字节。</p>
+<h3 id="4-3-1-ProcessState-getStrongProxyForHandle-int32-t-handle"><a href="#4-3-1-ProcessState-getStrongProxyForHandle-int32-t-handle" class="headerlink" title="4.3.1 ProcessState#getStrongProxyForHandle(int32_t handle)"></a>4.3.1 ProcessState#getStrongProxyForHandle(int32_t handle)</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;IBinder&gt; <span class="title">ProcessState::getStrongProxyForHandle</span><span class="params">(<span class="type">int32_t</span> handle)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    sp&lt;IBinder&gt; result;</span><br><span class="line">    AutoMutex _l(mLock);</span><br><span class="line">    <span class="comment">// 4.3.2 从mHandleToObject中获取handle对应的handle_entry</span></span><br><span class="line">    handle_entry* e = <span class="built_in">lookupHandleLocked</span>(handle);</span><br><span class="line">    <span class="keyword">if</span> (e != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">        IBinder* b = e-&gt;binder;</span><br><span class="line">        <span class="comment">// 第一次当然是null的</span></span><br><span class="line">        <span class="keyword">if</span> (b == <span class="literal">nullptr</span> || !e-&gt;refs-&gt;<span class="built_in">attemptIncWeak</span>(<span class="keyword">this</span>)) &#123;</span><br><span class="line">            <span class="keyword">if</span> (handle == <span class="number">0</span>) &#123;</span><br><span class="line">                Parcel data;</span><br><span class="line">                <span class="type">status_t</span> status = IPCThreadState::<span class="built_in">self</span>()-&gt;<span class="built_in">transact</span>(</span><br><span class="line">                        <span class="number">0</span>, IBinder::PING_TRANSACTION, data, <span class="literal">nullptr</span>, <span class="number">0</span>);</span><br><span class="line">                <span class="keyword">if</span> (status == DEAD_OBJECT)</span><br><span class="line">                   <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 4.3.3 创建BpBinder!!!</span></span><br><span class="line">            b = BpBinder::<span class="built_in">create</span>(handle);</span><br><span class="line">            e-&gt;binder = b;</span><br><span class="line">            <span class="keyword">if</span> (b) e-&gt;refs = b-&gt;<span class="built_in">getWeakRefs</span>();</span><br><span class="line">            result = b;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            result.force_set(b);</span><br><span class="line">            e-&gt;refs-&gt;<span class="built_in">decWeak</span>(<span class="keyword">this</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这个result就是新创建的BpBinder,或者之前创建缓存的BpBinder</span></span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-3-2-ProcessState-lookupHandleLocked"><a href="#4-3-2-ProcessState-lookupHandleLocked" class="headerlink" title="4.3.2 ProcessState#lookupHandleLocked"></a>4.3.2 ProcessState#lookupHandleLocked</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">ProcessState::handle_entry* <span class="title">ProcessState::lookupHandleLocked</span><span class="params">(<span class="type">int32_t</span> handle)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// mHandleToObject 是Vector类型的数据集合</span></span><br><span class="line">    <span class="type">const</span> <span class="type">size_t</span> N=mHandleToObject.<span class="built_in">size</span>();</span><br><span class="line">    <span class="keyword">if</span> (N &lt;= (<span class="type">size_t</span>)handle) &#123;</span><br><span class="line">        handle_entry e;</span><br><span class="line">        e.binder = <span class="literal">nullptr</span>;</span><br><span class="line">        e.refs = <span class="literal">nullptr</span>;</span><br><span class="line">        <span class="type">status_t</span> err = mHandleToObject.<span class="built_in">insertAt</span>(e, N, handle+<span class="number">1</span>-N);</span><br><span class="line">        <span class="keyword">if</span> (err &lt; NO_ERROR) <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> &amp;mHandleToObject.<span class="built_in">editItemAt</span>(handle);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里传入的handle其实是Server App在打包数据时，获取的：obj.binder &#x3D; reinterpret_cast<uintptr_t>(local-&gt;getWeakRefs()), 然后经过驱动加工，可以视为BBinder的映射BpBinder的Token. 这里的细节我们后面分析。</uintptr_t></p>
+<p>一般来说每个BBinder都不一样(为什么呢，涉及到binder驱动以及Android的智能指针)，所以，这里的mHandleToObject是缓存IBinder对象，防止频繁创建销毁消耗资源。</p>
+<h3 id="4-3-3-创建BpBinder"><a href="#4-3-3-创建BpBinder" class="headerlink" title="4.3.3 创建BpBinder"></a>4.3.3 创建BpBinder</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">BpBinder* <span class="title">BpBinder::create</span><span class="params">(<span class="type">int32_t</span> handle)</span> </span>&#123;</span><br><span class="line">    <span class="type">int32_t</span> trackedUid = <span class="number">-1</span>;</span><br><span class="line">    <span class="comment">// sCountByUidEnabled默认是false的，SystemServer进程是再开机过程中打开的</span></span><br><span class="line">    <span class="keyword">if</span> (sCountByUidEnabled) &#123;</span><br><span class="line">        <span class="comment">// 获取Server App的UID</span></span><br><span class="line">        trackedUid = IPCThreadState::<span class="built_in">self</span>()-&gt;<span class="built_in">getCallingUid</span>();</span><br><span class="line">        <span class="comment">// 接下来是判断Server App是否存在过多的binder proxy对象</span></span><br><span class="line">        <span class="comment">// 默认2500个, 对于SystemServer进程是6000个(也是开机过程中设置的nSetBinderProxyCountWatermarks)</span></span><br><span class="line">        AutoMutex _l(sTrackingLock);</span><br><span class="line">        <span class="type">uint32_t</span> trackedValue = sTrackingMap[trackedUid];</span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">CC_UNLIKELY</span>(trackedValue &amp; LIMIT_REACHED_MASK)) &#123;</span><br><span class="line">            <span class="keyword">if</span> (sBinderProxyThrottleCreate) &#123;</span><br><span class="line">                <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">if</span> ((trackedValue &amp; COUNTING_VALUE_MASK) &gt;= sBinderProxyCountHighWatermark) &#123;</span><br><span class="line">                <span class="built_in">ALOGE</span>(<span class="string">&quot;Too many binder proxy objects sent to uid %d from uid %d (%d proxies held)&quot;</span>,</span><br><span class="line">                      <span class="built_in">getuid</span>(), trackedUid, trackedValue);</span><br><span class="line">                sTrackingMap[trackedUid] |= LIMIT_REACHED_MASK;</span><br><span class="line">                <span class="keyword">if</span> (sLimitCallback) <span class="built_in">sLimitCallback</span>(trackedUid);</span><br><span class="line">                <span class="keyword">if</span> (sBinderProxyThrottleCreate) &#123;</span><br><span class="line">                    <span class="built_in">ALOGI</span>(<span class="string">&quot;Throttling binder proxy creates from uid %d in uid %d until binder proxy&quot;</span></span><br><span class="line">                          <span class="string">&quot; count drops below %d&quot;</span>,</span><br><span class="line">                          trackedUid, <span class="built_in">getuid</span>(), sBinderProxyCountLowWatermark);</span><br><span class="line">                    <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 该UID创建了新的BpBinder</span></span><br><span class="line">        sTrackingMap[trackedUid]++;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="built_in">BpBinder</span>(handle, trackedUid);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">BpBinder::<span class="built_in">BpBinder</span>(<span class="type">int32_t</span> handle, <span class="type">int32_t</span> trackedUid)</span><br><span class="line">    : <span class="built_in">mHandle</span>(handle)</span><br><span class="line">    , <span class="built_in">mStability</span>(<span class="number">0</span>)</span><br><span class="line">    , <span class="built_in">mAlive</span>(<span class="number">1</span>)</span><br><span class="line">    , <span class="built_in">mObitsSent</span>(<span class="number">0</span>)</span><br><span class="line">    , <span class="built_in">mObituaries</span>(<span class="literal">nullptr</span>)</span><br><span class="line">    , <span class="built_in">mTrackedUid</span>(trackedUid)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;Creating BpBinder %p handle %d\n&quot;</span>, <span class="keyword">this</span>, mHandle);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">extendObjectLifetime</span>(OBJECT_LIFETIME_WEAK);</span><br><span class="line">    <span class="comment">// 给此BpBinder新增一个弱引用</span></span><br><span class="line">    IPCThreadState::<span class="built_in">self</span>()-&gt;<span class="built_in">incWeakHandle</span>(handle, <span class="keyword">this</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最后补上一张IBinder类图:</p>
+<p><img src="/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_4_IBinder%E5%85%A8%E7%B1%BB%E5%9B%BE.png" alt="2_4_IBinder全类图"></p>
+<p>了解了IBinder转换过程的原理，BinderProxy的生成过程，也知道了BBinder和BpBinder的映射关系，接下来就是在Client App和Server App之间的通信了。</p>
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>Android Binder详解 <a target="_blank" rel="noopener" href="https://mr-cao.gitbooks.io/android/content/android-binder.html">https://mr-cao.gitbooks.io/android/content/android-binder.html</a></li>
+<li>msm-4.14 Code <a target="_blank" rel="noopener" href="https://github.com/android-linux-stable/msm-4.14/blob/9c4b6ed1b229cfc35e5c3e5815e297b7f519cf93/drivers/android/binder.c">https://github.com/android-linux-stable/msm-4.14/blob/9c4b6ed1b229cfc35e5c3e5815e297b7f519cf93/drivers/android/binder.c</a></li>
+</ol>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/" title="Binder(2)--sayHello之BinderProxy的创建过程">https://swallowjoe.github.io/2022/04/04/Binder-2-sayHello之BinderProxy的创建过程/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Binder/" rel="tag"># Binder</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/04/04/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/" rel="prev" title="Binder(1)--App使用Binder通信">
+      <i class="fa fa-chevron-left"></i> Binder(1)--App使用Binder通信
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/04/04/Binder-3-sayHello%E4%B9%8Bioctl/" rel="next" title="Binder(3)--sayHello之ioctl">
+      Binder(3)--sayHello之ioctl <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E4%BB%8B"><span class="nav-text">简介</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-asInterface%E6%96%B9%E6%B3%95"><span class="nav-text">一. asInterface方法</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-IDemoInterface-Stub-asInterface"><span class="nav-text">1.1 IDemoInterface.Stub.asInterface</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-Binder-queryLocalInterface"><span class="nav-text">1.2 Binder.queryLocalInterface</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-%E5%88%9B%E5%BB%BAIDemoInterface-Stub-Proxy%E5%AF%B9%E8%B1%A1"><span class="nav-text">1.3 创建IDemoInterface.Stub.Proxy对象</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-sayHello"><span class="nav-text">二. sayHello</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-Proxy-sayHello"><span class="nav-text">2.1 Proxy.sayHello</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-BinderProxy-transact"><span class="nav-text">2.2 BinderProxy.transact</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-android-util-Binder-cpp-android-os-BinderProxy-transact"><span class="nav-text">2.3 android_util_Binder.cpp#android_os_BinderProxy_transact</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-1-android-util-Binder-cpp-getBPNativeData"><span class="nav-text">2.3.1 android_util_Binder.cpp#getBPNativeData</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-2-IBinder-transact"><span class="nav-text">2.3.2 IBinder#transact</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-BinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B"><span class="nav-text">三. BinderProxy的创建过程</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-publishServiceLocked"><span class="nav-text">3.1 publishServiceLocked</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-1-%E6%9C%8D%E5%8A%A1%E7%AB%AF%E7%9A%84Stub%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-text">3.1.1 服务端的Stub初始化</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-publishService%E5%86%99%E5%85%A5%E5%8F%82%E6%95%B0"><span class="nav-text">3.2 publishService写入参数</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-1-Parcel-writeStrongBinder"><span class="nav-text">3.2.1 Parcel.writeStrongBinder</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-2-android-os-Parcel-android-os-Parcel-writeStrongBinder"><span class="nav-text">3.2.2 android_os_Parcel#android_os_Parcel_writeStrongBinder</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-2-2-1-android-util-Binder-ibinderForJavaObject"><span class="nav-text">3.2.2.1 android_util_Binder#ibinderForJavaObject</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-2-2-2-android-util-Binder-JavaBBinderHolder-get"><span class="nav-text">3.2.2.2 android_util_Binder#JavaBBinderHolder#get</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-2-2-3-%E5%88%9B%E5%BB%BANative%E5%B1%82%E7%9A%84IBinder%E5%AF%B9%E8%B1%A1-JavaBBinder"><span class="nav-text">3.2.2.3 创建Native层的IBinder对象-JavaBBinder</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-3-Parcel-writeStrongBinder"><span class="nav-text">3.2.3 Parcel#writeStrongBinder</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-2-3-1-IBinder-localBinder"><span class="nav-text">3.2.3.1 IBinder#localBinder</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-4-Parcel-finishFlattenBinder"><span class="nav-text">3.2.4 Parcel#finishFlattenBinder</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-SystemServer%E6%8E%A5%E6%94%B6%E5%8F%82%E6%95%B0"><span class="nav-text">3.3 SystemServer接收参数</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-1-Parcel-readStrongBinder"><span class="nav-text">3.3.1 Parcel.readStrongBinder</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-2-android-os-Parcel-android-os-Parcel-readStrongBinder"><span class="nav-text">3.3.2 android_os_Parcel#android_os_Parcel_readStrongBinder</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-2-1-Parcel-readStrongBinder"><span class="nav-text">3.3.2.1 Parcel#readStrongBinder</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-2-2-Parcel-unflattenBinder"><span class="nav-text">3.3.2.2 Parcel#unflattenBinder</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-2-3-Parcel-finishUnflattenBinder"><span class="nav-text">3.3.2.3 Parcel#finishUnflattenBinder</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-3-android-util-Binder-javaObjectForIBinder"><span class="nav-text">3.3.3 android_util_Binder#javaObjectForIBinder</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-3-1-IBinder-checkSubclass"><span class="nav-text">3.3.3.1 IBinder#checkSubclass</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-3-2-android-util-Binder-int-register-android-os-Binder"><span class="nav-text">3.3.3.2 android_util_Binder#int_register_android_os_Binder</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-4-%E5%88%9B%E5%BB%BABinderProxyNativeData"><span class="nav-text">3.3.4 创建BinderProxyNativeData</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-5-gBinderProxyOffsets-mGetInstance-x3D-gt-BinderProxy-getInstance"><span class="nav-text">3.3.5 gBinderProxyOffsets.mGetInstance &#x3D;&gt; BinderProxy.getInstance</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%9B%9B-%E6%80%BB%E7%BB%93"><span class="nav-text">四. 总结</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#4-1-%E6%96%B0%E7%9A%84%E7%96%91%E9%97%AE"><span class="nav-text">4.1 新的疑问</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-2-binder%E9%A9%B1%E5%8A%A8"><span class="nav-text">4.2 binder驱动</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-3-SystemServer-x3D-gt-Parcel-unflattenBinder"><span class="nav-text">4.3 SystemServer &#x3D;&gt; Parcel#unflattenBinder</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#4-3-1-ProcessState-getStrongProxyForHandle-int32-t-handle"><span class="nav-text">4.3.1 ProcessState#getStrongProxyForHandle(int32_t handle)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-3-2-ProcessState-lookupHandleLocked"><span class="nav-text">4.3.2 ProcessState#lookupHandleLocked</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-3-3-%E5%88%9B%E5%BB%BABpBinder"><span class="nav-text">4.3.3 创建BpBinder</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">30</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

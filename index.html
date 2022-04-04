@@ -189,6 +189,542 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/" class="post-title-link" itemprop="url">Binder(5)--binder驱动响应ioctl</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 10:38:44 / 修改时间：10:44:23" itemprop="dateCreated datePublished" datetime="2022-04-04T10:38:44+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Binder/" itemprop="url" rel="index"><span itemprop="name">Binder</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/" class="post-meta-item leancloud_visitors" data-flag-title="Binder(5)--binder驱动响应ioctl" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <div style="page-break-after: always;"></div>
+
+<h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>接上文，我们现在了解了binder驱动的加载过程，回过头继续分析App使用Binder通信的过程。</p>
+<p>先回顾下App使用binder通信的大致过程：</p>
+<ol>
+<li>创建AIDL文件，定义接口函数并在服务端app中实现,并注册进SystemServer</li>
+<li>客户端app通过SystemServer获取服务端注册的Service所代表的IBinder(BpBinder)<ol>
+<li>Client app &lt;–&gt; SystemServer &lt;–&gt; Server app</li>
+<li>Server App将Service的IBinder保存在SystemServer中，在Client App通过bindService的时候，传入。</li>
+</ol>
+</li>
+<li>客户端app通过该IBinder与服务端app直接通信。</li>
+</ol>
+<p>之前我们分析到最后一步是：IPCThreadState#talkWithDriver</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/Binder-4-binder%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%8A%A0%E8%BD%BD/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/04/04/Binder-4-binder%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%8A%A0%E8%BD%BD/" class="post-title-link" itemprop="url">Binder(4)--binder驱动的加载</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 10:38:31 / 修改时间：10:43:26" itemprop="dateCreated datePublished" datetime="2022-04-04T10:38:31+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Binder/" itemprop="url" rel="index"><span itemprop="name">Binder</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/Binder-4-binder%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%8A%A0%E8%BD%BD/" class="post-meta-item leancloud_visitors" data-flag-title="Binder(4)--binder驱动的加载" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/Binder-4-binder%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%8A%A0%E8%BD%BD/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/Binder-4-binder%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%8A%A0%E8%BD%BD/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <div style="page-break-after: always;"></div>
+
+<h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>接上文，想要了解binder驱动的工作原理，我们从binder驱动加载过程开始：</p>
+<p>在android&#x2F;kernel&#x2F;msm-4.19&#x2F;drivers&#x2F;android&#x2F;binder.c中，我们可以看到有这么一行：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">device_initcall(binder_init);</span><br></pre></td></tr></table></figure>
+
+<p>在Linux内核的启动过程中，一个驱动的注册用module_init调用，即device_initcall，它的initcall 的level为6。</p>
+<p>他可以将驱动设备加载进内核中，以供后续使用。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/04/04/Binder-4-binder%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%8A%A0%E8%BD%BD/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/Binder-3-sayHello%E4%B9%8Bioctl/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/04/04/Binder-3-sayHello%E4%B9%8Bioctl/" class="post-title-link" itemprop="url">Binder(3)--sayHello之ioctl</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 10:38:20 / 修改时间：10:51:16" itemprop="dateCreated datePublished" datetime="2022-04-04T10:38:20+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Binder/" itemprop="url" rel="index"><span itemprop="name">Binder</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/Binder-3-sayHello%E4%B9%8Bioctl/" class="post-meta-item leancloud_visitors" data-flag-title="Binder(3)--sayHello之ioctl" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/Binder-3-sayHello%E4%B9%8Bioctl/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/Binder-3-sayHello%E4%B9%8Bioctl/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <div style="page-break-after: always;"></div>
+
+<h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>接上文，首先回顾一下IBinder相关接口的类图：</p>
+<p><img src="/images/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/2_4_IBinder%E5%85%A8%E7%B1%BB%E5%9B%BE.png" alt="2_4_IBinder全类图"></p>
+<p>我们知道在Client App中获取的IBinder实际上是BinderProxy类型的对象。那么在上一文中Client App调用sayHello方法过程的的#2.3.2中，我们卡住了，现在可以继续了：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">virtual</span> <span class="type">status_t</span>        <span class="title">transact</span><span class="params">(   <span class="type">uint32_t</span> code,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        <span class="type">const</span> Parcel&amp; data,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        Parcel* reply,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        <span class="type">uint32_t</span> flags = <span class="number">0</span>)</span> </span>= <span class="number">0</span>;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/04/04/Binder-3-sayHello%E4%B9%8Bioctl/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/" class="post-title-link" itemprop="url">Binder(2)--sayHello之BinderProxy的创建过程</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 10:38:09 / 修改时间：10:50:23" itemprop="dateCreated datePublished" datetime="2022-04-04T10:38:09+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Binder/" itemprop="url" rel="index"><span itemprop="name">Binder</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/" class="post-meta-item leancloud_visitors" data-flag-title="Binder(2)--sayHello之BinderProxy的创建过程" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <div style="page-break-after: always;"></div>
+
+<h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>接上文，首先回顾一下IBinder相关接口的类图：</p>
+<p><img src="/images/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/1_1_DemoInterface%E7%B1%BB%E5%9B%BE.png" alt="DemoInterfac"></p>
+<p>现在我们Client进程已经拿到Server端IDemoInterface中的IBinder对象，但是这个IBinder对象到底是哪个呢，Stub本身？还是Proxy亦或是Proxy中的mRemote？</p>
+<p>还是看sayHello的调用过程先:</p>
+<figure class="highlight kt"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">onServiceConnected</span><span class="params">(p0: <span class="type">ComponentName</span>?, p1: <span class="type">IBinder</span>?)</span></span> &#123;</span><br><span class="line">    Log.d(<span class="string">&quot;Client&quot;</span>, <span class="string">&quot;DemoService connected&quot;</span>)</span><br><span class="line">    <span class="comment">// 远程服务连接成功，打个招呼</span></span><br><span class="line">    <span class="comment">// 1.1 这个asInterface是做了什么操作呢？</span></span><br><span class="line">    <span class="keyword">val</span> mProxyBinder = IDemoInterface.Stub.asInterface(p1)</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="comment">// 2.1 sayHello!</span></span><br><span class="line">        mProxyBinder.sayHello(<span class="number">5000</span>, <span class="string">&quot;Hello?&quot;</span>)</span><br><span class="line">    &#125; <span class="keyword">catch</span> (e:RemoteException) &#123;</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/04/04/Binder-2-sayHello%E4%B9%8BBinderProxy%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/04/04/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/" class="post-title-link" itemprop="url">Binder(1)--App使用Binder通信</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 10:37:56 / 修改时间：10:56:11" itemprop="dateCreated datePublished" datetime="2022-04-04T10:37:56+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Binder/" itemprop="url" rel="index"><span itemprop="name">Binder</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/" class="post-meta-item leancloud_visitors" data-flag-title="Binder(1)--App使用Binder通信" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <div style="page-break-after: always;"></div>
+
+<h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>在初学Android的时候，一般是从四大组件开始学起的。最开始学，是通过追代码流程的方式快速熟悉Android系统框架。</p>
+<p>在这个速学的过程中，很多细节部分就被忽略掉了(这也是必须的，否则学起来极其痛苦且缓慢)。</p>
+<p>比如四大组件之一的Service，在跨进程通信的时候，我们只知道是通过Binder通信的。至于内部实现是如何就不甚了了。</p>
+<p>接下来我们通过一个简单的Demo深入探究这个跨进程通信的过程。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/04/04/Binder-1-App%E4%BD%BF%E7%94%A8Binder%E9%80%9A%E4%BF%A1/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-5-composer/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1734,491 +2270,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-10-%E9%87%8D%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.jpg">
-      <meta itemprop="name" content="SwallowJoe">
-      <meta itemprop="description" content="君子知命不惧，日日自新">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="SwallowJoe的博客">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-10-%E9%87%8D%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE/" class="post-title-link" itemprop="url">Vulkan入门(10)-重建交换链</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2022-02-27 03:34:10 / 修改时间：03:40:23" itemprop="dateCreated datePublished" datetime="2022-02-27T03:34:10+08:00">2022-02-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
-                </span>
-            </span>
-
-          
-            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-10-%E9%87%8D%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(10)-重建交换链" title="阅读次数">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-eye"></i>
-              </span>
-              <span class="post-meta-item-text">阅读次数：</span>
-              <span class="leancloud-visitors-count"></span>
-            </span>
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-10-%E9%87%8D%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-10-%E9%87%8D%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>在上一篇里，我们已经成功绘制了一个颜色渐变的三角形，并将其显示在窗口上了。但是窗口Surface可能会发生变化，从而使交换链不再与之兼容，比如是窗口大小的变化。所以我们必须捕获这些事件并重新创建交换链。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-10-%E9%87%8D%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-9-%E6%B8%B2%E6%9F%93%E5%92%8C%E6%98%BE%E7%A4%BA/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.jpg">
-      <meta itemprop="name" content="SwallowJoe">
-      <meta itemprop="description" content="君子知命不惧，日日自新">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="SwallowJoe的博客">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-9-%E6%B8%B2%E6%9F%93%E5%92%8C%E6%98%BE%E7%A4%BA/" class="post-title-link" itemprop="url">Vulkan入门(9)-渲染和显示</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2022-02-27 03:33:58 / 修改时间：03:39:31" itemprop="dateCreated datePublished" datetime="2022-02-27T03:33:58+08:00">2022-02-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
-                </span>
-            </span>
-
-          
-            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-9-%E6%B8%B2%E6%9F%93%E5%92%8C%E6%98%BE%E7%A4%BA/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(9)-渲染和显示" title="阅读次数">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-eye"></i>
-              </span>
-              <span class="post-meta-item-text">阅读次数：</span>
-              <span class="leancloud-visitors-count"></span>
-            </span>
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-9-%E6%B8%B2%E6%9F%93%E5%92%8C%E6%98%BE%E7%A4%BA/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-9-%E6%B8%B2%E6%9F%93%E5%92%8C%E6%98%BE%E7%A4%BA/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>在这一章里，所有的事情都要集中起来。我们将编写drawFrame函数，该函数将在主循环中被调用，以将三角形置于屏幕上。创建函数并从mainLoop调用它.</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">mainLoop</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (!<span class="built_in">glfwWindowShouldClose</span>(window)) &#123;</span><br><span class="line">        <span class="built_in">glfwPollEvents</span>();</span><br><span class="line">        <span class="built_in">drawFrame</span>();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line">...</span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">drawFrame</span><span class="params">()</span> </span>&#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-9-%E6%B8%B2%E6%9F%93%E5%92%8C%E6%98%BE%E7%A4%BA/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.jpg">
-      <meta itemprop="name" content="SwallowJoe">
-      <meta itemprop="description" content="君子知命不惧，日日自新">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="SwallowJoe的博客">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/" class="post-title-link" itemprop="url">Vulkan入门(8)-帧缓冲区和指令缓冲区</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2022-02-27 03:33:45 / 修改时间：03:39:14" itemprop="dateCreated datePublished" datetime="2022-02-27T03:33:45+08:00">2022-02-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
-                </span>
-            </span>
-
-          
-            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(8)-帧缓冲区和指令缓冲区" title="阅读次数">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-eye"></i>
-              </span>
-              <span class="post-meta-item-text">阅读次数：</span>
-              <span class="leancloud-visitors-count"></span>
-            </span>
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>Framebuffers, 帧缓冲区。之前我们在学习’Swap Chain-交换链’时提到Vulkan没有“默认帧缓冲区”的概念，取而代之的是名为 “swap chain” 即交换链，也就是渲染的缓冲区，必须在Vulkan中明确创建。 现在我们已经设置了渲染过程，以期望使用与交换链图像相同格式的单个帧缓冲区，但实际上我们还没有创建任何帧缓冲区。</p>
-<p>通过将渲染过程创建期间指定的附件包装到VkFramebuffer对象中来绑定附件。</p>
-<p>帧缓冲区对象引用表示附件的所有VkImageView对象。在我们的情况下，这将只是一个单一的：颜色附件。但是，我们必须用于附件的图像取决于在检索用于表示的图像时交换链返回的图像。这意味着我们必须为交换链中的所有图像创建一个帧缓冲区，并使用与绘制时检索到的图像相对应的帧缓冲区。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-8-%E5%B8%A7%E7%BC%93%E5%86%B2%E5%8C%BA%E5%92%8C%E6%8C%87%E4%BB%A4%E7%BC%93%E5%86%B2%E5%8C%BA/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-7-%E6%B8%B2%E6%9F%93%E8%BF%87%E7%A8%8B%E5%8F%8A%E5%88%9B%E5%BB%BA%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.jpg">
-      <meta itemprop="name" content="SwallowJoe">
-      <meta itemprop="description" content="君子知命不惧，日日自新">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="SwallowJoe的博客">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-7-%E6%B8%B2%E6%9F%93%E8%BF%87%E7%A8%8B%E5%8F%8A%E5%88%9B%E5%BB%BA%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93/" class="post-title-link" itemprop="url">Vulkan入门(7)-渲染过程及创建图形管道</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2022-02-27 03:22:14 / 修改时间：03:29:57" itemprop="dateCreated datePublished" datetime="2022-02-27T03:22:14+08:00">2022-02-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
-                </span>
-            </span>
-
-          
-            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-7-%E6%B8%B2%E6%9F%93%E8%BF%87%E7%A8%8B%E5%8F%8A%E5%88%9B%E5%BB%BA%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(7)-渲染过程及创建图形管道" title="阅读次数">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-eye"></i>
-              </span>
-              <span class="post-meta-item-text">阅读次数：</span>
-              <span class="leancloud-visitors-count"></span>
-            </span>
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-7-%E6%B8%B2%E6%9F%93%E8%BF%87%E7%A8%8B%E5%8F%8A%E5%88%9B%E5%BB%BA%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-7-%E6%B8%B2%E6%9F%93%E8%BF%87%E7%A8%8B%E5%8F%8A%E5%88%9B%E5%BB%BA%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>Render passes, 即渲染过程。在完成创建管道之前，我们需要告诉Vulkan渲染时将使用的帧缓冲区附件。</p>
-<p>我们需要指定将有多少颜色和深度缓冲区，为每个缓冲区使用多少个样本，以及在整个渲染操作中应如何处理它们的内容。</p>
-<p>所有这些信息都包装在一个render pass对象中，为其创建一个新的createRenderPass函数。在createGraphicsPipeline之前从initVulkan调用此函数。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-7-%E6%B8%B2%E6%9F%93%E8%BF%87%E7%A8%8B%E5%8F%8A%E5%88%9B%E5%BB%BA%E5%9B%BE%E5%BD%A2%E7%AE%A1%E9%81%93/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-6-%E5%88%9B%E5%BB%BA%E7%AE%A1%E9%81%93%E7%9A%84%E5%87%A0%E4%B8%AA%E5%9B%BA%E5%AE%9A%E6%93%8D%E4%BD%9C/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.jpg">
-      <meta itemprop="name" content="SwallowJoe">
-      <meta itemprop="description" content="君子知命不惧，日日自新">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="SwallowJoe的博客">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-6-%E5%88%9B%E5%BB%BA%E7%AE%A1%E9%81%93%E7%9A%84%E5%87%A0%E4%B8%AA%E5%9B%BA%E5%AE%9A%E6%93%8D%E4%BD%9C/" class="post-title-link" itemprop="url">Vulkan入门(6)-创建管道的几个固定操作</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2022-02-27 03:22:00 / 修改时间：03:29:09" itemprop="dateCreated datePublished" datetime="2022-02-27T03:22:00+08:00">2022-02-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
-                </span>
-            </span>
-
-          
-            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-6-%E5%88%9B%E5%BB%BA%E7%AE%A1%E9%81%93%E7%9A%84%E5%87%A0%E4%B8%AA%E5%9B%BA%E5%AE%9A%E6%93%8D%E4%BD%9C/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(6)-创建管道的几个固定操作" title="阅读次数">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-eye"></i>
-              </span>
-              <span class="post-meta-item-text">阅读次数：</span>
-              <span class="leancloud-visitors-count"></span>
-            </span>
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-6-%E5%88%9B%E5%BB%BA%E7%AE%A1%E9%81%93%E7%9A%84%E5%87%A0%E4%B8%AA%E5%9B%BA%E5%AE%9A%E6%93%8D%E4%BD%9C/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-6-%E5%88%9B%E5%BB%BA%E7%AE%A1%E9%81%93%E7%9A%84%E5%87%A0%E4%B8%AA%E5%9B%BA%E5%AE%9A%E6%93%8D%E4%BD%9C/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>其他图形API为图形管道的大多数阶段提供了默认状态。但在Vulkan中，必须明确所有内容，从视口大小到颜色混合功能。<br>接下来我们试着填写配置这些固定功能操作的所有结构。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-6-%E5%88%9B%E5%BB%BA%E7%AE%A1%E9%81%93%E7%9A%84%E5%87%A0%E4%B8%AA%E5%9B%BA%E5%AE%9A%E6%93%8D%E4%BD%9C/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -2290,20 +2341,20 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">25</span>
+          <span class="site-state-item-count">30</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-count">6</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-count">6</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>

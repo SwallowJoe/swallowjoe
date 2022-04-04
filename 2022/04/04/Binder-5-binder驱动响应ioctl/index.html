@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="简介接上文，我们现在了解了binder驱动的加载过程，回过头继续分析App使用Binder通信的过程。 先回顾下App使用binder通信的大致过程：  创建AIDL文件，定义接口函数并在服务端app中实现,并注册进SystemServer 客户端app通过SystemServer获取服务端注册的Service所代表的IBinder(BpBinder) Client app &lt;–&gt;">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Binder(5)--binder驱动响应ioctl">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="简介接上文，我们现在了解了binder驱动的加载过程，回过头继续分析App使用Binder通信的过程。 先回顾下App使用binder通信的大致过程：  创建AIDL文件，定义接口函数并在服务端app中实现,并注册进SystemServer 客户端app通过SystemServer获取服务端注册的Service所代表的IBinder(BpBinder) Client app &lt;–&gt;">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/5_1_%E6%B5%81%E7%A8%8B%E5%9B%BE.png">
+<meta property="article:published_time" content="2022-04-04T02:38:44.000Z">
+<meta property="article:modified_time" content="2022-04-04T02:44:23.947Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Binder">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/5_1_%E6%B5%81%E7%A8%8B%E5%9B%BE.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Binder(5)--binder驱动响应ioctl | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Binder(5)--binder驱动响应ioctl
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 10:38:44 / 修改时间：10:44:23" itemprop="dateCreated datePublished" datetime="2022-04-04T10:38:44+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Binder/" itemprop="url" rel="index"><span itemprop="name">Binder</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/" class="post-meta-item leancloud_visitors" data-flag-title="Binder(5)--binder驱动响应ioctl" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+
+<h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>接上文，我们现在了解了binder驱动的加载过程，回过头继续分析App使用Binder通信的过程。</p>
+<p>先回顾下App使用binder通信的大致过程：</p>
+<ol>
+<li>创建AIDL文件，定义接口函数并在服务端app中实现,并注册进SystemServer</li>
+<li>客户端app通过SystemServer获取服务端注册的Service所代表的IBinder(BpBinder)<ol>
+<li>Client app &lt;–&gt; SystemServer &lt;–&gt; Server app</li>
+<li>Server App将Service的IBinder保存在SystemServer中，在Client App通过bindService的时候，传入。</li>
+</ol>
+</li>
+<li>客户端app通过该IBinder与服务端app直接通信。</li>
+</ol>
+<p>之前我们分析到最后一步是：IPCThreadState#talkWithDriver</p>
+<span id="more"></span>
+
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">IPCThreadState::talkWithDriver</span><span class="params">(<span class="type">bool</span> doReceive)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="comment">// .....</span></span><br><span class="line">        <span class="comment">// 使用ioctl与binder驱动通信, 将bwr存储的信息传输给binder驱动</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">ioctl</span>(mProcess-&gt;mDriverFD, BINDER_WRITE_READ, &amp;bwr) &gt;= <span class="number">0</span>)</span><br><span class="line">            err = NO_ERROR;</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            err = -errno;</span><br><span class="line">        <span class="comment">// .....</span></span><br><span class="line">        <span class="keyword">if</span> (mProcess-&gt;mDriverFD &lt; <span class="number">0</span>) &#123;</span><br><span class="line">            err = -EBADF;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="built_in">IF_LOG_COMMANDS</span>() &#123;</span><br><span class="line">            alog &lt;&lt; <span class="string">&quot;Finished read/write, write size = &quot;</span> &lt;&lt; mOut.<span class="built_in">dataSize</span>() &lt;&lt; endl;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">while</span> (err == -EINTR);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在前面我们也了解了ioctl的用法，简单回顾下:</p>
+<blockquote>
+<p>int ioctl(int fd, unsigned long request, …);</p>
+</blockquote>
+<ol>
+<li>fd 必须是打开文件描述符。</li>
+<li>cmd 是依赖于设备的请求代码, 即交互协议，设备驱动将根据 cmd 执行对应操作</li>
+<li>argp(…) 是指向内存的非类型指针, 它传统上是char*argp, ioctl（）请求在其中编码了参数是in参数还是out参数，参数argp的大小以字节为单位。</li>
+</ol>
+<p>这里我们还不知道此处的ioctl是怎么和binder驱动勾搭上的，是因为我们之前分析客户端app使用ioctl的时候忽略了IPCThreadState的初始化。</p>
+<p>传入的参数mProcess-&gt;mDriverFD这个文件描述符是怎么获取的呢，接下来先看IPCThreadState的初始化。</p>
+<h1 id="一-IPCThreadState的初始化"><a href="#一-IPCThreadState的初始化" class="headerlink" title="一. IPCThreadState的初始化"></a>一. IPCThreadState的初始化</h1><p>我们在调用transact的时候，会先调用self()函数，这个函数就是初始化用的。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">IPCThreadState::<span class="built_in">self</span>()-&gt;<span class="built_in">transact</span>(</span><br><span class="line">            mHandle, code, data, reply, flags);</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-1-IPCThreadState-self"><a href="#1-1-IPCThreadState-self" class="headerlink" title="1.1 IPCThreadState::self"></a>1.1 IPCThreadState::self</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">pthread_mutex_t</span> gTLSMutex = PTHREAD_MUTEX_INITIALIZER;</span><br><span class="line"><span class="function"><span class="type">static</span> std::atomic&lt;<span class="type">bool</span>&gt; <span class="title">gHaveTLS</span><span class="params">(<span class="literal">false</span>)</span></span>;</span><br><span class="line"><span class="type">static</span> <span class="type">pthread_key_t</span> gTLS = <span class="number">0</span>;</span><br><span class="line"><span class="type">static</span> std::atomic&lt;<span class="type">bool</span>&gt; gShutdown = <span class="literal">false</span>;</span><br><span class="line"><span class="type">static</span> std::atomic&lt;<span class="type">bool</span>&gt; gDisableBackgroundScheduling = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line"><span class="function">IPCThreadState* <span class="title">IPCThreadState::self</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// gHaveTLS为true说明之前已经初始化过</span></span><br><span class="line">    <span class="comment">// 或者说pthread_key_create有被调用过，及本线程私有数据内存空间已开辟</span></span><br><span class="line">    <span class="keyword">if</span> (gHaveTLS.<span class="built_in">load</span>(std::memory_order_acquire)) &#123;</span><br><span class="line">restart:</span><br><span class="line">        <span class="type">const</span> <span class="type">pthread_key_t</span> k = gTLS;</span><br><span class="line">        <span class="comment">// 取得本线程对应关键字gTLS所关联的私有数据空间首址</span></span><br><span class="line">        IPCThreadState* st = (IPCThreadState*)<span class="built_in">pthread_getspecific</span>(k);</span><br><span class="line">        <span class="comment">// 如果不为null,直接返回, 当然如果是第一次进入肯定为null的。</span></span><br><span class="line">        <span class="keyword">if</span> (st) <span class="keyword">return</span> st;</span><br><span class="line">        <span class="comment">// 1.2 实例化IPCThreadState</span></span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">new</span> IPCThreadState;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 处于shutdown时直接返回null</span></span><br><span class="line">    <span class="keyword">if</span> (gShutdown.<span class="built_in">load</span>(std::memory_order_relaxed)) &#123;</span><br><span class="line">        <span class="built_in">ALOGW</span>(<span class="string">&quot;Calling IPCThreadState::self() during shutdown is dangerous, expect a crash.\n&quot;</span>);</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">pthread_mutex_lock</span>(&amp;gTLSMutex);</span><br><span class="line">    <span class="keyword">if</span> (!gHaveTLS.<span class="built_in">load</span>(std::memory_order_relaxed)) &#123;</span><br><span class="line">        <span class="comment">// 创建关键字gTLS及其对应的内存释放函数threadDestructor</span></span><br><span class="line">        <span class="comment">// 关键字关联线程私有数据空间首址，初始化时是NULL</span></span><br><span class="line">        <span class="type">int</span> key_create_value = <span class="built_in">pthread_key_create</span>(&amp;gTLS, threadDestructor);</span><br><span class="line">        <span class="keyword">if</span> (key_create_value != <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="built_in">pthread_mutex_unlock</span>(&amp;gTLSMutex);</span><br><span class="line">            <span class="built_in">ALOGW</span>(<span class="string">&quot;IPCThreadState::self() unable to create TLS key, expect a crash: %s\n&quot;</span>,</span><br><span class="line">                    <span class="built_in">strerror</span>(key_create_value));</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 表明线程私有数据内存空间已开辟</span></span><br><span class="line">        gHaveTLS.<span class="built_in">store</span>(<span class="literal">true</span>, std::memory_order_release);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">pthread_mutex_unlock</span>(&amp;gTLSMutex);</span><br><span class="line">    <span class="comment">// 回到restart中准备实例化IPCThreadState</span></span><br><span class="line">    <span class="keyword">goto</span> restart;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>在Linux 中，新建的线程并不是在原先的进程中，而是系统通过一个系统调用clone() 。<br>该系统copy 了一个和原先进程完全一样的进程，并在这个进程中执行线程函数。不过这个copy过程和fork不一样。<br>copy 后的进程和原先的进程共享了所有的变量，运行环境（clone的实现是可以指定新进程与老进程之间的共享关系，100%共享就表示创建了一个线程）。<br>这样，原先进程中的变量变动在copy 后的进程中便能体现出来。</p>
+</blockquote>
+<h2 id="1-2-IPCThreadState实例化"><a href="#1-2-IPCThreadState实例化" class="headerlink" title="1.2 IPCThreadState实例化"></a>1.2 IPCThreadState实例化</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">IPCThreadState::<span class="built_in">IPCThreadState</span>()</span><br><span class="line">    <span class="comment">// 1.2.1 创建ProcessState</span></span><br><span class="line">    : <span class="built_in">mProcess</span>(ProcessState::<span class="built_in">self</span>()),</span><br><span class="line">      <span class="built_in">mServingStackPointer</span>(<span class="literal">nullptr</span>),</span><br><span class="line">      <span class="built_in">mWorkSource</span>(kUnsetWorkSource),</span><br><span class="line">      <span class="built_in">mPropagateWorkSource</span>(<span class="literal">false</span>),</span><br><span class="line">      <span class="built_in">mStrictModePolicy</span>(<span class="number">0</span>),</span><br><span class="line">      <span class="built_in">mLastTransactionBinderFlags</span>(<span class="number">0</span>),</span><br><span class="line">      <span class="built_in">mCallRestriction</span>(mProcess-&gt;mCallRestriction)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// 将自身存入关键字gTLS对应的线程私有数据空间中，缓存以备后续使用</span></span><br><span class="line">    <span class="built_in">pthread_setspecific</span>(gTLS, <span class="keyword">this</span>);</span><br><span class="line">    <span class="built_in">clearCaller</span>();</span><br><span class="line">    mIn.<span class="built_in">setDataCapacity</span>(<span class="number">256</span>);</span><br><span class="line">    mOut.<span class="built_in">setDataCapacity</span>(<span class="number">256</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-３-ProcessState-self"><a href="#1-３-ProcessState-self" class="headerlink" title="1.３ ProcessState::self"></a>1.３ ProcessState::self</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">ifdef</span> __ANDROID_VNDK__</span></span><br><span class="line"><span class="type">const</span> <span class="type">char</span>* kDefaultDriver = <span class="string">&quot;/dev/vndbinder&quot;</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line"><span class="type">const</span> <span class="type">char</span>* kDefaultDriver = <span class="string">&quot;/dev/binder&quot;</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="function">sp&lt;ProcessState&gt; <span class="title">ProcessState::self</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    Mutex::Autolock _l(gProcessMutex);</span><br><span class="line">    <span class="keyword">if</span> (gProcess != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> gProcess;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 这里假定kDefaultDriver为&quot;/dev/binder&quot;</span></span><br><span class="line">    gProcess = <span class="keyword">new</span> <span class="built_in">ProcessState</span>(kDefaultDriver);</span><br><span class="line">    <span class="keyword">return</span> gProcess;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-４-ProcessState实例化"><a href="#1-４-ProcessState实例化" class="headerlink" title="1.４ ProcessState实例化"></a>1.４ ProcessState实例化</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line">ProcessState::<span class="built_in">ProcessState</span>(<span class="type">const</span> <span class="type">char</span> *driver)</span><br><span class="line">    : <span class="built_in">mDriverName</span>(<span class="built_in">String8</span>(driver))</span><br><span class="line">    <span class="comment">// 1.5 打开binder驱动，获取其文件描述符</span></span><br><span class="line">    , <span class="built_in">mDriverFD</span>(<span class="built_in">open_driver</span>(driver))</span><br><span class="line">    , <span class="built_in">mVMStart</span>(MAP_FAILED)</span><br><span class="line">    , <span class="built_in">mThreadCountLock</span>(PTHREAD_MUTEX_INITIALIZER)</span><br><span class="line">    , <span class="built_in">mThreadCountDecrement</span>(PTHREAD_COND_INITIALIZER)</span><br><span class="line">    , <span class="built_in">mExecutingThreadsCount</span>(<span class="number">0</span>)</span><br><span class="line">    , <span class="built_in">mMaxThreads</span>(DEFAULT_MAX_BINDER_THREADS)</span><br><span class="line">    , <span class="built_in">mStarvationStartTimeMs</span>(<span class="number">0</span>)</span><br><span class="line">    , <span class="built_in">mBinderContextCheckFunc</span>(<span class="literal">nullptr</span>)</span><br><span class="line">    , <span class="built_in">mBinderContextUserData</span>(<span class="literal">nullptr</span>)</span><br><span class="line">    , <span class="built_in">mThreadPoolStarted</span>(<span class="literal">false</span>)</span><br><span class="line">    , <span class="built_in">mThreadPoolSeq</span>(<span class="number">1</span>)</span><br><span class="line">    , <span class="built_in">mCallRestriction</span>(CallRestriction::NONE)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="keyword">if</span> (mDriverFD &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 将binder驱动与进程内存映射，提供一块虚拟地址空间来接收binder驱动数据。</span></span><br><span class="line">        mVMStart = <span class="built_in">mmap</span>(<span class="literal">nullptr</span>, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, <span class="number">0</span>);</span><br><span class="line">        <span class="keyword">if</span> (mVMStart == MAP_FAILED) &#123;</span><br><span class="line">            <span class="comment">// *sigh*</span></span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;Using %s failed: unable to mmap transaction memory.\n&quot;</span>, mDriverName.<span class="built_in">c_str</span>());</span><br><span class="line">            <span class="built_in">close</span>(mDriverFD);</span><br><span class="line">            mDriverFD = <span class="number">-1</span>;</span><br><span class="line">            mDriverName.<span class="built_in">clear</span>();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-5-open-driver-打开binder驱动"><a href="#1-5-open-driver-打开binder驱动" class="headerlink" title="1.5 open_driver - 打开binder驱动"></a>1.5 open_driver - 打开binder驱动</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">int</span> <span class="title">open_driver</span><span class="params">(<span class="type">const</span> <span class="type">char</span> *driver)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 1.5.1 打开/dev/binder驱动</span></span><br><span class="line">    <span class="type">int</span> fd = <span class="built_in">open</span>(driver, O_RDWR | O_CLOEXEC);</span><br><span class="line">    <span class="keyword">if</span> (fd &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="type">int</span> vers = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">// 1.5.2 ioctl通信!!!</span></span><br><span class="line">        <span class="type">status_t</span> result = <span class="built_in">ioctl</span>(fd, BINDER_VERSION, &amp;vers);</span><br><span class="line">        <span class="keyword">if</span> (result == <span class="number">-1</span>) &#123;</span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;Binder ioctl to obtain version failed: %s&quot;</span>, <span class="built_in">strerror</span>(errno));</span><br><span class="line">            <span class="built_in">close</span>(fd);</span><br><span class="line">            fd = <span class="number">-1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (result != <span class="number">0</span> || vers != BINDER_CURRENT_PROTOCOL_VERSION) &#123;</span><br><span class="line">          <span class="built_in">ALOGE</span>(<span class="string">&quot;Binder driver protocol(%d) does not match user space protocol(%d)! ioctl() return value: %d&quot;</span>,</span><br><span class="line">                vers, BINDER_CURRENT_PROTOCOL_VERSION, result);</span><br><span class="line">            <span class="built_in">close</span>(fd);</span><br><span class="line">            fd = <span class="number">-1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// #define DEFAULT_MAX_BINDER_THREADS 15</span></span><br><span class="line">        <span class="comment">// 默认最大binder线程数目是15个</span></span><br><span class="line">        <span class="type">size_t</span> maxThreads = DEFAULT_MAX_BINDER_THREADS;</span><br><span class="line">        <span class="comment">// 1.5.2 ioctl通信，设置当前进程的最大binder线程数为15</span></span><br><span class="line">        result = <span class="built_in">ioctl</span>(fd, BINDER_SET_MAX_THREADS, &amp;maxThreads);</span><br><span class="line">        <span class="keyword">if</span> (result == <span class="number">-1</span>) &#123;</span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;Binder ioctl to set max threads failed: %s&quot;</span>, <span class="built_in">strerror</span>(errno));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="built_in">ALOGW</span>(<span class="string">&quot;Opening &#x27;%s&#x27; failed: %s\n&quot;</span>, driver, <span class="built_in">strerror</span>(errno));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> fd;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里首先使用open函数打开对应目录的驱动文件，成功打开后调用ioctl函数获取Binder版本，最后还是通过ioctl设置最大binder线程。</p>
+<p>我们常听闻在Linux中，一切皆文件，这里就体现出来了。回顾下binder驱动注册进文件系统时的操作函数集:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// android/kernel/msm-4.19/drivers/android/binder.c</span></span><br><span class="line"><span class="type">const</span> <span class="keyword">struct</span> <span class="title class_">file_operations</span> binder_fops = &#123;</span><br><span class="line">	.owner = THIS_MODULE,</span><br><span class="line">	.poll = binder_poll,</span><br><span class="line">	.unlocked_ioctl = binder_ioctl,</span><br><span class="line">	.compat_ioctl = binder_ioctl,</span><br><span class="line">	.mmap = binder_mmap,</span><br><span class="line">	.open = binder_open,</span><br><span class="line">	.flush = binder_flush,</span><br><span class="line">	.release = binder_release,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-1-open函数-binder-open"><a href="#1-5-1-open函数-binder-open" class="headerlink" title="1.5.1 open函数-binder_open"></a>1.5.1 open函数-binder_open</h3><p>在app进程中通过open函数打开&#x2F;dev&#x2F;binder文件，就会调用到binder.c中的binder_open函数了。</p>
+<p>我们来看看这个open的时候驱动里面具体做了什么吧，至于用户进程中调用open进而使用系统调用进入内核态调用到binder_open的方式我们后续分析。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">int</span> <span class="title">binder_open</span><span class="params">(<span class="keyword">struct</span> inode *nodp, <span class="keyword">struct</span> file *filp)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// binder_proc代表一个进程</span></span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">binder_proc</span> *proc;</span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">binder_device</span> *binder_dev;</span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">binderfs_info</span> *info;</span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">dentry</span> *binder_binderfs_dir_entry_proc = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="built_in">binder_debug</span>(BINDER_DEBUG_OPEN_CLOSE, <span class="string">&quot;%s: %d:%d\n&quot;</span>, __func__,</span><br><span class="line">		     current-&gt;group_leader-&gt;pid, current-&gt;pid);</span><br><span class="line">    <span class="comment">// 给binder_proc分配内核内存</span></span><br><span class="line">	proc = <span class="built_in">kzalloc</span>(<span class="built_in">sizeof</span>(*proc), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (proc == <span class="literal">NULL</span>)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">    <span class="comment">// 初始化自旋锁lock,其实是将自旋锁指针lock 指向SPIN_LOCK_UNLOCKED宏</span></span><br><span class="line">    <span class="comment">// 该宏的定义在内核文件spinlock_types.h中，它表示自旋锁的状态为未加锁</span></span><br><span class="line">	<span class="built_in">spin_lock_init</span>(&amp;proc-&gt;inner_lock);</span><br><span class="line">	<span class="built_in">spin_lock_init</span>(&amp;proc-&gt;outer_lock);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// current是一个内核宏，它是当前进程的指针</span></span><br><span class="line">    <span class="comment">// get_task_struct的最终实现是将传入的task_struct的usage加1:</span></span><br><span class="line">    <span class="comment">//  #define get_task_struct(tsk) do &#123; atomic_inc(&amp;(tsk)-&gt;usage); &#125; while(0)</span></span><br><span class="line">    <span class="comment">// 这个宏的作用是标记传入的task_struct，当期有人在用。</span></span><br><span class="line">    <span class="comment">// usage的数量代表正在使用该task_struct的程序数量。</span></span><br><span class="line">	<span class="built_in">get_task_struct</span>(current-&gt;group_leader);</span><br><span class="line">    <span class="comment">// 将binder_proc的tsk标记为当前进程的主进程</span></span><br><span class="line">	proc-&gt;tsk = current-&gt;group_leader;</span><br><span class="line">    <span class="comment">// 加上互斥锁</span></span><br><span class="line">	<span class="built_in">mutex_init</span>(&amp;proc-&gt;files_lock);</span><br><span class="line">	<span class="built_in">INIT_LIST_HEAD</span>(&amp;proc-&gt;todo);</span><br><span class="line">    <span class="comment">// 确定进程调度策略</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">binder_supported_policy</span>(current-&gt;policy)) &#123;</span><br><span class="line">		proc-&gt;default_priority.sched_policy = current-&gt;policy;</span><br><span class="line">		proc-&gt;default_priority.prio = current-&gt;normal_prio;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		proc-&gt;default_priority.sched_policy = SCHED_NORMAL;</span><br><span class="line">		proc-&gt;default_priority.prio = <span class="built_in">NICE_TO_PRIO</span>(<span class="number">0</span>);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 判断nodp是否是binder_device:</span></span><br><span class="line">    <span class="comment">//  inode-&gt;i_sb-&gt;s_magic == BINDERFS_SUPER_MAGIC</span></span><br><span class="line">    <span class="comment">// s_magic是在binderfs_fill_super也就是binder驱动挂载时赋值的</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">is_binderfs_device</span>(nodp)) &#123;</span><br><span class="line">        <span class="comment">// 如果是binder_device:</span></span><br><span class="line">        <span class="comment">// 回忆下上一篇文章3.4 binderfs.c#binderfs_binder_device_create</span></span><br><span class="line">        <span class="comment">// 我们将创建的binder_device存入了i_private数据中</span></span><br><span class="line">		binder_dev = nodp-&gt;i_private;</span><br><span class="line">		info = nodp-&gt;i_sb-&gt;s_fs_info;</span><br><span class="line">		binder_binderfs_dir_entry_proc = info-&gt;proc_log_dir;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		binder_dev = <span class="built_in">container_of</span>(filp-&gt;private_data,</span><br><span class="line">					  <span class="keyword">struct</span> binder_device, miscdev);</span><br><span class="line">	&#125;</span><br><span class="line">    <span class="comment">// 标记binder_device的引用计数+1</span></span><br><span class="line">	<span class="built_in">refcount_inc</span>(&amp;binder_dev-&gt;ref);</span><br><span class="line">    <span class="comment">// binder_proc的上下文</span></span><br><span class="line">	proc-&gt;context = &amp;binder_dev-&gt;context;</span><br><span class="line">	<span class="built_in">binder_alloc_init</span>(&amp;proc-&gt;alloc);</span><br><span class="line">    <span class="comment">// binder_stats中BINDER_STAT_PROC类型的创建数加+1</span></span><br><span class="line">	<span class="built_in">binder_stats_created</span>(BINDER_STAT_PROC);</span><br><span class="line">    <span class="comment">// binder_proc的pid为当前进程的主进程的pid</span></span><br><span class="line">	proc-&gt;pid = current-&gt;group_leader-&gt;pid;</span><br><span class="line">	<span class="built_in">INIT_LIST_HEAD</span>(&amp;proc-&gt;delivered_death);</span><br><span class="line">	<span class="built_in">INIT_LIST_HEAD</span>(&amp;proc-&gt;waiting_threads);</span><br><span class="line">	filp-&gt;private_data = proc;</span><br><span class="line"></span><br><span class="line">	<span class="built_in">mutex_lock</span>(&amp;binder_procs_lock);</span><br><span class="line">    <span class="comment">// 将当前binder_proc的proc_node加入binder_procs列表中</span></span><br><span class="line">    <span class="comment">// binder_procs是binder驱动中存储一系列binder_proc的链表</span></span><br><span class="line">    <span class="comment">// 关于binder_proc是如何插入链表中的，我们后续分析，涉及‘传说中’的红黑树操作</span></span><br><span class="line">    <span class="comment">// 注意当前虽然是在应用进程中，但此时已经进入内核态了。</span></span><br><span class="line">	<span class="built_in">hlist_add_head</span>(&amp;proc-&gt;proc_node, &amp;binder_procs);</span><br><span class="line">	<span class="built_in">mutex_unlock</span>(&amp;binder_procs_lock);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// sys/kernel/debug/binder/proc目录存在时</span></span><br><span class="line">	<span class="keyword">if</span> (binder_debugfs_dir_entry_proc) &#123;</span><br><span class="line">		<span class="type">char</span> strbuf[<span class="number">11</span>];</span><br><span class="line"></span><br><span class="line">		<span class="built_in">snprintf</span>(strbuf, <span class="built_in">sizeof</span>(strbuf), <span class="string">&quot;%u&quot;</span>, proc-&gt;pid);</span><br><span class="line">		<span class="comment">// proc调试条目是在上下文之间共享的</span></span><br><span class="line">        <span class="comment">// 创建当前binder_proc的目录，可以看到在sys/kernel/debug/binder/proc目录下有很多pid的目录</span></span><br><span class="line">		proc-&gt;debugfs_entry = <span class="built_in">debugfs_create_file</span>(strbuf, <span class="number">0444</span>,</span><br><span class="line">			binder_debugfs_dir_entry_proc,</span><br><span class="line">			(<span class="type">void</span> *)(<span class="type">unsigned</span> <span class="type">long</span>)proc-&gt;pid,</span><br><span class="line">			&amp;proc_fops);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 也是binderfs_fill_super中创建的一个目录：/dev/binderfs/binder_logs/proc</span></span><br><span class="line">	<span class="keyword">if</span> (binder_binderfs_dir_entry_proc) &#123;</span><br><span class="line">		<span class="type">char</span> strbuf[<span class="number">11</span>];</span><br><span class="line">		<span class="keyword">struct</span> <span class="title class_">dentry</span> *binderfs_entry;</span><br><span class="line"></span><br><span class="line">		<span class="built_in">snprintf</span>(strbuf, <span class="built_in">sizeof</span>(strbuf), <span class="string">&quot;%u&quot;</span>, proc-&gt;pid);</span><br><span class="line">		<span class="comment">// 与debugfs类似，进程特定的日志文件在上下文之间共享。</span></span><br><span class="line">        <span class="comment">// 如果已经为进程创建了文件，如果同一进程的另一个上下文调用binder_open（）</span></span><br><span class="line">        <span class="comment">// 则以下binderfs_create_file（）调用将失败，错误代码为EEXIST。</span></span><br><span class="line">        <span class="comment">// 因为与debugfs相同，日志文件将包含给定PID的所有上下文的信息。</span></span><br><span class="line">		binderfs_entry = <span class="built_in">binderfs_create_file</span>(binder_binderfs_dir_entry_proc,</span><br><span class="line">			strbuf, &amp;proc_fops, (<span class="type">void</span> *)(<span class="type">unsigned</span> <span class="type">long</span>)proc-&gt;pid);</span><br><span class="line">		<span class="keyword">if</span> (!<span class="built_in">IS_ERR</span>(binderfs_entry)) &#123;</span><br><span class="line">			proc-&gt;binderfs_entry = binderfs_entry;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="type">int</span> error;</span><br><span class="line"></span><br><span class="line">			error = <span class="built_in">PTR_ERR</span>(binderfs_entry);</span><br><span class="line">			<span class="keyword">if</span> (error != -EEXIST) &#123;</span><br><span class="line">				<span class="built_in">pr_warn</span>(<span class="string">&quot;Unable to create file %s in binderfs (error %d)\n&quot;</span>,</span><br><span class="line">					strbuf, error);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>binder_open的函数做的事情也不复杂：</p>
+<ol>
+<li>创建binder_proc, 其pid为当前进程的主进程pid</li>
+<li>标记binder_device的引用计数+1</li>
+<li>将当前binder_proc的proc_node加入binder_procs列表中</li>
+<li>创建当前binder_proc的目录，目录名为: sys&#x2F;kernel&#x2F;debug&#x2F;binder&#x2F;proc&#x2F;pid</li>
+<li>&#x2F;dev&#x2F;binderfs&#x2F;binder_logs&#x2F;proc存在时，也在这个目录下创建对应pid目录</li>
+</ol>
+<p>顺便说一下很多Linux内核宏都用 do { code; } while(0) 的形式,这个是确保code不会被打乱，比如：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> demo do &#123; codeA; codeB; &#125; while(0)</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (A) </span><br><span class="line"> demo; <span class="comment">//这里展开就不会因为宏内有多行代码而出现逻辑异常</span></span><br><span class="line">nextCodeLine;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-2-binder-ioctl-BINDER-VERSION-amp-BINDER-SET-CONTEXT-MGR-EXT"><a href="#1-5-2-binder-ioctl-BINDER-VERSION-amp-BINDER-SET-CONTEXT-MGR-EXT" class="headerlink" title="1.5.2 binder_ioctl - BINDER_VERSION &amp; BINDER_SET_CONTEXT_MGR_EXT"></a>1.5.2 binder_ioctl - BINDER_VERSION &amp; BINDER_SET_CONTEXT_MGR_EXT</h3><blockquote>
+<p>status_t result &#x3D; ioctl(fd, BINDER_VERSION, &amp;vers);</p>
+</blockquote>
+<p>从参数名称可以看到，这里是获取binder版本号。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">long</span> <span class="title">binder_ioctl</span><span class="params">(<span class="keyword">struct</span> file *filp, <span class="type">unsigned</span> <span class="type">int</span> cmd, <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">binder_proc</span> *proc = filp-&gt;private_data;</span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">binder_thread</span> *thread;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> size = _IOC_SIZE(cmd);</span><br><span class="line">	<span class="type">void</span> __user *ubuf = (<span class="type">void</span> __user *)arg;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*pr_info(&quot;binder_ioctl: %d:%d %x %lx\n&quot;,</span></span><br><span class="line"><span class="comment">			proc-&gt;pid, current-&gt;pid, cmd, arg);*/</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 分配BUFFER_NUM buffers以覆盖所有页面对齐情况，然后以所有可能的顺序释放它们。</span></span><br><span class="line">    <span class="comment">// 检查页面是否正确分配，在释放缓冲区时放在lru上，在调用binder_alloc_free_page时释放。</span></span><br><span class="line">	<span class="built_in">binder_selftest_alloc</span>(&amp;proc-&gt;alloc);</span><br><span class="line"></span><br><span class="line">	<span class="built_in">trace_binder_ioctl</span>(cmd, arg);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// binder_stop_on_user_error是一个int变量，当出现binder_stop_on_user_error错误</span></span><br><span class="line">    <span class="comment">// 时为2, 这里的意思是只要这个不为2,使得cpu不休眠。</span></span><br><span class="line">	ret = <span class="built_in">wait_event_interruptible</span>(binder_user_error_wait, binder_stop_on_user_error &lt; <span class="number">2</span>);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> err_unlocked;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 根据binder_proc获取binder_thread, 后续分析</span></span><br><span class="line">	thread = <span class="built_in">binder_get_thread</span>(proc);</span><br><span class="line">	<span class="keyword">if</span> (thread == <span class="literal">NULL</span>) &#123;</span><br><span class="line">		ret = -ENOMEM;</span><br><span class="line">		<span class="keyword">goto</span> err;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (cmd) &#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">	<span class="keyword">case</span> BINDER_SET_CONTEXT_MGR_EXT: &#123;</span><br><span class="line">		<span class="keyword">struct</span> <span class="title class_">flat_binder_object</span> fbo;</span><br><span class="line">        <span class="comment">// 从用户空间拷贝ubuf内容至fbo中，其实就是15，单个进程的最大binder线程数</span></span><br><span class="line">		<span class="keyword">if</span> (<span class="built_in">copy_from_user</span>(&amp;fbo, ubuf, <span class="built_in">sizeof</span>(fbo))) &#123;</span><br><span class="line">			ret = -EINVAL;</span><br><span class="line">			<span class="keyword">goto</span> err;</span><br><span class="line">		&#125;</span><br><span class="line">        <span class="comment">// 设置单个进程的最大binder数目，默认是15个(app进程)</span></span><br><span class="line">		ret = <span class="built_in">binder_ioctl_set_ctx_mgr</span>(filp, &amp;fbo);</span><br><span class="line">		<span class="keyword">if</span> (ret)</span><br><span class="line">			<span class="keyword">goto</span> err;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">	<span class="keyword">case</span> BINDER_VERSION: &#123;</span><br><span class="line">		<span class="keyword">struct</span> <span class="title class_">binder_version</span> __user *ver = ubuf;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (size != <span class="built_in">sizeof</span>(<span class="keyword">struct</span> binder_version)) &#123;</span><br><span class="line">			ret = -EINVAL;</span><br><span class="line">			<span class="keyword">goto</span> err;</span><br><span class="line">		&#125;</span><br><span class="line">        <span class="comment">// 从内核空间获取BINDER_CURRENT_PROTOCOL_VERSION拷贝到用户空间</span></span><br><span class="line">		<span class="keyword">if</span> (<span class="built_in">put_user</span>(BINDER_CURRENT_PROTOCOL_VERSION,</span><br><span class="line">			     &amp;ver-&gt;protocol_version)) &#123;</span><br><span class="line">			ret = -EINVAL;</span><br><span class="line">			<span class="keyword">goto</span> err;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// ......</span></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>copy_from_user函数的目的是从用户空间拷贝数据到内核空间，<strong>失败返回没有被拷贝的字节数，成功返回0</strong>.</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">copy_from_user(void *to, const void __user *from, unsigned long n)</span><br><span class="line">1. *to         将数据拷贝到内核的地址</span><br><span class="line">2. *from       需要拷贝数据的地址</span><br><span class="line">3. n           拷贝数据的长度（字节）</span><br><span class="line"></span><br><span class="line">也就是将from地址中的数据拷贝到to地址中去，拷贝长度是n</span><br></pre></td></tr></table></figure>
+
+<h1 id="二-ioctl-BINDER-WRITE-READ"><a href="#二-ioctl-BINDER-WRITE-READ" class="headerlink" title="二. ioctl - BINDER_WRITE_READ"></a>二. ioctl - BINDER_WRITE_READ</h1><p>现在万事具备了，我们继续分析进程间的ioctl通信传输数据, 回到最开始：IPCThreadState#talkWithDriver</p>
+<p>其实我们在open_driver - 打开binder驱动的过程中就有分析看到ioctl了。</p>
+<p>从代码的角度理解为什么说binder跨进程通信只需要一次内存拷贝。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 使用ioctl与binder驱动通信, 将bwr存储的信息传输给binder驱动</span></span><br><span class="line"><span class="keyword">if</span> (<span class="built_in">ioctl</span>(mProcess-&gt;mDriverFD, BINDER_WRITE_READ, &amp;bwr) &gt;= <span class="number">0</span>)</span><br><span class="line">    err = NO_ERROR;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-1-binder-ioctl-BINDER-WRITE-READ"><a href="#2-1-binder-ioctl-BINDER-WRITE-READ" class="headerlink" title="2.1 binder_ioctl - BINDER_WRITE_READ"></a>2.1 binder_ioctl - BINDER_WRITE_READ</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">long</span> <span class="title">binder_ioctl</span><span class="params">(<span class="keyword">struct</span> file *filp, <span class="type">unsigned</span> <span class="type">int</span> cmd, <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="keyword">switch</span> (cmd) &#123;</span><br><span class="line">    <span class="keyword">case</span> BINDER_WRITE_READ:</span><br><span class="line">        <span class="comment">// thread是根据binder_proc获取的binder_thread</span></span><br><span class="line">        <span class="comment">// 这里的arg就是上面的ioctl的最后一个参数bwr的地址</span></span><br><span class="line">		ret = <span class="built_in">binder_ioctl_write_read</span>(filp, cmd, arg, thread);</span><br><span class="line">		<span class="keyword">if</span> (ret)</span><br><span class="line">			<span class="keyword">goto</span> err;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    ret = <span class="number">0</span>;</span><br><span class="line">err:</span><br><span class="line">	<span class="keyword">if</span> (thread)</span><br><span class="line">		thread-&gt;looper_need_return = <span class="literal">false</span>;</span><br><span class="line">	<span class="built_in">wait_event_interruptible</span>(binder_user_error_wait, binder_stop_on_user_error &lt; <span class="number">2</span>);</span><br><span class="line">	<span class="keyword">if</span> (ret &amp;&amp; ret != -ERESTARTSYS)</span><br><span class="line">		<span class="built_in">pr_info</span>(<span class="string">&quot;%d:%d ioctl %x %lx returned %d\n&quot;</span>, proc-&gt;pid, current-&gt;pid, cmd, arg, ret);</span><br><span class="line">err_unlocked:</span><br><span class="line">	<span class="built_in">trace_binder_ioctl_done</span>(ret);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-2-binder-c-binder-ioctl-write-read"><a href="#2-2-binder-c-binder-ioctl-write-read" class="headerlink" title="2.2 binder.c:binder_ioctl_write_read"></a>2.2 binder.c:binder_ioctl_write_read</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">int</span> <span class="title">binder_ioctl_write_read</span><span class="params">(<span class="keyword">struct</span> file *filp,</span></span></span><br><span class="line"><span class="params"><span class="function">				<span class="type">unsigned</span> <span class="type">int</span> cmd, <span class="type">unsigned</span> <span class="type">long</span> arg,</span></span></span><br><span class="line"><span class="params"><span class="function">				<span class="keyword">struct</span> binder_thread *thread)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="type">int</span> ret = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">binder_proc</span> *proc = filp-&gt;private_data;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> size = _IOC_SIZE(cmd);</span><br><span class="line">	<span class="type">void</span> __user *ubuf = (<span class="type">void</span> __user *)arg;</span><br><span class="line">	<span class="keyword">struct</span> <span class="title class_">binder_write_read</span> bwr;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (size != <span class="built_in">sizeof</span>(<span class="keyword">struct</span> binder_write_read)) &#123;</span><br><span class="line">		ret = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">    <span class="comment">// 从用户空间拷贝ubuf内容至bwr中, 一次拷贝：从用户空间到内核空间</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">copy_from_user</span>(&amp;bwr, ubuf, <span class="built_in">sizeof</span>(bwr))) &#123;</span><br><span class="line">		ret = -EFAULT;</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="built_in">binder_debug</span>(BINDER_DEBUG_READ_WRITE,</span><br><span class="line">		     <span class="string">&quot;%d:%d write %lld at %016llx, read %lld at %016llx\n&quot;</span>,</span><br><span class="line">		     proc-&gt;pid, thread-&gt;pid,</span><br><span class="line">		     (u64)bwr.write_size, (u64)bwr.write_buffer,</span><br><span class="line">		     (u64)bwr.read_size, (u64)bwr.read_buffer);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 还记得么，这个bwr是在IPCThreadState#talkWithDriver中填充的数据</span></span><br><span class="line">    <span class="comment">// write_size 代表 binder in parcel数据大小</span></span><br><span class="line">    <span class="comment">// read_size 代表 binder out parcel数据大小</span></span><br><span class="line">	<span class="keyword">if</span> (bwr.write_size &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 处理用户进程传来的数据</span></span><br><span class="line">		ret = <span class="built_in">binder_thread_write</span>(proc, thread,</span><br><span class="line">					  bwr.write_buffer,</span><br><span class="line">					  bwr.write_size,</span><br><span class="line">					  &amp;bwr.write_consumed);</span><br><span class="line">		<span class="built_in">trace_binder_write_done</span>(ret);</span><br><span class="line">		<span class="keyword">if</span> (ret &lt; <span class="number">0</span>) &#123;</span><br><span class="line">			bwr.read_consumed = <span class="number">0</span>;</span><br><span class="line">			<span class="keyword">if</span> (<span class="built_in">copy_to_user</span>(ubuf, &amp;bwr, <span class="built_in">sizeof</span>(bwr)))</span><br><span class="line">				ret = -EFAULT;</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (bwr.read_size &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 处理需要回传的数据</span></span><br><span class="line">		ret = <span class="built_in">binder_thread_read</span>(proc, thread, bwr.read_buffer,</span><br><span class="line">					 bwr.read_size,</span><br><span class="line">					 &amp;bwr.read_consumed,</span><br><span class="line">					 filp-&gt;f_flags &amp; O_NONBLOCK);</span><br><span class="line">		<span class="built_in">trace_binder_read_done</span>(ret);</span><br><span class="line">		<span class="built_in">binder_inner_proc_lock</span>(proc);</span><br><span class="line">		<span class="keyword">if</span> (!<span class="built_in">binder_worklist_empty_ilocked</span>(&amp;proc-&gt;todo))</span><br><span class="line">			<span class="built_in">binder_wakeup_proc_ilocked</span>(proc);</span><br><span class="line">		<span class="built_in">binder_inner_proc_unlock</span>(proc);</span><br><span class="line">		<span class="keyword">if</span> (ret &lt; <span class="number">0</span>) &#123;</span><br><span class="line">			<span class="keyword">if</span> (<span class="built_in">copy_to_user</span>(ubuf, &amp;bwr, <span class="built_in">sizeof</span>(bwr)))</span><br><span class="line">				ret = -EFAULT;</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="built_in">binder_debug</span>(BINDER_DEBUG_READ_WRITE,</span><br><span class="line">		     <span class="string">&quot;%d:%d wrote %lld of %lld, read return %lld of %lld\n&quot;</span>,</span><br><span class="line">		     proc-&gt;pid, thread-&gt;pid,</span><br><span class="line">		     (u64)bwr.write_consumed, (u64)bwr.write_size,</span><br><span class="line">		     (u64)bwr.read_consumed, (u64)bwr.read_size);</span><br><span class="line">    <span class="comment">// 将从内核空间拷贝bwr内容至ubuf中, 一次拷贝：从内核空间到用户空间</span></span><br><span class="line">    <span class="comment">// 但是这里是新的数据了，不算是内容的重复拷贝，如果说不需要回传数据，oneway的方式，这个拷贝也不是必要的</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">copy_to_user</span>(ubuf, &amp;bwr, <span class="built_in">sizeof</span>(bwr))) &#123;</span><br><span class="line">		ret = -EFAULT;</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>copy_from_user函数的目的是从内核空间拷贝数据到用户空间，失败返回没有被拷贝的字节数，成功返回0.</p>
+<p>unsigned long copy_to_user(void *to, const void *from, unsigned long n)</p>
+<ol>
+<li>*to            目标地址（用户空间）</li>
+<li>*from          源地址（内核空间）</li>
+<li>n              将要拷贝数据的字节数</li>
+</ol>
+<p>返回：成功返回0，失败返回没有拷贝成功的数据字节数</p>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>可以看到用户进程IPCThreadState的初始化之后会将binder驱动与进程内存映射，提供一块虚拟地址空间来接收binder驱动数据。<br>这里就拿到了binder的fd, 保存在用户进程的mDriverFD中, 现在就可以愉快的通信了。</p>
+<p>鉴于 binder_thread_write 和 binder_thread_read 函数都特别大，接下来单开两篇分开论述。</p>
+<p>之前看 <strong>红茶一杯话Binder（传输机制篇_中）</strong> 有一张图特别清晰的展现了这里的流程，在此贴出:</p>
+<p><img src="/images/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/5_1_%E6%B5%81%E7%A8%8B%E5%9B%BE.png" alt="图片"></p>
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>module_init解析及内核initcall的初始化顺序 <a target="_blank" rel="noopener" href="https://www.cnblogs.com/chaozhu/p/6410271.html">https://www.cnblogs.com/chaozhu/p/6410271.html</a></li>
+<li>各种initcall的执行先后顺序 <a target="_blank" rel="noopener" href="https://blog.csdn.net/fenzhikeji/article/details/6860143">https://blog.csdn.net/fenzhikeji/article/details/6860143</a></li>
+<li>binder 驱动的操作 <a target="_blank" rel="noopener" href="https://blog.csdn.net/qq_15893929/article/details/103965668">https://blog.csdn.net/qq_15893929/article/details/103965668</a></li>
+<li>Android的IPC机制Binder的各个部分 <a target="_blank" rel="noopener" href="http://tech.it168.com/a2009/0331/2703/000000270388_all.shtml">http://tech.it168.com/a2009/0331/2703/000000270388_all.shtml</a></li>
+<li>字符设备驱动-使用alloc_chrdev_region+cdev注册设备驱动 <a target="_blank" rel="noopener" href="https://blog.csdn.net/weixin_42314225/article/details/81112217">https://blog.csdn.net/weixin_42314225/article/details/81112217</a></li>
+<li>linux文件系统 - 初始化(一) <a target="_blank" rel="noopener" href="https://www.cnblogs.com/alantu2018/p/8447303.html">https://www.cnblogs.com/alantu2018/p/8447303.html</a></li>
+<li>mount过程分析之五(mount_bdev-&gt;fill_super) <a target="_blank" rel="noopener" href="https://blog.csdn.net/ZR_Lang/article/details/40115013">https://blog.csdn.net/ZR_Lang/article/details/40115013</a></li>
+<li>VFS四大对象之一 struct super_block <a target="_blank" rel="noopener" href="https://www.cnblogs.com/linhaostudy/p/7427027.html">https://www.cnblogs.com/linhaostudy/p/7427027.html</a></li>
+<li>Linux字符设备驱动file_operations <a target="_blank" rel="noopener" href="https://www.cnblogs.com/chen-farsight/p/6181341.html">https://www.cnblogs.com/chen-farsight/p/6181341.html</a></li>
+<li>一种linux线程私有数据技术 <a target="_blank" rel="noopener" href="http://blog.163.com/william_djj@126/blog/static/3516650120085111193035/">http://blog.163.com/william_djj@126/blog/static/3516650120085111193035/</a></li>
+<li>pthread_key_t和pthread_key_create()详解 <a target="_blank" rel="noopener" href="https://www.cnblogs.com/klcf0220/p/5807148.html">https://www.cnblogs.com/klcf0220/p/5807148.html</a></li>
+<li>腾讯面试题——谈一谈Binder的原理和实现一次拷贝的流程 <a target="_blank" rel="noopener" href="https://blog.csdn.net/AndroidStudyDay/article/details/93749470">https://blog.csdn.net/AndroidStudyDay/article/details/93749470</a></li>
+<li>红茶一杯话Binder（传输机制篇_中） <a target="_blank" rel="noopener" href="https://my.oschina.net/youranhongcha/blog/152963">https://my.oschina.net/youranhongcha/blog/152963</a></li>
+</ol>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/04/04/Binder-5-binder%E9%A9%B1%E5%8A%A8%E5%93%8D%E5%BA%94ioctl/" title="Binder(5)--binder驱动响应ioctl">https://swallowjoe.github.io/2022/04/04/Binder-5-binder驱动响应ioctl/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Binder/" rel="tag"># Binder</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/04/04/Binder-4-binder%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%8A%A0%E8%BD%BD/" rel="prev" title="Binder(4)--binder驱动的加载">
+      <i class="fa fa-chevron-left"></i> Binder(4)--binder驱动的加载
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E4%BB%8B"><span class="nav-text">简介</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-IPCThreadState%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-text">一. IPCThreadState的初始化</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-IPCThreadState-self"><span class="nav-text">1.1 IPCThreadState::self</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-IPCThreadState%E5%AE%9E%E4%BE%8B%E5%8C%96"><span class="nav-text">1.2 IPCThreadState实例化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%EF%BC%93-ProcessState-self"><span class="nav-text">1.３ ProcessState::self</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%EF%BC%94-ProcessState%E5%AE%9E%E4%BE%8B%E5%8C%96"><span class="nav-text">1.４ ProcessState实例化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-open-driver-%E6%89%93%E5%BC%80binder%E9%A9%B1%E5%8A%A8"><span class="nav-text">1.5 open_driver - 打开binder驱动</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-1-open%E5%87%BD%E6%95%B0-binder-open"><span class="nav-text">1.5.1 open函数-binder_open</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-2-binder-ioctl-BINDER-VERSION-amp-BINDER-SET-CONTEXT-MGR-EXT"><span class="nav-text">1.5.2 binder_ioctl - BINDER_VERSION &amp; BINDER_SET_CONTEXT_MGR_EXT</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-ioctl-BINDER-WRITE-READ"><span class="nav-text">二. ioctl - BINDER_WRITE_READ</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-binder-ioctl-BINDER-WRITE-READ"><span class="nav-text">2.1 binder_ioctl - BINDER_WRITE_READ</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-binder-c-binder-ioctl-write-read"><span class="nav-text">2.2 binder.c:binder_ioctl_write_read</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-text">总结</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">30</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
