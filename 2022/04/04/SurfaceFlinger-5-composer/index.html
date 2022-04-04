@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Andorid Q 接着上文，当我们接收到来自App RenderThread线程渲染后的Surface之后，会在SurfaceFlinger收到下一次Vsync时做合成。前面我们也稍微分析了一下，直接看handleMessageRefresh方法：  从上面trace上也可以看出收到Vsync后，sf首先调用handleMessageInvalidate检查时候需要进行合成。如果需要就会调用">
+<meta property="og:type" content="article">
+<meta property="og:title" content="SurfaceFlinger(5)--composer">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-5-composer/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="Andorid Q 接着上文，当我们接收到来自App RenderThread线程渲染后的Surface之后，会在SurfaceFlinger收到下一次Vsync时做合成。前面我们也稍微分析了一下，直接看handleMessageRefresh方法：  从上面trace上也可以看出收到Vsync后，sf首先调用handleMessageInvalidate检查时候需要进行合成。如果需要就会调用">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//5_1_sf_onVsync.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//5_4_layer_list.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//5_5_DisplayDevice.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//5_2_appZ.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//5_3_visiableregion.png">
+<meta property="article:published_time" content="2022-04-04T01:58:09.000Z">
+<meta property="article:modified_time" content="2022-04-04T02:12:51.466Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Vsync">
+<meta property="article:tag" content="SurfaceFlinger">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/.io//5_1_sf_onVsync.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-5-composer/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>SurfaceFlinger(5)--composer | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-5-composer/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          SurfaceFlinger(5)--composer
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 09:58:09 / 修改时间：10:12:51" itemprop="dateCreated datePublished" datetime="2022-04-04T09:58:09+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/SurfaceFlinger/" itemprop="url" rel="index"><span itemprop="name">SurfaceFlinger</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/SurfaceFlinger-5-composer/" class="post-meta-item leancloud_visitors" data-flag-title="SurfaceFlinger(5)--composer" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/SurfaceFlinger-5-composer/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/SurfaceFlinger-5-composer/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+
+<p><strong>Andorid Q</strong></p>
+<p>接着上文，当我们接收到来自App RenderThread线程渲染后的Surface之后，会在SurfaceFlinger收到下一次Vsync时做合成。<br>前面我们也稍微分析了一下，直接看handleMessageRefresh方法：</p>
+<p><img src="/.io//5_1_sf_onVsync.png" alt="图片"></p>
+<p>从上面trace上也可以看出收到Vsync后，sf首先调用handleMessageInvalidate检查时候需要进行合成。<br>如果需要就会调用方法handleMessageRefresh去做合成，最后将合成后的图像送入屏幕显示。</p>
+<p>这里重点分析handleMessageRefresh.</p>
+<h1 id="一-handleMessageRefresh"><a href="#一-handleMessageRefresh" class="headerlink" title="一. handleMessageRefresh"></a>一. handleMessageRefresh</h1><h2 id="1-1-SurfaceFlinger-handleMessageRefresh"><a href="#1-1-SurfaceFlinger-handleMessageRefresh" class="headerlink" title="1.1 SurfaceFlinger:handleMessageRefresh"></a>1.1 SurfaceFlinger:handleMessageRefresh</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::handleMessageRefresh</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line"></span><br><span class="line">    mRefreshPending = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> repaintEverything = mRepaintEverything.<span class="built_in">exchange</span>(<span class="literal">false</span>);</span><br><span class="line">    <span class="comment">// 1.2 合成前再过一遍Layer是否被更新了</span></span><br><span class="line">    <span class="comment">// 如果有则触发signalLayerUpdate()，通过EventThread安排一次invalidate sf vsync。</span></span><br><span class="line">    <span class="built_in">preComposition</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.3 重建layer堆栈, 提取可见的Laye并计算可见区域</span></span><br><span class="line">    <span class="comment">// 并将数据更新给对应的Display</span></span><br><span class="line">    <span class="built_in">rebuildLayerStacks</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.4 hwcomposer的设定，将Layer数据更新给HWC</span></span><br><span class="line">    <span class="built_in">calculateWorkingSet</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 遍历所有Display，依次合成处理</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, display] : mDisplays) &#123;</span><br><span class="line">        <span class="comment">// 1.5 其实beginFrame和prepareFrame最终都是调用到FrameBufferSurface中，没有做特别的事情</span></span><br><span class="line">        <span class="built_in">beginFrame</span>(display);</span><br><span class="line">        <span class="built_in">prepareFrame</span>(display);</span><br><span class="line">        <span class="built_in">doDebugFlashRegions</span>(display, repaintEverything);</span><br><span class="line">        <span class="comment">// 1.6 正式的合成处理，简单来说就是申请GraphicBuffer，向其中填充帧数据</span></span><br><span class="line">        <span class="comment">// 最终给到硬件帧缓冲区</span></span><br><span class="line">        <span class="built_in">doComposition</span>(display, repaintEverything); </span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">logLayerStats</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 通知composer,即HWC</span></span><br><span class="line">    <span class="built_in">postFrame</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 回调每个layer的onPostComposition</span></span><br><span class="line">    <span class="built_in">postComposition</span>();</span><br><span class="line"></span><br><span class="line">    mHadClientComposition = <span class="literal">false</span>;</span><br><span class="line">    mHadDeviceComposition = <span class="literal">false</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, displayDevice] : mDisplays) &#123;</span><br><span class="line">        <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span> displayId = display-&gt;<span class="built_in">getId</span>();</span><br><span class="line">        mHadClientComposition =</span><br><span class="line">                mHadClientComposition || <span class="built_in">getHwComposer</span>().<span class="built_in">hasClientComposition</span>(displayId);</span><br><span class="line">        mHadDeviceComposition =</span><br><span class="line">                mHadDeviceComposition || <span class="built_in">getHwComposer</span>().<span class="built_in">hasDeviceComposition</span>(displayId);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 根据状况决定是否更新Vsync Offset</span></span><br><span class="line">    mVsyncModulator.<span class="built_in">onRefreshed</span>(mHadClientComposition);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 清空mLayersWithQueuedFrames，下一次vsync来到时，会在handlePageFlip中重新添加</span></span><br><span class="line">    mLayersWithQueuedFrames.<span class="built_in">clear</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-2-SurfaceFlinger-perComposition"><a href="#1-2-SurfaceFlinger-perComposition" class="headerlink" title="1.2 SurfaceFlinger:perComposition"></a>1.2 SurfaceFlinger:perComposition</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::preComposition</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;preComposition&quot;</span>);</span><br><span class="line">    <span class="comment">// 记录刷新时间</span></span><br><span class="line">    mRefreshStartTime = <span class="built_in">systemTime</span>(SYSTEM_TIME_MONOTONIC);</span><br><span class="line"></span><br><span class="line">    <span class="type">bool</span> needExtraInvalidate = <span class="literal">false</span>;</span><br><span class="line">    <span class="comment">// 1.2.1 遍历所有layer, 处理处于Drawing状态的layer</span></span><br><span class="line">    <span class="comment">// 这里使用了lambda函数</span></span><br><span class="line">    mDrawingState.<span class="built_in">traverseInZOrder</span>([&amp;](Layer* layer) &#123;</span><br><span class="line">        <span class="comment">// 1.2.3 判断Layer是否需要更新</span></span><br><span class="line">        <span class="keyword">if</span> (layer-&gt;<span class="built_in">onPreComposition</span>(mRefreshStartTime)) &#123;</span><br><span class="line">            <span class="comment">// 如果有layer有frame更新，则标记该值为true，表示需要下一个vsync</span></span><br><span class="line">            <span class="comment">// 做合成</span></span><br><span class="line">            needExtraInvalidate = <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (needExtraInvalidate) &#123;</span><br><span class="line">        <span class="built_in">signalLayerUpdate</span>();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> SurfaceFlinger::State::<span class="built_in">traverseInZOrder</span>(<span class="type">const</span> LayerVector::Visitor&amp; visitor) <span class="type">const</span> &#123;</span><br><span class="line">    <span class="comment">// 这里的mDrawingState里面的stateSet为StateSet::Drawing</span></span><br><span class="line">    layersSortedByZ.<span class="built_in">traverseInZOrder</span>(stateSet, visitor);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// SurfaceFlinger.h</span></span><br><span class="line">State mDrawingState&#123;LayerVector::StateSet::Drawing&#125;;</span><br></pre></td></tr></table></figure>
+<p>layersSortedByZ中存储的layer都是SurfaceFlinger.addClientLayer过程中添加的。</p>
+<h3 id="1-2-1-LayerVector-traverseInZOrder"><a href="#1-2-1-LayerVector-traverseInZOrder" class="headerlink" title="1.2.1 LayerVector:traverseInZOrder"></a>1.2.1 LayerVector:traverseInZOrder</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">LayerVector::traverseInZOrder</span><span class="params">(StateSet stateSet, <span class="type">const</span> Visitor&amp; visitor)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; <span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span>&amp; layer = (*<span class="keyword">this</span>)[i];</span><br><span class="line">        <span class="comment">// 遍历所有layer，拿到合适State的Layer做处理</span></span><br><span class="line">        <span class="comment">// 这里是拿所有Drawing状态的Layer</span></span><br><span class="line">        <span class="keyword">auto</span>&amp; state = (stateSet == StateSet::Current) ? layer-&gt;<span class="built_in">getCurrentState</span>()</span><br><span class="line">                                                      : layer-&gt;<span class="built_in">getDrawingState</span>();</span><br><span class="line">        <span class="comment">// zOrderRelativeOf中的layer是上层调用setRelativeLayer后添加的</span></span><br><span class="line">        <span class="comment">// 如果为非null，则表示此Surface的Z顺序相对于此进行解释</span></span><br><span class="line">        <span class="comment">// 默认是null的。</span></span><br><span class="line">        <span class="keyword">if</span> (state.zOrderRelativeOf != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 处理Layer</span></span><br><span class="line">        layer-&gt;<span class="built_in">traverseInZOrder</span>(stateSet, visitor);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-2-2-Layer-traverseInZOrder"><a href="#1-2-2-Layer-traverseInZOrder" class="headerlink" title="1.2.2 Layer:traverseInZOrder"></a>1.2.2 Layer:traverseInZOrder</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Layer::traverseInZOrder</span><span class="params">(LayerVector::StateSet stateSet, <span class="type">const</span> LayerVector::Visitor&amp; visitor)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="type">bool</span> skipRelativeZUsers = <span class="literal">false</span>;</span><br><span class="line">    <span class="comment">// 1.2.2.1 按顺序将当前Layer所有z轴相关的layer和子layer添加至列表</span></span><br><span class="line">    <span class="type">const</span> LayerVector list = <span class="built_in">makeTraversalList</span>(stateSet, &amp;skipRelativeZUsers);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 也就是说首先遍历Z轴相关的Layer</span></span><br><span class="line">    <span class="type">size_t</span> i = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (; i &lt; list.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span>&amp; relative = list[i];</span><br><span class="line">        <span class="keyword">if</span> (skipRelativeZUsers &amp;&amp; relative-&gt;<span class="built_in">usingRelativeZ</span>(stateSet)) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 注意Layer的添加都是按照Z轴顺序插入排序的</span></span><br><span class="line">        <span class="comment">// 这里的意思就是首先要遍历并对所有z轴小于0的Layer调用onPreComposition方法</span></span><br><span class="line">        <span class="comment">// 所以需要理解z轴小于0的意义，什么时候z轴值才会小于0？</span></span><br><span class="line">        <span class="comment">// 因为P/Q上Layer组合的数据结构是：树形结构+Z轴排序。现在Z轴的大小一般为 [-2, 2]</span></span><br><span class="line">        <span class="comment">// Z轴小的在下面会被覆盖。现在可以理解了，这里为什么碰到z大于0就要退出循环了</span></span><br><span class="line">        <span class="keyword">if</span> (relative-&gt;<span class="built_in">getZ</span>() &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        relative-&gt;<span class="built_in">traverseInZOrder</span>(stateSet, visitor);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 对本Layer做onPreComposition</span></span><br><span class="line">    <span class="built_in">visitor</span>(<span class="keyword">this</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 最后对所有Z轴不小于0的Layer做onPreComposition</span></span><br><span class="line">    <span class="keyword">for</span> (; i &lt; list.<span class="built_in">size</span>(); i++) &#123;</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span>&amp; relative = list[i];</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (skipRelativeZUsers &amp;&amp; relative-&gt;<span class="built_in">usingRelativeZ</span>(stateSet)) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        relative-&gt;<span class="built_in">traverseInZOrder</span>(stateSet, visitor);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>visitor这个就是lambda表达式：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">mDrawingState.<span class="built_in">traverseInZOrder</span>([&amp;](Layer* layer) &#123;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.2.3 调用onPreComposition</span></span><br><span class="line">    <span class="keyword">if</span> (layer-&gt;<span class="built_in">onPreComposition</span>(mRefreshStartTime)) &#123;</span><br><span class="line">        needExtraInvalidate = <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<p>总的来说就是按顺序依次调用layer的onPreComposition方法，标记其mRefreshPending为false。</p>
+<h4 id="1-2-2-1-Layer-makeTraversalList"><a href="#1-2-2-1-Layer-makeTraversalList" class="headerlink" title="1.2.2.1 Layer:makeTraversalList"></a>1.2.2.1 Layer:makeTraversalList</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// __attribute__((no_sanitize(&quot;unsigned-integer-overflow&quot;)))的意思</span></span><br><span class="line"><span class="comment">// 是不进行无符号int溢出检测</span></span><br><span class="line">__attribute__((<span class="built_in">no_sanitize</span>(<span class="string">&quot;unsigned-integer-overflow&quot;</span>))) <span class="function">LayerVector <span class="title">Layer::makeTraversalList</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        LayerVector::StateSet stateSet, <span class="type">bool</span>* outSkipRelativeZUsers)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(stateSet == LayerVector::StateSet::Invalid,</span><br><span class="line">                        <span class="string">&quot;makeTraversalList received invalid stateSet&quot;</span>);</span><br><span class="line">    <span class="comment">// 这里useDrawing为true</span></span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> useDrawing = stateSet == LayerVector::StateSet::Drawing;</span><br><span class="line">    <span class="type">const</span> LayerVector&amp; children = useDrawing ? mDrawingChildren : mCurrentChildren;</span><br><span class="line">    <span class="type">const</span> State&amp; state = useDrawing ? mDrawingState : mCurrentState;</span><br><span class="line">    <span class="comment">// 假设没有zOrderRelatives，所以直接返回children</span></span><br><span class="line">    <span class="keyword">if</span> (state.zOrderRelatives.<span class="built_in">size</span>() == <span class="number">0</span>) &#123;</span><br><span class="line">        *outSkipRelativeZUsers = <span class="literal">true</span>;</span><br><span class="line">        <span class="keyword">return</span> children;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果存在，则将相关的layer按照Z轴顺序加入stateSet.Drawing中</span></span><br><span class="line">    <span class="function">LayerVector <span class="title">traverse</span><span class="params">(stateSet)</span></span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> wp&lt;Layer&gt;&amp; weakRelative : state.zOrderRelatives) &#123;</span><br><span class="line">        sp&lt;Layer&gt; strongRelative = weakRelative.<span class="built_in">promote</span>();</span><br><span class="line">        <span class="keyword">if</span> (strongRelative != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            traverse.<span class="built_in">add</span>(strongRelative);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 遍历所有children，将children的相关Layer添加至traverse</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> sp&lt;Layer&gt;&amp; child : children) &#123;</span><br><span class="line">        <span class="type">const</span> State&amp; childState = useDrawing ? child-&gt;mDrawingState : child-&gt;mCurrentState;</span><br><span class="line">        <span class="keyword">if</span> (childState.zOrderRelativeOf != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        traverse.<span class="built_in">add</span>(child);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> traverse;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>回到1.2.2中。</p>
+<h3 id="1-2-3-Layer-BufferLayer-onPreComposition"><a href="#1-2-3-Layer-BufferLayer-onPreComposition" class="headerlink" title="1.2.3 Layer:BufferLayer::onPreComposition"></a>1.2.3 Layer:BufferLayer::onPreComposition</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">BufferLayer::onPreComposition</span><span class="params">(<span class="type">nsecs_t</span> refreshStartTime)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (mBufferLatched) &#123;</span><br><span class="line">        <span class="function">Mutex::Autolock <span class="title">lock</span><span class="params">(mFrameEventHistoryMutex)</span></span>;</span><br><span class="line">        mFrameEventHistory.<span class="built_in">addPreComposition</span>(mCurrentFrameNumber, refreshStartTime);</span><br><span class="line">    &#125;</span><br><span class="line">    mRefreshPending = <span class="literal">false</span>;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">hasReadyFrame</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>记录开始刷新的时间，并返回该Layer是否具有可被合成的条件。</p>
+<h4 id="1-2-3-1-Layer-BufferLayer-hasReadyFrame"><a href="#1-2-3-1-Layer-BufferLayer-hasReadyFrame" class="headerlink" title="1.2.3.1 Layer:BufferLayer::hasReadyFrame"></a>1.2.3.1 Layer:BufferLayer::hasReadyFrame</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">BufferLayer::hasReadyFrame</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">hasFrameUpdate</span>() || <span class="built_in">getSidebandStreamChanged</span>() || <span class="built_in">getAutoRefresh</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="1-2-3-2-Layer-BufferLayer-BufferQueueLayer"><a href="#1-2-3-2-Layer-BufferLayer-BufferQueueLayer" class="headerlink" title="1.2.3.2 Layer:BufferLayer:BufferQueueLayer"></a>1.2.3.2 Layer:BufferLayer:BufferQueueLayer</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">BufferQueueLayer::hasFrameUpdate</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 是否具有绘制完成的frame</span></span><br><span class="line">    <span class="keyword">return</span> mQueuedFrames &gt; <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">bool</span> <span class="title">BufferQueueLayer::getAutoRefresh</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> mAutoRefresh;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">bool</span> <span class="title">BufferQueueLayer::getSidebandStreamChanged</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> mSidebandStreamChanged;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-3-SurfaceFlinger-rebuildLayerStacks"><a href="#1-3-SurfaceFlinger-rebuildLayerStacks" class="headerlink" title="1.3 SurfaceFlinger:rebuildLayerStacks"></a>1.3 SurfaceFlinger:rebuildLayerStacks</h2><p>这个方法比较长，慢慢看。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::rebuildLayerStacks</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;rebuildLayerStacks&quot;</span>);</span><br><span class="line">    <span class="function">Mutex::Autolock <span class="title">lock</span><span class="params">(mDolphinStateLock)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 对每个display重建其layer列表</span></span><br><span class="line">    <span class="comment">// mVisibleRegionsDirty的这个变量在如下条件会被置为true:</span></span><br><span class="line">    <span class="comment">// 1. 有layer的增删时</span></span><br><span class="line">    <span class="comment">// 2. layer可视化面积发生变化</span></span><br><span class="line">    <span class="comment">// 3. display显示设备变化</span></span><br><span class="line">    <span class="comment">// 4. set power mode on - 即亮屏时</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">CC_UNLIKELY</span>(mVisibleRegionsDirty)) &#123;</span><br><span class="line">        <span class="built_in">ATRACE_NAME</span>(<span class="string">&quot;rebuildLayerStacks VR Dirty&quot;</span>);</span><br><span class="line">        mVisibleRegionsDirty = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 就是将mGeometryInvalid置为true</span></span><br><span class="line">        <span class="comment">// 这个值影响后续是否需要hwc合成</span></span><br><span class="line">        <span class="built_in">invalidateHwcGeometry</span>();</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 对每一个Display做处理，适配多屏场景</span></span><br><span class="line">        <span class="comment">// mDisplays的类型是：std::map&lt;wp&lt;IBinder&gt;, sp&lt;DisplayDevice&gt;&gt;</span></span><br><span class="line">        <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; pair : mDisplays) &#123;</span><br><span class="line">            <span class="type">const</span> <span class="keyword">auto</span>&amp; displayDevice = pair.second;</span><br><span class="line">            <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">            <span class="type">const</span> <span class="keyword">auto</span>&amp; displayState = display-&gt;<span class="built_in">getState</span>();</span><br><span class="line">            Region opaqueRegion;</span><br><span class="line">            Region dirtyRegion;</span><br><span class="line">            compositionengine::Output::OutputLayers layersSortedByZ;</span><br><span class="line">            Vector&lt;sp&lt;Layer&gt;&gt; deprecated_layersSortedByZ;</span><br><span class="line">            Vector&lt;sp&lt;Layer&gt;&gt; layersNeedingFences;</span><br><span class="line">            <span class="type">const</span> ui::Transform&amp; tr = displayState.transform;</span><br><span class="line">            <span class="type">const</span> Rect bounds = displayState.bounds;</span><br><span class="line">            <span class="keyword">if</span> (displayState.isEnabled) &#123;</span><br><span class="line">                <span class="comment">// 2.1 计算可视区域</span></span><br><span class="line">                <span class="built_in">computeVisibleRegions</span>(displayDevice, dirtyRegion, opaqueRegion);</span><br><span class="line"></span><br><span class="line">                <span class="comment">// 顺序遍历Z轴Layer</span></span><br><span class="line">                mDrawingState.<span class="built_in">traverseInZOrder</span>([&amp;](Layer* layer) &#123;</span><br><span class="line">                    <span class="keyword">auto</span> compositionLayer = layer-&gt;<span class="built_in">getCompositionLayer</span>();</span><br><span class="line">                    <span class="keyword">if</span> (compositionLayer == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">                        <span class="keyword">return</span>;</span><br><span class="line">                    &#125;</span><br><span class="line"></span><br><span class="line">                    <span class="type">const</span> <span class="keyword">auto</span> displayId = displayDevice-&gt;<span class="built_in">getId</span>();</span><br><span class="line">                    sp&lt;compositionengine::LayerFE&gt; layerFE = compositionLayer-&gt;<span class="built_in">getLayerFE</span>();</span><br><span class="line">                    <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(layerFE.<span class="built_in">get</span>() == <span class="literal">nullptr</span>);</span><br><span class="line"></span><br><span class="line">                    <span class="type">bool</span> needsOutputLayer = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">                    <span class="comment">// 对属于给定图层堆栈上的layer, 将其可视区域与其所在Display相交</span></span><br><span class="line">                    <span class="comment">// 相交结果不为空，则说明其在或者其一部分在显示屏幕上</span></span><br><span class="line">                    <span class="comment">// needsOutputLayer标记为true</span></span><br><span class="line">                    <span class="keyword">if</span> (display-&gt;<span class="built_in">belongsInOutput</span>(layer-&gt;<span class="built_in">getLayerStack</span>(),</span><br><span class="line">                                                 layer-&gt;<span class="built_in">getPrimaryDisplayOnly</span>())) &#123;</span><br><span class="line">                        Region <span class="built_in">drawRegion</span>(tr.<span class="built_in">transform</span>(</span><br><span class="line">                                layer-&gt;visibleNonTransparentRegion));</span><br><span class="line">                        drawRegion.<span class="built_in">andSelf</span>(bounds);</span><br><span class="line">                        <span class="keyword">if</span> (!drawRegion.<span class="built_in">isEmpty</span>()) &#123;</span><br><span class="line">                            needsOutputLayer = <span class="literal">true</span>;</span><br><span class="line">                        &#125;</span><br><span class="line">                    &#125;</span><br><span class="line"></span><br><span class="line">                    <span class="comment">// Layer有内容在屏幕上</span></span><br><span class="line">                    <span class="keyword">if</span> (needsOutputLayer) &#123;</span><br><span class="line">                        layersSortedByZ.<span class="built_in">emplace_back</span>(</span><br><span class="line">                                display-&gt;<span class="built_in">getOrCreateOutputLayer</span>(displayId, compositionLayer,</span><br><span class="line">                                                                layerFE));</span><br><span class="line">                        deprecated_layersSortedByZ.<span class="built_in">add</span>(layer);</span><br><span class="line"></span><br><span class="line">                        <span class="keyword">auto</span>&amp; outputLayerState = layersSortedByZ.<span class="built_in">back</span>()-&gt;<span class="built_in">editState</span>();</span><br><span class="line">                        outputLayerState.visibleRegion =</span><br><span class="line">                                tr.<span class="built_in">transform</span>(layer-&gt;visibleRegion.<span class="built_in">intersect</span>(displayState.viewport));</span><br><span class="line">                    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (displayId) &#123;</span><br><span class="line">                        <span class="comment">// 到这个分支里说明Layer之前有内容显示，但现在没有内容显示在屏幕上</span></span><br><span class="line">                        <span class="comment">// 此时我们需要清理该Layer对应的Fence，销毁HWC Layer</span></span><br><span class="line">                        <span class="type">bool</span> hasExistingOutputLayer =</span><br><span class="line">                                display-&gt;<span class="built_in">getOutputLayerForLayer</span>(compositionLayer.<span class="built_in">get</span>()) != <span class="literal">nullptr</span>;</span><br><span class="line"></span><br><span class="line">                        <span class="comment">// mLayersWithQueuedFrames 这个变量还记不，是在handlePageFlip方法中，顺序</span></span><br><span class="line">                        <span class="comment">// 遍历Z轴Layer时添加进入的。</span></span><br><span class="line">                        <span class="type">bool</span> hasQueuedFrames = std::<span class="built_in">find</span>(mLayersWithQueuedFrames.<span class="built_in">cbegin</span>(),</span><br><span class="line">                                                         mLayersWithQueuedFrames.<span class="built_in">cend</span>(),</span><br><span class="line">                                                         layer) != mLayersWithQueuedFrames.<span class="built_in">cend</span>();</span><br><span class="line"></span><br><span class="line">                        <span class="keyword">if</span> (hasExistingOutputLayer &amp;&amp; hasQueuedFrames) &#123;</span><br><span class="line">                            layersNeedingFences.<span class="built_in">add</span>(layer);</span><br><span class="line">                        &#125;</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 将数据更新到Display中</span></span><br><span class="line">            display-&gt;<span class="built_in">setOutputLayersOrderedByZ</span>(std::<span class="built_in">move</span>(layersSortedByZ));</span><br><span class="line"></span><br><span class="line">            displayDevice-&gt;<span class="built_in">setVisibleLayersSortedByZ</span>(deprecated_layersSortedByZ);</span><br><span class="line">            displayDevice-&gt;<span class="built_in">setLayersNeedingFences</span>(layersNeedingFences);</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 未定义的区域。也就是屏幕的大小减去屏幕的非透明区域opaqueRegion余下的部分。</span></span><br><span class="line">            Region undefinedRegion&#123;bounds&#125;;</span><br><span class="line">            undefinedRegion.<span class="built_in">subtractSelf</span>(tr.<span class="built_in">transform</span>(opaqueRegion));</span><br><span class="line"></span><br><span class="line">            display-&gt;<span class="built_in">editState</span>().undefinedRegion = undefinedRegion;</span><br><span class="line">            display-&gt;<span class="built_in">editState</span>().dirtyRegion.<span class="built_in">orSelf</span>(dirtyRegion);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>总的来说，rebuildLayerStacks就是反向遍历Z轴计算各个Layer的可视区域，之后 顺序遍历Z轴Layer将相关信息更新到对应Diplay中。</p>
+<h2 id="1-4-SurfaceFlinger-calculateWorkingSet"><a href="#1-4-SurfaceFlinger-calculateWorkingSet" class="headerlink" title="1.4 SurfaceFlinger::calculateWorkingSet"></a>1.4 SurfaceFlinger::calculateWorkingSet</h2><p>再看这个方法之前先瞄一眼各个Layer之前的关系：</p>
+<p><img src="/.io//5_4_layer_list.png" alt="图片"></p>
+<p>上图中标红的appId就是在此方法内的latchCompositionState方法中赋值的。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::calculateWorkingSet</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(__FUNCTION__);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 建立HWC中的Layer列表</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">CC_UNLIKELY</span>(mGeometryInvalid)) &#123;</span><br><span class="line">        mGeometryInvalid = <span class="literal">false</span>;</span><br><span class="line">        <span class="comment">// 同样需要针对各个Display做处理</span></span><br><span class="line">        <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, displayDevice] : mDisplays) &#123;</span><br><span class="line">            <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line"></span><br><span class="line">            <span class="type">uint32_t</span> zOrder = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 按照Z轴的顺序，依次给可见OutputLayer在HWC中建立映射</span></span><br><span class="line">            <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; layer : display-&gt;<span class="built_in">getOutputLayersOrderedByZ</span>()) &#123;</span><br><span class="line">                <span class="keyword">auto</span>&amp; compositionState = layer-&gt;<span class="built_in">editState</span>();</span><br><span class="line">                compositionState.forceClientComposition = <span class="literal">false</span>;</span><br><span class="line">                <span class="keyword">if</span> (!compositionState.hwc || mDebugDisableHWC || mDebugRegion) &#123;</span><br><span class="line">                    compositionState.forceClientComposition = <span class="literal">true</span>;</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                <span class="comment">// Z轴顺序依次递增</span></span><br><span class="line">                compositionState.z = zOrder++;</span><br><span class="line"></span><br><span class="line">                <span class="comment">// 更新与显示无关的合成状态，其实就是将Layer的状态信息放在CompositionState中了。</span></span><br><span class="line">                <span class="comment">// 也就是frontEnd（LayerFECompositionState）中</span></span><br><span class="line">                layer-&gt;<span class="built_in">getLayerFE</span>().<span class="built_in">latchCompositionState</span>(layer-&gt;<span class="built_in">getLayer</span>().<span class="built_in">editState</span>().frontEnd,</span><br><span class="line">                                                          <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line">                <span class="comment">// 重新计算OutputLayer的几何状态</span></span><br><span class="line">                <span class="comment">// 比如根据显示屏全局矩阵调整该Layer的DisplayFrame、</span></span><br><span class="line">                <span class="comment">// 变换窗口裁剪以匹配缓冲区坐标系等等。</span></span><br><span class="line">                layer-&gt;<span class="built_in">updateCompositionState</span>(<span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line">                <span class="comment">// 将Layer更新完毕的几何状态写入HWC</span></span><br><span class="line">                layer-&gt;<span class="built_in">writeStateToHWC</span>(<span class="literal">true</span>);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 设置每帧的数据</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, displayDevice] : mDisplays) &#123;</span><br><span class="line">        <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span> displayId = display-&gt;<span class="built_in">getId</span>();</span><br><span class="line">        <span class="keyword">if</span> (!displayId) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">auto</span>* profile = display-&gt;<span class="built_in">getDisplayColorProfile</span>();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (mDrawingState.colorMatrixChanged) &#123;</span><br><span class="line">            display-&gt;<span class="built_in">setColorTransform</span>(mDrawingState.colorMatrix);</span><br><span class="line">        &#125;</span><br><span class="line">        Dataspace targetDataspace = Dataspace::UNKNOWN;</span><br><span class="line">        <span class="keyword">if</span> (useColorManagement) &#123;</span><br><span class="line">            ColorMode colorMode;</span><br><span class="line">            RenderIntent renderIntent;</span><br><span class="line">            <span class="built_in">pickColorMode</span>(displayDevice, &amp;colorMode, &amp;targetDataspace, &amp;renderIntent);</span><br><span class="line">            display-&gt;<span class="built_in">setColorMode</span>(colorMode, targetDataspace, renderIntent);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; layer : displayDevice-&gt;<span class="built_in">getVisibleLayersSortedByZ</span>()) &#123;</span><br><span class="line">            ......</span><br><span class="line">            <span class="type">const</span> <span class="keyword">auto</span>&amp; displayState = display-&gt;<span class="built_in">getState</span>();</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 将Layer的mActiveBuffer设置到HWComposer中</span></span><br><span class="line">            layer-&gt;<span class="built_in">setPerFrameData</span>(displayDevice, displayState.transform, displayState.viewport,</span><br><span class="line">                                   displayDevice-&gt;<span class="built_in">getSupportedPerFrameMetadata</span>(),</span><br><span class="line">                                   <span class="built_in">isHdrColorMode</span>(displayState.colorMode) ? Dataspace::UNKNOWN</span><br><span class="line">                                                                          : targetDataspace);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mDrawingState.colorMatrixChanged = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, displayDevice] : mDisplays) &#123;</span><br><span class="line">        <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">        <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; layer : displayDevice-&gt;<span class="built_in">getVisibleLayersSortedByZ</span>()) &#123;</span><br><span class="line">            <span class="keyword">auto</span>&amp; layerState = layer-&gt;<span class="built_in">getCompositionLayer</span>()-&gt;<span class="built_in">editState</span>().frontEnd;</span><br><span class="line">            layerState.compositionType = <span class="built_in">static_cast</span>&lt;Hwc2::IComposerClient::Composition&gt;(</span><br><span class="line">                    layer-&gt;<span class="built_in">getCompositionType</span>(displayDevice));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里建立HWC中的Layer列表： </p>
+<ol>
+<li>按照Z轴的顺序，依次给可见OutputLayer在HWC中建立映射也就是将Layer的状态信息放在CompositionState中，并重新计算OutputLayer的几何状态，写入HWC</li>
+<li>将Layer的mActiveBuffer设置到HWComposer中</li>
+</ol>
+<h2 id="1-5-SurfaceFlinger-beginFrame"><a href="#1-5-SurfaceFlinger-beginFrame" class="headerlink" title="1.5 SurfaceFlinger::beginFrame"></a>1.5 SurfaceFlinger::beginFrame</h2><p>开始合成前的准备。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::beginFrame</span><span class="params">(<span class="type">const</span> sp&lt;DisplayDevice&gt;&amp; displayDevice)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; displayState = display-&gt;<span class="built_in">getState</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 是否有待更新的区域</span></span><br><span class="line">    <span class="type">bool</span> dirty = !display-&gt;<span class="built_in">getDirtyRegion</span>(<span class="literal">false</span>).<span class="built_in">isEmpty</span>();</span><br><span class="line">    <span class="comment">// 可见Layer数量是否为0</span></span><br><span class="line">    <span class="type">bool</span> empty = displayDevice-&gt;<span class="built_in">getVisibleLayersSortedByZ</span>().<span class="built_in">size</span>() == <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 上次合成是否有可见Layer</span></span><br><span class="line">    <span class="type">bool</span> wasEmpty = !displayState.lastCompositionHadVisibleLayers;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 没有变化时或者有变化但此时没有可见Layer且上次合成时也没有就跳过</span></span><br><span class="line">    <span class="type">bool</span> mustRecompose = dirty &amp;&amp; !(empty &amp;&amp; wasEmpty);</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="type">char</span> flagPrefix[] = &#123;<span class="string">&#x27;-&#x27;</span>, <span class="string">&#x27;+&#x27;</span>&#125;;</span><br><span class="line">    <span class="built_in">static_cast</span>&lt;<span class="type">void</span>&gt;(flagPrefix);</span><br><span class="line">    <span class="built_in">ALOGV_IF</span>(displayDevice-&gt;<span class="built_in">isVirtual</span>(), <span class="string">&quot;%s: %s composition for %s (%cdirty %cempty %cwasEmpty)&quot;</span>,</span><br><span class="line">             __FUNCTION__, mustRecompose ? <span class="string">&quot;doing&quot;</span> : <span class="string">&quot;skipping&quot;</span>,</span><br><span class="line">             displayDevice-&gt;<span class="built_in">getDebugName</span>().<span class="built_in">c_str</span>(), flagPrefix[dirty], flagPrefix[empty],</span><br><span class="line">             flagPrefix[wasEmpty]);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这里面其实没有做什么特殊的操作，我们看一下DisplayDevice相关的类</span></span><br><span class="line">    display-&gt;<span class="built_in">getRenderSurface</span>()-&gt;<span class="built_in">beginFrame</span>(mustRecompose);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mustRecompose) &#123;</span><br><span class="line">        display-&gt;<span class="built_in">editState</span>().lastCompositionHadVisibleLayers = !empty;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><img src="/.io//5_5_DisplayDevice.png" alt="图片"></p>
+<p>这个DiplayDevice是怎么初始化的呢，后续再看。</p>
+<h2 id="1-6-SurfaceFlinger-doComposition"><a href="#1-6-SurfaceFlinger-doComposition" class="headerlink" title="1.6 SurfaceFlinger::doComposition"></a>1.6 SurfaceFlinger::doComposition</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::doComposition</span><span class="params">(<span class="type">const</span> sp&lt;DisplayDevice&gt;&amp; displayDevice, <span class="type">bool</span> repaintEverything)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;doComposition&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; displayState = display-&gt;<span class="built_in">getState</span>();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (displayState.isEnabled) &#123;</span><br><span class="line">        <span class="comment">// 将脏区转换为该屏幕的坐标空间</span></span><br><span class="line">        <span class="type">const</span> Region dirtyRegion = display-&gt;<span class="built_in">getDirtyRegion</span>(repaintEverything);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 1.6.1 请求buffer,做合成操作</span></span><br><span class="line">        <span class="built_in">doDisplayComposition</span>(displayDevice, dirtyRegion);</span><br><span class="line"></span><br><span class="line">        display-&gt;<span class="built_in">editState</span>().dirtyRegion.<span class="built_in">clear</span>();</span><br><span class="line">        display-&gt;<span class="built_in">getRenderSurface</span>()-&gt;<span class="built_in">flip</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Fence同步相关处理，暂时忽略</span></span><br><span class="line">    <span class="built_in">postFramebuffer</span>(displayDevice);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-6-1-SurfaceFlinger-doDisplayComposition"><a href="#1-6-1-SurfaceFlinger-doDisplayComposition" class="headerlink" title="1.6.1 SurfaceFlinger::doDisplayComposition"></a>1.6.1 SurfaceFlinger::doDisplayComposition</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::doDisplayComposition</span><span class="params">(<span class="type">const</span> sp&lt;DisplayDevice&gt;&amp; displayDevice,</span></span></span><br><span class="line"><span class="params"><span class="function">                                          <span class="type">const</span> Region&amp; inDirtyRegion)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 仅在以下情况下才需要实际构成显示：</span></span><br><span class="line">    <span class="comment">// 1）由HWC处理，它可能需要此操作以使其虚拟显示状态机保持同步</span></span><br><span class="line">    <span class="comment">// 2）有工作要做（脏区不为空）</span></span><br><span class="line">    <span class="keyword">if</span> (!displayDevice-&gt;<span class="built_in">getId</span>() &amp;&amp; inDirtyRegion.<span class="built_in">isEmpty</span>()) &#123;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;Skipping display composition&quot;</span>);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;doDisplayComposition&quot;</span>);</span><br><span class="line">    base::unique_fd readyFence;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.6.2 合成Surface</span></span><br><span class="line">    <span class="keyword">if</span> (!<span class="built_in">doComposeSurfaces</span>(displayDevice, Region::INVALID_REGION, &amp;readyFence)) <span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 交换缓冲区，buffer已经被填充了合成所有Layer后的帧数据。</span></span><br><span class="line">    <span class="comment">// 将FrameBuffer发送给HWC, 也就是将内容渲染到硬件帧缓冲区中去</span></span><br><span class="line">    display-&gt;<span class="built_in">getRenderSurface</span>()-&gt;<span class="built_in">queueBuffer</span>(std::<span class="built_in">move</span>(readyFence));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-6-2-SurfaceFlinger-doComposeSurfaces"><a href="#1-6-2-SurfaceFlinger-doComposeSurfaces" class="headerlink" title="1.6.2 SurfaceFlinger::doComposeSurfaces"></a>1.6.2 SurfaceFlinger::doComposeSurfaces</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">SurfaceFlinger::doComposeSurfaces</span><span class="params">(<span class="type">const</span> sp&lt;DisplayDevice&gt;&amp; displayDevice,</span></span></span><br><span class="line"><span class="params"><span class="function">                                       <span class="type">const</span> Region&amp; debugRegion, base::unique_fd* readyFence)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;doComposeSurfaces&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; displayState = display-&gt;<span class="built_in">getState</span>();</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span> displayId = display-&gt;<span class="built_in">getId</span>();</span><br><span class="line">    <span class="keyword">auto</span>&amp; renderEngine = <span class="built_in">getRenderEngine</span>();</span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> supportProtectedContent = renderEngine.<span class="built_in">supportsProtectedContent</span>();</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="type">const</span> Region <span class="title">bounds</span><span class="params">(displayState.bounds)</span></span>;</span><br><span class="line">    <span class="function"><span class="type">const</span> DisplayRenderArea <span class="title">renderArea</span><span class="params">(displayDevice)</span></span>;</span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> hasClientComposition = <span class="built_in">getHwComposer</span>().<span class="built_in">hasClientComposition</span>(displayId);</span><br><span class="line">    <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;hasClientComposition&quot;</span>, hasClientComposition);</span><br><span class="line"></span><br><span class="line">    <span class="type">bool</span> applyColorMatrix = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    renderengine::DisplaySettings clientCompositionDisplay;</span><br><span class="line">    std::vector&lt;renderengine::LayerSettings&gt; clientCompositionLayers;</span><br><span class="line">    sp&lt;GraphicBuffer&gt; buf;</span><br><span class="line">    base::unique_fd fd;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (hasClientComposition) &#123;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;hasClientComposition&quot;</span>);</span><br><span class="line"></span><br><span class="line">        ......</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 请求GraphicBuffer, 通过ANativeWindow向GPU申请</span></span><br><span class="line">        buf = display-&gt;<span class="built_in">getRenderSurface</span>()-&gt;<span class="built_in">dequeueBuffer</span>(&amp;fd);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (buf == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            <span class="built_in">ALOGW</span>(<span class="string">&quot;Dequeuing buffer for display [%s] failed, bailing out of &quot;</span></span><br><span class="line">                  <span class="string">&quot;client composition for this frame&quot;</span>,</span><br><span class="line">                  displayDevice-&gt;<span class="built_in">getDisplayName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 将DisplayState相关信息赋值给clientCompositionDisplay，以供HWC使用</span></span><br><span class="line">        clientCompositionDisplay.physicalDisplay = displayState.scissor;</span><br><span class="line">        clientCompositionDisplay.clip = displayState.scissor;</span><br><span class="line">        <span class="type">const</span> ui::Transform&amp; displayTransform = displayState.transform;</span><br><span class="line">        clientCompositionDisplay.globalTransform = displayTransform.<span class="built_in">asMatrix4</span>();</span><br><span class="line">        clientCompositionDisplay.orientation = displayState.orientation;</span><br><span class="line"></span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span>* profile = display-&gt;<span class="built_in">getDisplayColorProfile</span>();</span><br><span class="line">        Dataspace outputDataspace = Dataspace::UNKNOWN;</span><br><span class="line">        <span class="keyword">if</span> (profile-&gt;<span class="built_in">hasWideColorGamut</span>()) &#123;</span><br><span class="line">            outputDataspace = displayState.dataspace;</span><br><span class="line">        &#125;</span><br><span class="line">        clientCompositionDisplay.outputDataspace = outputDataspace;</span><br><span class="line">        clientCompositionDisplay.maxLuminance =</span><br><span class="line">                profile-&gt;<span class="built_in">getHdrCapabilities</span>().<span class="built_in">getDesiredMaxLuminance</span>();</span><br><span class="line"></span><br><span class="line">        <span class="type">const</span> <span class="type">bool</span> hasDeviceComposition = <span class="built_in">getHwComposer</span>().<span class="built_in">hasDeviceComposition</span>(displayId);</span><br><span class="line">        <span class="type">const</span> <span class="type">bool</span> skipClientColorTransform =</span><br><span class="line">                <span class="built_in">getHwComposer</span>()</span><br><span class="line">                        .<span class="built_in">hasDisplayCapability</span>(displayId,</span><br><span class="line">                                              HWC2::DisplayCapability::SkipClientColorTransform);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Compute the global color transform matrix.</span></span><br><span class="line">        applyColorMatrix = !hasDeviceComposition &amp;&amp; !skipClientColorTransform;</span><br><span class="line">        <span class="keyword">if</span> (applyColorMatrix) &#123;</span><br><span class="line">            clientCompositionDisplay.colorTransform = displayState.colorTransformMat;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * 现在渲染以帧缓冲区为目标的图层</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line"></span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;Rendering client layers&quot;</span>);</span><br><span class="line">    <span class="type">bool</span> firstLayer = <span class="literal">true</span>;</span><br><span class="line">    Region clearRegion = Region::INVALID_REGION;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 遍历所有可见Layer</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; layer : displayDevice-&gt;<span class="built_in">getVisibleLayersSortedByZ</span>()) &#123;</span><br><span class="line">        <span class="function"><span class="type">const</span> Region <span class="title">viewportRegion</span><span class="params">(displayState.viewport)</span></span>;</span><br><span class="line">        <span class="function"><span class="type">const</span> Region <span class="title">clip</span><span class="params">(viewportRegion.intersect(layer-&gt;visibleRegion))</span></span>;</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;Layer: %s&quot;</span>, layer-&gt;<span class="built_in">getName</span>().<span class="built_in">string</span>());</span><br><span class="line">        <span class="built_in">ALOGV</span>(<span class="string">&quot;  Composition type: %s&quot;</span>, <span class="built_in">toString</span>(layer-&gt;<span class="built_in">getCompositionType</span>(displayDevice)).<span class="built_in">c_str</span>());</span><br><span class="line">        <span class="keyword">if</span> (!clip.<span class="built_in">isEmpty</span>()) &#123;</span><br><span class="line">            <span class="keyword">switch</span> (layer-&gt;<span class="built_in">getCompositionType</span>(displayDevice)) &#123;</span><br><span class="line">                ......</span><br><span class="line">                <span class="keyword">case</span> Hwc2::IComposerClient::Composition::CLIENT: &#123;</span><br><span class="line">                    renderengine::LayerSettings layerSettings;</span><br><span class="line">                    <span class="comment">// 根据相关配置设置Layer状态：渲染区域、alpha通道、颜色变换等等</span></span><br><span class="line">                    <span class="type">bool</span> prepared =</span><br><span class="line">                            layer-&gt;<span class="built_in">prepareClientLayer</span>(renderArea, clip, clearRegion,</span><br><span class="line">                                                      supportProtectedContent, layerSettings);</span><br><span class="line">                    <span class="keyword">if</span> (prepared) &#123;</span><br><span class="line">                        <span class="comment">// 放入clientCompositionLayers中备用</span></span><br><span class="line">                        clientCompositionLayers.<span class="built_in">push_back</span>(layerSettings);</span><br><span class="line">                    &#125;</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                &#125;</span><br><span class="line">                <span class="keyword">default</span>:</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="built_in">ALOGV</span>(<span class="string">&quot;  Skipping for empty clip&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        firstLayer = <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// hasClientComposition为true说明使用GPU合成</span></span><br><span class="line">    <span class="keyword">if</span> (hasClientComposition) &#123;</span><br><span class="line">        clientCompositionDisplay.clearRegion = clearRegion;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 在这里提高GPU频率，因为会进行色彩空间转换，比较耗时。 </span></span><br><span class="line">        <span class="comment">// 提高了GPU频率，以便GPU合成可以及时完成。</span></span><br><span class="line">        <span class="comment">// 之后必须重新设置GPU频率，因为高频率会消耗额外的电池。</span></span><br><span class="line">        <span class="type">const</span> <span class="type">bool</span> expensiveRenderingExpected =</span><br><span class="line">                clientCompositionDisplay.outputDataspace == Dataspace::DISPLAY_P3;</span><br><span class="line">        <span class="keyword">if</span> (expensiveRenderingExpected &amp;&amp; displayId) &#123;</span><br><span class="line">            mPowerAdvisor.<span class="built_in">setExpensiveRenderingExpected</span>(*displayId, <span class="literal">true</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        .......</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 使用渲染引擎（renderengine/gl/GLESRenderEngine.cpp）合成所有Layer</span></span><br><span class="line">        renderEngine.<span class="built_in">drawLayers</span>(clientCompositionDisplay, clientCompositionLayers,</span><br><span class="line">                                buf-&gt;<span class="built_in">getNativeBuffer</span>(), <span class="comment">/*useFramebufferCache=*/</span><span class="literal">true</span>, std::<span class="built_in">move</span>(fd),</span><br><span class="line">                                readyFence);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (displayId) &#123;</span><br><span class="line">        mPowerAdvisor.<span class="built_in">setExpensiveRenderingExpected</span>(*displayId, <span class="literal">false</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>先请求GraphicBuffer，然后通过GLESRenderEngine合成所有Layer.</p>
+<h1 id="二-计算Layer可视区域"><a href="#二-计算Layer可视区域" class="headerlink" title="二. 计算Layer可视区域"></a>二. 计算Layer可视区域</h1><p>一般来讲，我们手机App Layer如下：<br><img src="/.io//5_2_appZ.png" alt="图片"></p>
+<p>计算可视区域的时候，从Z轴大的开始遍历计算。这样做的好处是，如果计算到某一层Layer时，完全不透明的可视化区域已经占满整个屏幕，那么这之下的Layer可视化区域就可以不用计算了。</p>
+<p>在开始阅读代码之前，还是有必要理清楚：</p>
+<ol>
+<li>可见区域（Visible Region）</li>
+<li>透明区域（Transparent Region）</li>
+<li>半透明区域（Translucent Region）</li>
+<li>完全不透明区域（Opaque Region）</li>
+<li>被覆盖区域（Covered Region）</li>
+</ol>
+<p>如下图:</p>
+<p><img src="/.io//5_3_visiableregion.png" alt="图片"></p>
+<p>如果A1为W2中半透明区域，A2在W1中全透明，W2中不透明，A3为W1中完全不透明区域。<br>则对于Surface W2而言，可见区域为W2-A1-A3.</p>
+<h2 id="2-1-SurfaceFlinger-computeVisibleRegions"><a href="#2-1-SurfaceFlinger-computeVisibleRegions" class="headerlink" title="2.1 SurfaceFlinger:computeVisibleRegions"></a>2.1 SurfaceFlinger:computeVisibleRegions</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::computeVisibleRegions</span><span class="params">(<span class="type">const</span> sp&lt;<span class="type">const</span> DisplayDevice&gt;&amp; displayDevice,</span></span></span><br><span class="line"><span class="params"><span class="function">                                           Region&amp; outDirtyRegion, Region&amp; outOpaqueRegion)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;computeVisibleRegions&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line"></span><br><span class="line">    Region aboveOpaqueLayers;</span><br><span class="line">    Region aboveCoveredLayers;</span><br><span class="line">    Region dirty;</span><br><span class="line"></span><br><span class="line">    outDirtyRegion.<span class="built_in">clear</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 先找到“感兴趣的”Layer，也就是这个layer是属于SecureDisplay的</span></span><br><span class="line">    <span class="comment">// 暂时没有找到相关的说明，忽略好了</span></span><br><span class="line">    Layer* layerOfInterest = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="type">bool</span> bIgnoreLayer = <span class="literal">false</span>;</span><br><span class="line">    mDrawingState.<span class="built_in">traverseInReverseZOrder</span>([&amp;](Layer* layer) &#123;</span><br><span class="line">        <span class="keyword">if</span> (layer-&gt;<span class="built_in">isSecureDisplay</span>()) &#123;</span><br><span class="line">            bIgnoreLayer = <span class="literal">true</span>;</span><br><span class="line">            <span class="keyword">if</span> (displayDevice-&gt;<span class="built_in">isPrimary</span>()) &#123;</span><br><span class="line">                layerOfInterest = layer;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 反向遍历Z轴计算可视化区域</span></span><br><span class="line">    mDrawingState.<span class="built_in">traverseInReverseZOrder</span>([&amp;](Layer* layer) &#123;</span><br><span class="line">        <span class="comment">// 获取当前绘制中的Surface</span></span><br><span class="line">        <span class="type">const</span> Layer::State&amp; <span class="built_in">s</span>(layer-&gt;<span class="built_in">getDrawingState</span>());</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 只考虑给定图层堆栈上的layer</span></span><br><span class="line">        <span class="keyword">if</span> (!display-&gt;<span class="built_in">belongsInOutput</span>(layer-&gt;<span class="built_in">getLayerStack</span>(), layer-&gt;<span class="built_in">getPrimaryDisplayOnly</span>())) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 忽略SecureDisplay中的layer</span></span><br><span class="line">        <span class="keyword">if</span> (bIgnoreLayer &amp;&amp; layerOfInterest != layer) &#123;</span><br><span class="line">            Region visibleNonTransRegion;</span><br><span class="line">            visibleNonTransRegion.<span class="built_in">set</span>(<span class="built_in">Rect</span>(<span class="number">0</span>, <span class="number">0</span>));</span><br><span class="line">            layer-&gt;<span class="built_in">setVisibleNonTransparentRegion</span>(visibleNonTransRegion);</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 完全不透明的Surface区域</span></span><br><span class="line">        Region opaqueRegion;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 在屏幕上可见且不完全透明的Surface区域。 </span></span><br><span class="line">        <span class="comment">// 这实际上是该层的足迹减去其上方的不透明区域。</span></span><br><span class="line">        <span class="comment">// 半透明Surface覆盖的区域被认为是可见的。</span></span><br><span class="line">        Region visibleRegion;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 被其上方所有可见区域覆盖的Surface区域（包括半透明区域）。</span></span><br><span class="line">        Region coveredRegion;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 暗示完全透明的表面区域。 这仅用于告诉图层何时没有可见的非透明区域，可以将其从图层列表中删除。 </span></span><br><span class="line">        <span class="comment">// 它不会影响此层或它下面的任何层的visibleRegion。 </span></span><br><span class="line">        <span class="comment">// 如果应用程序不遵守SurfaceView限制（不幸的是，有些不遵守），则提示可能不正确。</span></span><br><span class="line">        Region transparentRegion;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 处理不可见或者被隐藏的Surface的方式就是将其可视化的区域设置为空</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">CC_LIKELY</span>(layer-&gt;<span class="built_in">isVisible</span>())) &#123;</span><br><span class="line">            <span class="comment">// 如果该Surface不是完全不透明的，则视为半透明</span></span><br><span class="line">            <span class="type">const</span> <span class="type">bool</span> translucent = !layer-&gt;<span class="built_in">isOpaque</span>(s);</span><br><span class="line">            Rect <span class="built_in">bounds</span>(layer-&gt;<span class="built_in">getScreenBounds</span>());</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 当前Surface的可视区域默认为屏幕大小或者Surface在屏幕中的大小</span></span><br><span class="line">            visibleRegion.<span class="built_in">set</span>(bounds);</span><br><span class="line">            ui::Transform tr = layer-&gt;<span class="built_in">getTransform</span>();</span><br><span class="line"></span><br><span class="line">            <span class="comment">// Region为空则说明没有可视区域</span></span><br><span class="line">            <span class="comment">// 注意 Region 是一个矩形（Rect）集合</span></span><br><span class="line">            <span class="keyword">if</span> (!visibleRegion.<span class="built_in">isEmpty</span>()) &#123;</span><br><span class="line">                <span class="comment">// 首先从可见区域移除透明区域</span></span><br><span class="line">                <span class="keyword">if</span> (translucent) &#123;</span><br><span class="line">                    <span class="comment">// 函数preserveRects的返回值为false</span></span><br><span class="line">                    <span class="comment">// 说明需要忽略掉当前正在处理的应用程序窗口的透明区域</span></span><br><span class="line">                    <span class="keyword">if</span> (tr.<span class="built_in">preserveRects</span>()) &#123;</span><br><span class="line">                        <span class="comment">// 标记透明区域，这个透明区域就是transparentRegionHint遍历</span></span><br><span class="line">                        <span class="comment">// 在 SurfaceFlinger.setClientStateLocked过程中设置的</span></span><br><span class="line">                        transparentRegion = tr.<span class="built_in">transform</span>(layer-&gt;<span class="built_in">getActiveTransparentRegion</span>(s));</span><br><span class="line">                    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                        <span class="comment">// 转换太复杂，无法进行透明区域优化。</span></span><br><span class="line">                        transparentRegion.<span class="built_in">clear</span>();</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                <span class="comment">// 计算不透明区域</span></span><br><span class="line">                <span class="type">const</span> <span class="type">int32_t</span> layerOrientation = tr.<span class="built_in">getOrientation</span>();</span><br><span class="line">                <span class="keyword">if</span> (layer-&gt;<span class="built_in">getAlpha</span>() == <span class="number">1.0f</span> &amp;&amp; !translucent &amp;&amp;</span><br><span class="line">                        layer-&gt;<span class="built_in">getRoundedCornerState</span>().radius == <span class="number">0.0f</span> &amp;&amp;</span><br><span class="line">                        ((layerOrientation &amp; ui::Transform::ROT_INVALID) == <span class="literal">false</span>)) &#123;</span><br><span class="line"></span><br><span class="line">                    <span class="comment">// 当当前正在处理的应用程序窗口是完全不透明，并且旋转方向也是规则时</span></span><br><span class="line">                    <span class="comment">// 那么它的完全不透明区域opaqueRegion就等于计算所得到的可见区域visibleRegion</span></span><br><span class="line">                    opaqueRegion = visibleRegion;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 该Surface没有可视区域，则清空相关变量，直接返回</span></span><br><span class="line">        <span class="keyword">if</span> (visibleRegion.<span class="built_in">isEmpty</span>()) &#123;</span><br><span class="line">            layer-&gt;<span class="built_in">clearVisibilityRegions</span>();</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 将覆盖区域裁剪到可见区域</span></span><br><span class="line">        <span class="comment">// aboveCoveredLayers用来描述当前正在处理的应用程序窗口的所有上层应用程序窗口所组成的可见区域</span></span><br><span class="line">        <span class="comment">// 将这个区域与当前正在处理的应用程序窗口的可见区域visibleRegion相交，就可以得到当前正在处理的应用程序窗口的被覆盖区域coveredRegion</span></span><br><span class="line">        <span class="comment">// 而将这个区域与当前正在处理的应用程序窗口的可见区域visibleRegion相或一下，就可以得到下一个应用程序窗口的所有上层应用程序窗口所组成的可见区域aboveCoveredLayers。</span></span><br><span class="line">        coveredRegion = aboveCoveredLayers.<span class="built_in">intersect</span>(visibleRegion);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// aboveOpaqueLayers用来描述当前正在处理的应用程序窗口的所有上层应用程序窗口所组成的完全不透明区域</span></span><br><span class="line">        aboveCoveredLayers.<span class="built_in">orSelf</span>(visibleRegion);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 这个区域从当前正在处理的应用程序窗口的可见区域visibleRegion减去后，就可以得到当前正在处理的应用程序窗口的最终可见区域visibleRegion。</span></span><br><span class="line">        visibleRegion.<span class="built_in">subtractSelf</span>(aboveOpaqueLayers);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 计算Layer的脏区域，所谓脏区域就是需要重新执行渲染操作的</span></span><br><span class="line">        <span class="keyword">if</span> (layer-&gt;contentDirty) &#123;</span><br><span class="line">            <span class="comment">// 成员变量contentDirty的值为true，则说明当前正在处理的Layer上一次的状态还未来得及处理</span></span><br><span class="line">            <span class="comment">// 即它当前的内容是脏的。在这个状况下，只需要将此次的可见区域与上一次的可见区域合并即可</span></span><br><span class="line">            dirty = visibleRegion;</span><br><span class="line">            <span class="comment">// as well, as the old visible region</span></span><br><span class="line">            dirty.<span class="built_in">orSelf</span>(layer-&gt;visibleRegion);</span><br><span class="line">            layer-&gt;contentDirty = <span class="literal">false</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 当上一次状态已经处理了，也就是显示内容没有更新,则无需重新渲染所有区域。</span></span><br><span class="line">            <span class="comment">// 现在只需要处理一下两种情况：</span></span><br><span class="line">            <span class="comment">// 1. 之前是被覆盖的区域，但现在不被覆盖了</span></span><br><span class="line">            <span class="comment">// 2. 由于窗口大小变化而引发的新增不被覆盖区域</span></span><br><span class="line"></span><br><span class="line">            <span class="comment">// 针对第一种情况:</span></span><br><span class="line">            <span class="comment">// 将当前可见区域visibleRegion与它的上一次被覆盖区域oldCoveredRegion相交</span></span><br><span class="line">            <span class="comment">// 就可以得到之前是被覆盖的而现在不被覆盖了的区域，即可以得到第一部分需要重新渲染的区域</span></span><br><span class="line">            <span class="comment">// 上一次可见区域和被覆盖区域分别oldVisibleRegion, oldCoveredRegion</span></span><br><span class="line"></span><br><span class="line">            <span class="comment">// 针对第二种情况:</span></span><br><span class="line">            <span class="comment">// 由于将一个应用程序窗口的当前可见区域减去被覆盖区域即为它的当前不被覆盖的区域newExposed</span></span><br><span class="line">            <span class="comment">// 同理上一次不被覆盖的区域oldExposed就是上一次可见区域减去上一次被覆盖区域</span></span><br><span class="line">            <span class="comment">// 那么将一个应用程序窗口的当前不被覆盖的区域newExposed减去它的上一次不被覆盖的区域oldExposed，就可以得到新增的不被覆盖区域</span></span><br><span class="line">            <span class="type">const</span> Region newExposed = visibleRegion - coveredRegion;</span><br><span class="line">            <span class="type">const</span> Region oldVisibleRegion = layer-&gt;visibleRegion;</span><br><span class="line">            <span class="type">const</span> Region oldCoveredRegion = layer-&gt;coveredRegion;</span><br><span class="line">            <span class="type">const</span> Region oldExposed = oldVisibleRegion - oldCoveredRegion;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 将第一部分和第二部分需要重新渲染的区域组合起来，就可以得到当前Layer的脏区域dirty。</span></span><br><span class="line">            dirty = (visibleRegion&amp;oldCoveredRegion) | (newExposed-oldExposed);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 从该脏区域dirty减去上层的完全不透明区域</span></span><br><span class="line">        <span class="comment">// 因为后者的渲染不需要当前Layer参与</span></span><br><span class="line">        dirty.<span class="built_in">subtractSelf</span>(aboveOpaqueLayers);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 新的脏区域dirty累计到输出参数dirtyRegion中.</span></span><br><span class="line">        outDirtyRegion.<span class="built_in">orSelf</span>(dirty);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 更新计算到目前为止所得到的Layer的完全不透明区域</span></span><br><span class="line">        <span class="comment">// 这个是方便下一层Layer的计算</span></span><br><span class="line">        aboveOpaqueLayers.<span class="built_in">orSelf</span>(opaqueRegion);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 保存当前正在处理的Layer的可见区域和被覆盖区域以及可见非透明区域.</span></span><br><span class="line">        layer-&gt;<span class="built_in">setVisibleRegion</span>(visibleRegion);</span><br><span class="line">        layer-&gt;<span class="built_in">setCoveredRegion</span>(coveredRegion);</span><br><span class="line">        layer-&gt;<span class="built_in">setVisibleNonTransparentRegion</span>(</span><br><span class="line">                visibleRegion.<span class="built_in">subtract</span>(transparentRegion));</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 将前面所有的Layer组成的完全不透明区域aboveOpaqueLayers保存在输出参数opaqueRegion中</span></span><br><span class="line">    outOpaqueRegion = aboveOpaqueLayers;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="三-小结"><a href="#三-小结" class="headerlink" title="三. 小结"></a>三. 小结</h1><p>handleMessageRefresh – SF合成所有Layer大概步骤如下：</p>
+<ol>
+<li>preComposition<br>合成前遍历所有layer, 处理处于Drawing状态的Layer是否被更新了</li>
+<li>rebuildLayerStacks<br>反向遍历Z轴计算各个Layer的可视区域，之后 顺序遍历Z轴Layer将相关信息更新到对应Diplay中。</li>
+<li>calculateWorkingSet<br>这里建立HWC中的Layer列表： </li>
+<li>按照Z轴的顺序，依次给可见OutputLayer在HWC中建立映射也就是将Layer的状态信息放在CompositionState中，并重新计算OutputLayer的几何状态，写入HWC</li>
+<li>将Layer的mActiveBuffer设置到HWComposer中</li>
+<li>doComposition<br>正式的合成处理，使用渲染引擎合成所有layer，然后就是申请GraphicBuffer，向其中填充帧数据, 最终给到硬件帧缓冲区</li>
+<li>postComposition &amp;&amp; clear mLayersWithQueuedFrames<br>回调每个layer的onPostComposition并清空mLayersWithQueuedFrames，下一次vsync来到时，会在handlePageFlip中重新添加</li>
+</ol>
+<p>大概流程搞清楚了，接下来细细分析比如GraphicBuffer和Fence机制的工作原理, 等等，HWC好像还没有了解，先看看这个是怎么工作的。</p>
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>[Android Synchronization Fences – An Introduction]<a target="_blank" rel="noopener" href="http://netaz.blogspot.com/2013/10/android-fences-introduction-in-any.html">http://netaz.blogspot.com/2013/10/android-fences-introduction-in-any.html</a></li>
+<li>[Android 4.0.3 显示系统深入理解]<a target="_blank" rel="noopener" href="https://www.linuxidc.com/Linux/2012-03/55898p4.htm">https://www.linuxidc.com/Linux/2012-03/55898p4.htm</a></li>
+<li>[Clang 10 documentation ATTRIBUTES IN CLANG]<a target="_blank" rel="noopener" href="https://clang.llvm.org/docs/AttributeReference.html">https://clang.llvm.org/docs/AttributeReference.html</a></li>
+<li>[「Android」SurfaceFlinger分析]<a target="_blank" rel="noopener" href="https://www.cnblogs.com/1996swg/p/9790209.html">https://www.cnblogs.com/1996swg/p/9790209.html</a></li>
+<li>[显示系统：第005课_Vsync机制:第007节_rebuildLayerStacks源码分析]<a target="_blank" rel="noopener" href="http://www.pianshen.com/article/8541345041/">http://www.pianshen.com/article/8541345041/</a></li>
+<li>[Android系统Surface机制的SurfaceFlinger服务渲染应用程序UI的过程分析]<a target="_blank" rel="noopener" href="https://blog.csdn.net/luoshengyang/article/details/8079456">https://blog.csdn.net/luoshengyang/article/details/8079456</a></li>
+<li>[Android Region代码分析]<a target="_blank" rel="noopener" href="https://blog.csdn.net/fuyajun01/article/details/25551717?_t=t">https://blog.csdn.net/fuyajun01/article/details/25551717?_t=t</a></li>
+</ol>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-5-composer/" title="SurfaceFlinger(5)--composer">https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-5-composer/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Vsync/" rel="tag"># Vsync</a>
+              <a href="/tags/SurfaceFlinger/" rel="tag"># SurfaceFlinger</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/04/04/SurfaceFlinger-4-Layer-Surface/" rel="prev" title="SurfaceFlinger(4)--Layer&Surface">
+      <i class="fa fa-chevron-left"></i> SurfaceFlinger(4)--Layer&Surface
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-handleMessageRefresh"><span class="nav-text">一. handleMessageRefresh</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-SurfaceFlinger-handleMessageRefresh"><span class="nav-text">1.1 SurfaceFlinger:handleMessageRefresh</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-SurfaceFlinger-perComposition"><span class="nav-text">1.2 SurfaceFlinger:perComposition</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-1-LayerVector-traverseInZOrder"><span class="nav-text">1.2.1 LayerVector:traverseInZOrder</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-2-Layer-traverseInZOrder"><span class="nav-text">1.2.2 Layer:traverseInZOrder</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-2-2-1-Layer-makeTraversalList"><span class="nav-text">1.2.2.1 Layer:makeTraversalList</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-3-Layer-BufferLayer-onPreComposition"><span class="nav-text">1.2.3 Layer:BufferLayer::onPreComposition</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-2-3-1-Layer-BufferLayer-hasReadyFrame"><span class="nav-text">1.2.3.1 Layer:BufferLayer::hasReadyFrame</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#1-2-3-2-Layer-BufferLayer-BufferQueueLayer"><span class="nav-text">1.2.3.2 Layer:BufferLayer:BufferQueueLayer</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-SurfaceFlinger-rebuildLayerStacks"><span class="nav-text">1.3 SurfaceFlinger:rebuildLayerStacks</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-SurfaceFlinger-calculateWorkingSet"><span class="nav-text">1.4 SurfaceFlinger::calculateWorkingSet</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-SurfaceFlinger-beginFrame"><span class="nav-text">1.5 SurfaceFlinger::beginFrame</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-6-SurfaceFlinger-doComposition"><span class="nav-text">1.6 SurfaceFlinger::doComposition</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-6-1-SurfaceFlinger-doDisplayComposition"><span class="nav-text">1.6.1 SurfaceFlinger::doDisplayComposition</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-6-2-SurfaceFlinger-doComposeSurfaces"><span class="nav-text">1.6.2 SurfaceFlinger::doComposeSurfaces</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-%E8%AE%A1%E7%AE%97Layer%E5%8F%AF%E8%A7%86%E5%8C%BA%E5%9F%9F"><span class="nav-text">二. 计算Layer可视区域</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-SurfaceFlinger-computeVisibleRegions"><span class="nav-text">2.1 SurfaceFlinger:computeVisibleRegions</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-%E5%B0%8F%E7%BB%93"><span class="nav-text">三. 小结</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">25</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

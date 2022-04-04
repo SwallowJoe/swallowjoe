@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Android Q 前面分析了Vsync信号的始末，其实还有很多可以细究的部分。比如硬件vsync是什么时候开始，什么时候结束？校准算法的原理等等。接下来我们先看看SurfaceFlinger合成帧的部分。 一. SF EventThread接收vsync的准备在SFEventThread一文中已经探明，当产生Vsync信号后，会通过BitTube发送事件(EventThreadConnect">
+<meta property="og:type" content="article">
+<meta property="og:title" content="SurfaceFlinger(4)--Layer&amp;Surface">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-4-Layer-Surface/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="Android Q 前面分析了Vsync信号的始末，其实还有很多可以细究的部分。比如硬件vsync是什么时候开始，什么时候结束？校准算法的原理等等。接下来我们先看看SurfaceFlinger合成帧的部分。 一. SF EventThread接收vsync的准备在SFEventThread一文中已经探明，当产生Vsync信号后，会通过BitTube发送事件(EventThreadConnect">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//4_1.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//4_2.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//4_3.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//4_4_app.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//4_4_sf.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//screenshot_phone.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//screenshot_phone_layer.png">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//4_5_classmap.png">
+<meta property="article:published_time" content="2022-04-04T01:57:56.000Z">
+<meta property="article:modified_time" content="2022-04-04T02:13:02.150Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Vsync">
+<meta property="article:tag" content="SurfaceFlinger">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/.io//4_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-4-Layer-Surface/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>SurfaceFlinger(4)--Layer&Surface | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-4-Layer-Surface/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          SurfaceFlinger(4)--Layer&Surface
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 09:57:56 / 修改时间：10:13:02" itemprop="dateCreated datePublished" datetime="2022-04-04T09:57:56+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/SurfaceFlinger/" itemprop="url" rel="index"><span itemprop="name">SurfaceFlinger</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/SurfaceFlinger-4-Layer-Surface/" class="post-meta-item leancloud_visitors" data-flag-title="SurfaceFlinger(4)--Layer&Surface" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/SurfaceFlinger-4-Layer-Surface/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/SurfaceFlinger-4-Layer-Surface/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+
+<p><strong>Android Q</strong></p>
+<p>前面分析了Vsync信号的始末，其实还有很多可以细究的部分。比如硬件vsync是什么时候开始，什么时候结束？校准算法的原理等等。<br>接下来我们先看看SurfaceFlinger合成帧的部分。</p>
+<h1 id="一-SF-EventThread接收vsync的准备"><a href="#一-SF-EventThread接收vsync的准备" class="headerlink" title="一. SF EventThread接收vsync的准备"></a>一. SF EventThread接收vsync的准备</h1><p>在SFEventThread一文中已经探明，当产生Vsync信号后，会通过BitTube发送事件(EventThreadConnection.postEvent):</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">EventThreadConnection::postEvent</span><span class="params">(<span class="type">const</span> DisplayEventReceiver::Event&amp; event)</span> </span>&#123;</span><br><span class="line">    <span class="type">ssize_t</span> size = DisplayEventReceiver::<span class="built_in">sendEvents</span>(&amp;mChannel, &amp;event, <span class="number">1</span>);</span><br><span class="line">    <span class="keyword">return</span> size &lt; <span class="number">0</span> ? <span class="built_in">status_t</span>(size) : <span class="built_in">status_t</span>(NO_ERROR);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里我们就需要知道 mChannel 是被谁监听了。</p>
+<h2 id="1-1-SurfaceFlinger-init"><a href="#1-1-SurfaceFlinger-init" class="headerlink" title="1.1 SurfaceFlinger.init"></a>1.1 SurfaceFlinger.init</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::init</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="comment">// 1.1.1 创建SfEventThread以及EventThreadConnection</span></span><br><span class="line">    mSfConnectionHandle = mScheduler-&gt;<span class="built_in">createConnection</span>(<span class="string">&quot;sf&quot;</span>, mPhaseOffsets-&gt;<span class="built_in">getCurrentSfOffset</span>(),</span><br><span class="line">                                                    resyncCallback, [<span class="keyword">this</span>](<span class="type">nsecs_t</span> timestamp) &#123;</span><br><span class="line">                                                        mInterceptor-&gt;<span class="built_in">saveVSyncEvent</span>(timestamp);</span><br><span class="line">                                                    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1.2 赋值 BitTube, 用来通信</span></span><br><span class="line">    mEventQueue-&gt;<span class="built_in">setEventConnection</span>(mScheduler-&gt;<span class="built_in">getEventConnection</span>(mSfConnectionHandle));</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里的mEventQueue是在SurfaceFlinger.onFirstRef中初始化的。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::onFirstRef</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;   </span><br><span class="line">    mEventQueue-&gt;<span class="built_in">init</span>(<span class="keyword">this</span>);</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">MessageQueue::init</span><span class="params">(<span class="type">const</span> sp&lt;SurfaceFlinger&gt;&amp; flinger)</span> </span>&#123;</span><br><span class="line">    mFlinger = flinger;</span><br><span class="line">    mLooper = <span class="keyword">new</span> <span class="built_in">Looper</span>(<span class="literal">true</span>);</span><br><span class="line">    mHandler = <span class="keyword">new</span> <span class="built_in">Handler</span>(*<span class="keyword">this</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这个Looper就是SurfaceFlinger主线程的Looper.</p>
+<h3 id="1-1-1-Scheduler-createConnection"><a href="#1-1-1-Scheduler-createConnection" class="headerlink" title="1.1.1 Scheduler.createConnection"></a>1.1.1 Scheduler.createConnection</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;Scheduler::ConnectionHandle&gt; <span class="title">Scheduler::createConnection</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> <span class="type">char</span>* connectionName, <span class="type">int64_t</span> phaseOffsetNs, ResyncCallback resyncCallback,</span></span></span><br><span class="line"><span class="params"><span class="function">        impl::EventThread::InterceptVSyncsCallback interceptCallback)</span> </span>&#123;</span><br><span class="line">    <span class="type">const</span> <span class="type">int64_t</span> id = sNextId++;</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;Creating a connection handle with ID: %&quot;</span> PRId64 <span class="string">&quot;\n&quot;</span>, id);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建 sfEventThread</span></span><br><span class="line">    std::unique_ptr&lt;EventThread&gt; eventThread =</span><br><span class="line">            <span class="built_in">makeEventThread</span>(connectionName, mPrimaryDispSync.<span class="built_in">get</span>(), phaseOffsetNs,</span><br><span class="line">                            std::<span class="built_in">move</span>(interceptCallback));</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建EventThreadConnection</span></span><br><span class="line">    <span class="keyword">auto</span> eventThreadConnection =</span><br><span class="line">            <span class="built_in">createConnectionInternal</span>(eventThread.<span class="built_in">get</span>(), std::<span class="built_in">move</span>(resyncCallback));</span><br><span class="line">    <span class="comment">// 保存创建的connection</span></span><br><span class="line">    mConnections.<span class="built_in">emplace</span>(id,</span><br><span class="line">                         std::<span class="built_in">make_unique</span>&lt;Connection&gt;(<span class="keyword">new</span> <span class="built_in">ConnectionHandle</span>(id),</span><br><span class="line">                                                      eventThreadConnection,</span><br><span class="line">                                                      std::<span class="built_in">move</span>(eventThread)));</span><br><span class="line">    <span class="keyword">return</span> mConnections[id]-&gt;handle;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">sp&lt;EventThreadConnection&gt; <span class="title">Scheduler::createConnectionInternal</span><span class="params">(EventThread* eventThread,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                              ResyncCallback&amp;&amp; resyncCallback)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> eventThread-&gt;<span class="built_in">createEventConnection</span>(std::<span class="built_in">move</span>(resyncCallback));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="1-1-2-EventThread-createEventConnection"><a href="#1-1-2-EventThread-createEventConnection" class="headerlink" title="1.1.2 EventThread.createEventConnection"></a>1.1.2 EventThread.createEventConnection</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;EventThreadConnection&gt; <span class="title">EventThread::createEventConnection</span><span class="params">(ResyncCallback resyncCallback)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="built_in">EventThreadConnection</span>(<span class="built_in">const_cast</span>&lt;EventThread*&gt;(<span class="keyword">this</span>), std::<span class="built_in">move</span>(resyncCallback));</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">EventThreadConnection::<span class="built_in">EventThreadConnection</span>(EventThread* eventThread,</span><br><span class="line">                                             ResyncCallback resyncCallback)</span><br><span class="line">      : <span class="built_in">resyncCallback</span>(std::<span class="built_in">move</span>(resyncCallback)),</span><br><span class="line">        <span class="built_in">mEventThread</span>(eventThread),</span><br><span class="line">        <span class="comment">// 注意这里创建了 BitTube, 此时是在SurfaceFlinger主线程</span></span><br><span class="line">        <span class="built_in">mChannel</span>(gui::BitTube::DefaultSize) &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-2-MessageQueue-setEventConnection"><a href="#1-2-MessageQueue-setEventConnection" class="headerlink" title="1.2 MessageQueue.setEventConnection"></a>1.2 MessageQueue.setEventConnection</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">MessageQueue::setEventConnection</span><span class="params">(<span class="type">const</span> sp&lt;EventThreadConnection&gt;&amp; connection)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (mEventTube.<span class="built_in">getFd</span>() &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">        mLooper-&gt;<span class="built_in">removeFd</span>(mEventTube.<span class="built_in">getFd</span>());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mEvents = connection;</span><br><span class="line">    <span class="comment">// 1.2.1 通过BitTube建立与SFEventThread的通信通道</span></span><br><span class="line">    mEvents-&gt;<span class="built_in">stealReceiveChannel</span>(&amp;mEventTube);</span><br><span class="line">    <span class="comment">// 有vsync事件会回调cb_eventReceiver事件</span></span><br><span class="line">    mLooper-&gt;<span class="built_in">addFd</span>(mEventTube.<span class="built_in">getFd</span>(), <span class="number">0</span>, Looper::EVENT_INPUT, MessageQueue::cb_eventReceiver,</span><br><span class="line">                   <span class="keyword">this</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里的mLooper就是SurfaceFlinger主线程的Looper.</p>
+<h3 id="1-2-1-EventThreadConnection-stealReceiveChannel"><a href="#1-2-1-EventThreadConnection-stealReceiveChannel" class="headerlink" title="1.2.1 EventThreadConnection.stealReceiveChannel"></a>1.2.1 EventThreadConnection.stealReceiveChannel</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">EventThreadConnection::stealReceiveChannel</span><span class="params">(gui::BitTube* outChannel)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 这里的mChannel就是[1.1.2]中新建的BitTube</span></span><br><span class="line">    outChannel-&gt;<span class="built_in">setReceiveFd</span>(mChannel.<span class="built_in">moveReceiveFd</span>());</span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="二-SF-EventThread接收vsync"><a href="#二-SF-EventThread接收vsync" class="headerlink" title="二. SF EventThread接收vsync"></a>二. SF EventThread接收vsync</h1><p>上面我们知道了，当SFEventThread发出Vsync信号时，会通过BitTube发送该消息至SurfaceFlinger主线程，并调用MessageQueue.cb_eventReceiver方法处理。</p>
+<h2 id="2-1-MessageQueue-cb-eventReceiver"><a href="#2-1-MessageQueue-cb-eventReceiver" class="headerlink" title="2.1 MessageQueue.cb_eventReceiver"></a>2.1 MessageQueue.cb_eventReceiver</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">int</span> <span class="title">MessageQueue::cb_eventReceiver</span><span class="params">(<span class="type">int</span> fd, <span class="type">int</span> events, <span class="type">void</span>* data)</span> </span>&#123;</span><br><span class="line">    MessageQueue* queue = <span class="built_in">reinterpret_cast</span>&lt;MessageQueue*&gt;(data);</span><br><span class="line">    <span class="keyword">return</span> queue-&gt;<span class="built_in">eventReceiver</span>(fd, events);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">MessageQueue::eventReceiver</span><span class="params">(<span class="type">int</span> <span class="comment">/*fd*/</span>, <span class="type">int</span> <span class="comment">/*events*/</span>)</span> </span>&#123;</span><br><span class="line">    <span class="type">ssize_t</span> n;</span><br><span class="line">    DisplayEventReceiver::Event buffer[<span class="number">8</span>];</span><br><span class="line">    <span class="comment">// 读取消息内容</span></span><br><span class="line">    <span class="keyword">while</span> ((n = DisplayEventReceiver::<span class="built_in">getEvents</span>(&amp;mEventTube, buffer, <span class="number">8</span>)) &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; n; i++) &#123;</span><br><span class="line">            <span class="comment">// 只关心VSYNC消息</span></span><br><span class="line">            <span class="keyword">if</span> (buffer[i].header.type == DisplayEventReceiver::DISPLAY_EVENT_VSYNC) &#123;</span><br><span class="line">                <span class="comment">// 2.2 触发composition</span></span><br><span class="line">                mHandler-&gt;<span class="built_in">dispatchInvalidate</span>();</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="2-2-MessageQueue-Handler-dispatchInvalidate"><a href="#2-2-MessageQueue-Handler-dispatchInvalidate" class="headerlink" title="2.2 MessageQueue.Handler.dispatchInvalidate"></a>2.2 MessageQueue.Handler.dispatchInvalidate</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> MessageQueue::Handler::<span class="built_in">dispatchInvalidate</span>() &#123;</span><br><span class="line">    <span class="keyword">if</span> ((<span class="built_in">android_atomic_or</span>(eventMaskInvalidate, &amp;mEventMask) &amp; eventMaskInvalidate) == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 这里通过Looper发送INVALIDATE消息</span></span><br><span class="line">        mQueue.mLooper-&gt;<span class="built_in">sendMessage</span>(<span class="keyword">this</span>, <span class="built_in">Message</span>(MessageQueue::INVALIDATE));</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> MessageQueue::Handler::<span class="built_in">handleMessage</span>(<span class="type">const</span> Message&amp; message) &#123;</span><br><span class="line">    <span class="keyword">switch</span> (message.what) &#123;</span><br><span class="line">        <span class="keyword">case</span> INVALIDATE:</span><br><span class="line">            <span class="built_in">android_atomic_and</span>(~eventMaskInvalidate, &amp;mEventMask);</span><br><span class="line">            <span class="comment">// 处理INVALIDATE消息</span></span><br><span class="line">            mQueue.mFlinger-&gt;<span class="built_in">onMessageReceived</span>(message.what);</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        <span class="keyword">case</span> REFRESH:</span><br><span class="line">            <span class="built_in">android_atomic_and</span>(~eventMaskRefresh, &amp;mEventMask);</span><br><span class="line">            mQueue.mFlinger-&gt;<span class="built_in">onMessageReceived</span>(message.what);</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="2-3-SurfaceFlinger-onMessageReceived"><a href="#2-3-SurfaceFlinger-onMessageReceived" class="headerlink" title="2.3 SurfaceFlinger.onMessageReceived"></a>2.3 SurfaceFlinger.onMessageReceived</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::onMessageReceived</span><span class="params">(<span class="type">int32_t</span> what)</span> NO_THREAD_SAFETY_ANALYSIS </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="keyword">switch</span> (what) &#123;</span><br><span class="line">        <span class="keyword">case</span> MessageQueue::INVALIDATE: &#123;</span><br><span class="line">            <span class="comment">// 通过fence机制来判断是否掉帧 </span></span><br><span class="line">            <span class="type">bool</span> frameMissed = <span class="built_in">previousFrameMissed</span>();</span><br><span class="line">            <span class="type">bool</span> hwcFrameMissed = mHadDeviceComposition &amp;&amp; frameMissed;</span><br><span class="line">            <span class="type">bool</span> gpuFrameMissed = mHadClientComposition &amp;&amp; frameMissed;</span><br><span class="line">            <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;FrameMissed&quot;</span>, <span class="built_in">static_cast</span>&lt;<span class="type">int</span>&gt;(frameMissed));</span><br><span class="line">            <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;HwcFrameMissed&quot;</span>, <span class="built_in">static_cast</span>&lt;<span class="type">int</span>&gt;(hwcFrameMissed));</span><br><span class="line">            <span class="built_in">ATRACE_INT</span>(<span class="string">&quot;GpuFrameMissed&quot;</span>, <span class="built_in">static_cast</span>&lt;<span class="type">int</span>&gt;(gpuFrameMissed));</span><br><span class="line">            <span class="keyword">if</span> (frameMissed) &#123;</span><br><span class="line">                mFrameMissedCount++;</span><br><span class="line">                mTimeStats-&gt;<span class="built_in">incrementMissedFrames</span>();</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (hwcFrameMissed) &#123;</span><br><span class="line">                mHwcFrameMissedCount++;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (gpuFrameMissed) &#123;</span><br><span class="line">                mGpuFrameMissedCount++;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 执行相关参数更新，比如Vsync切换</span></span><br><span class="line">            <span class="keyword">if</span> (<span class="built_in">performSetActiveConfig</span>()) &#123;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 如果丢帧，则不处理此次VSYNC</span></span><br><span class="line">            <span class="keyword">if</span> (frameMissed &amp;&amp; mPropagateBackpressure) &#123;</span><br><span class="line">                <span class="keyword">if</span> ((hwcFrameMissed &amp;&amp; !gpuFrameMissed) ||</span><br><span class="line">                    mPropagateBackpressureClientComposition) &#123;</span><br><span class="line">                    <span class="built_in">signalLayerUpdate</span>();</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            ......</span><br><span class="line"></span><br><span class="line">            <span class="comment">// transaction主要针对Layer和Display的变化更新脏区域</span></span><br><span class="line">            <span class="comment">// 通过Layer的变化来计算脏区域，目的是需要更新我才刷新</span></span><br><span class="line">            <span class="type">bool</span> refreshNeeded = <span class="built_in">handleMessageTransaction</span>();</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 2.4 主要是调用handlePageFlip()函数，该函数在systrace图上对应latchBuffer及其所包含的方法。</span></span><br><span class="line">            <span class="comment">// 作用是从各Layer对应的BufferQueue中拿图形缓冲区数据，并根据内容更新脏区域</span></span><br><span class="line">            <span class="comment">// 并且把GraphicBuffer映射为OpenGL的texture</span></span><br><span class="line">            refreshNeeded |= <span class="built_in">handleMessageInvalidate</span>();</span><br><span class="line"></span><br><span class="line">            <span class="built_in">updateCursorAsync</span>();</span><br><span class="line">            <span class="built_in">updateInputFlinger</span>();</span><br><span class="line"></span><br><span class="line">            refreshNeeded |= mRepaintEverything;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (refreshNeeded &amp;&amp; <span class="built_in">CC_LIKELY</span>(mBootStage != BootStage::BOOTLOADER)) &#123;</span><br><span class="line">                <span class="comment">// 发送刷新合成请求</span></span><br><span class="line">                <span class="built_in">signalRefresh</span>();</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">case</span> MessageQueue::REFRESH: &#123;</span><br><span class="line">            <span class="keyword">if</span> (mDolphinFuncsEnabled) &#123;</span><br><span class="line">                <span class="built_in">mDolphinRefresh</span>();</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 2.6 SF 处理合成</span></span><br><span class="line">            <span class="built_in">handleMessageRefresh</span>();</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里我们先忽略Fence机制，先看看大致流程。</p>
+<h2 id="2-4-SurfaceFlinger-handleMessageInvalidate"><a href="#2-4-SurfaceFlinger-handleMessageInvalidate" class="headerlink" title="2.4 SurfaceFlinger.handleMessageInvalidate"></a>2.4 SurfaceFlinger.handleMessageInvalidate</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">SurfaceFlinger::handleMessageInvalidate</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="type">bool</span> refreshNeeded = <span class="built_in">handlePageFlip</span>();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mVisibleRegionsDirty) &#123;</span><br><span class="line">        <span class="built_in">computeLayerBounds</span>();</span><br><span class="line">        <span class="keyword">if</span> (mTracingEnabled) &#123;</span><br><span class="line">            mTracing.<span class="built_in">notify</span>(<span class="string">&quot;visibleRegionsDirty&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; layer : mLayersPendingRefresh) &#123;</span><br><span class="line">        Region visibleReg;</span><br><span class="line">        visibleReg.<span class="built_in">set</span>(layer-&gt;<span class="built_in">getScreenBounds</span>());</span><br><span class="line">        <span class="built_in">invalidateLayerStack</span>(layer, visibleReg);</span><br><span class="line">    &#125;</span><br><span class="line">    mLayersPendingRefresh.<span class="built_in">clear</span>();</span><br><span class="line">    <span class="keyword">return</span> refreshNeeded;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="2-5-SurfaceFlinger-handlePageFlip"><a href="#2-5-SurfaceFlinger-handlePageFlip" class="headerlink" title="2.5 SurfaceFlinger.handlePageFlip"></a>2.5 SurfaceFlinger.handlePageFlip</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">SurfaceFlinger::handlePageFlip</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="built_in">ALOGV</span>(<span class="string">&quot;handlePageFlip&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="type">nsecs_t</span> latchTime = <span class="built_in">systemTime</span>();</span><br><span class="line"></span><br><span class="line">    <span class="type">bool</span> visibleRegions = <span class="literal">false</span>;</span><br><span class="line">    <span class="type">bool</span> frameQueued = <span class="literal">false</span>;</span><br><span class="line">    <span class="type">bool</span> newDataLatched = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 存储需要更新的图层集。 当缓冲区被锁存时，不得更改，因为可能导致死锁。</span></span><br><span class="line">    mDrawingState.<span class="built_in">traverseInZOrder</span>([&amp;](Layer* layer) &#123;</span><br><span class="line">        <span class="keyword">if</span> (layer-&gt;<span class="built_in">hasReadyFrame</span>()) &#123;</span><br><span class="line">            frameQueued = <span class="literal">true</span>;</span><br><span class="line">            <span class="type">nsecs_t</span> expectedPresentTime;</span><br><span class="line">            expectedPresentTime = mScheduler-&gt;<span class="built_in">expectedPresentTime</span>();</span><br><span class="line">            <span class="keyword">if</span> (layer-&gt;<span class="built_in">shouldPresentNow</span>(expectedPresentTime)) &#123;</span><br><span class="line">                <span class="comment">// mLayersWithQueuedFrames用于标记那些已经有Frame的Layer</span></span><br><span class="line">                mLayersWithQueuedFrames.<span class="built_in">push_back</span>(layer);</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="built_in">ATRACE_NAME</span>(<span class="string">&quot;!layer-&gt;shouldPresentNow()&quot;</span>);</span><br><span class="line">                layer-&gt;<span class="built_in">useEmptyDamage</span>();</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            layer-&gt;<span class="built_in">useEmptyDamage</span>();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!mLayersWithQueuedFrames.<span class="built_in">empty</span>()) &#123;</span><br><span class="line">        <span class="comment">// mStateLock is needed for latchBuffer as LayerRejecter::reject()</span></span><br><span class="line">        <span class="comment">// writes to Layer current state. See also b/119481871</span></span><br><span class="line">        <span class="function">Mutex::Autolock <span class="title">lock</span><span class="params">(mStateLock)</span></span>;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; layer : mLayersWithQueuedFrames) &#123;</span><br><span class="line">            <span class="keyword">if</span> (layer-&gt;<span class="built_in">latchBuffer</span>(visibleRegions, latchTime)) &#123;</span><br><span class="line">                mLayersPendingRefresh.<span class="built_in">push_back</span>(layer);</span><br><span class="line">            &#125;</span><br><span class="line">            layer-&gt;<span class="built_in">useSurfaceDamage</span>();</span><br><span class="line">            <span class="keyword">if</span> (layer-&gt;<span class="built_in">isBufferLatched</span>()) &#123;</span><br><span class="line">                newDataLatched = <span class="literal">true</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mVisibleRegionsDirty |= visibleRegions;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// If we will need to wake up at some time in the future to deal with a</span></span><br><span class="line">    <span class="comment">// queued frame that shouldn&#x27;t be displayed during this vsync period, wake</span></span><br><span class="line">    <span class="comment">// up during the next vsync period to check again.</span></span><br><span class="line">    <span class="keyword">if</span> (frameQueued &amp;&amp; (mLayersWithQueuedFrames.<span class="built_in">empty</span>() || !newDataLatched)) &#123;</span><br><span class="line">        <span class="built_in">signalLayerUpdate</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// enter boot animation on first buffer latch</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">CC_UNLIKELY</span>(mBootStage == BootStage::BOOTLOADER &amp;&amp; newDataLatched)) &#123;</span><br><span class="line">        <span class="built_in">ALOGI</span>(<span class="string">&quot;Enter boot animation&quot;</span>);</span><br><span class="line">        mBootStage = BootStage::BOOTANIMATION;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Only continue with the refresh if there is actually new work to do</span></span><br><span class="line">    <span class="keyword">return</span> !mLayersWithQueuedFrames.<span class="built_in">empty</span>() &amp;&amp; newDataLatched;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-6-SurfaceFlinger-handleMessageRefresh"><a href="#2-6-SurfaceFlinger-handleMessageRefresh" class="headerlink" title="2.6 SurfaceFlinger.handleMessageRefresh"></a>2.6 SurfaceFlinger.handleMessageRefresh</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::handleMessageRefresh</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line"></span><br><span class="line">    mRefreshPending = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> repaintEverything = mRepaintEverything.<span class="built_in">exchange</span>(<span class="literal">false</span>);</span><br><span class="line">    <span class="comment">// 合成前再过一遍Layer是否被更新了</span></span><br><span class="line">    <span class="comment">// 如果有则触发signalLayerUpdate()，通过EventThread安排一次invalidate sf vsync。</span></span><br><span class="line">    <span class="built_in">preComposition</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 重建layer堆栈, 提取可见的Laye并计算可见区域，为合成准备好数据材料。</span></span><br><span class="line">    <span class="built_in">rebuildLayerStacks</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// hwcomposer的设定</span></span><br><span class="line">    <span class="built_in">calculateWorkingSet</span>();</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, display] : mDisplays) &#123;</span><br><span class="line">        <span class="built_in">beginFrame</span>(display);</span><br><span class="line">        <span class="built_in">prepareFrame</span>(display);</span><br><span class="line">        <span class="built_in">doDebugFlashRegions</span>(display, repaintEverything);</span><br><span class="line">        <span class="built_in">doComposition</span>(display, repaintEverything); <span class="comment">//正式的合成处理</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">logLayerStats</span>();</span><br><span class="line"></span><br><span class="line">    <span class="built_in">postFrame</span>();</span><br><span class="line">    <span class="comment">// 将图像传递到物理屏幕。但是在下一个vsync信号才被消费。</span></span><br><span class="line">    <span class="comment">// 回调每个layer的onPostComposition</span></span><br><span class="line">    <span class="built_in">postComposition</span>();</span><br><span class="line"></span><br><span class="line">    mHadClientComposition = <span class="literal">false</span>;</span><br><span class="line">    mHadDeviceComposition = <span class="literal">false</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, displayDevice] : mDisplays) &#123;</span><br><span class="line">        <span class="keyword">auto</span> display = displayDevice-&gt;<span class="built_in">getCompositionDisplay</span>();</span><br><span class="line">        <span class="type">const</span> <span class="keyword">auto</span> displayId = display-&gt;<span class="built_in">getId</span>();</span><br><span class="line">        mHadClientComposition =</span><br><span class="line">                mHadClientComposition || <span class="built_in">getHwComposer</span>().<span class="built_in">hasClientComposition</span>(displayId);</span><br><span class="line">        mHadDeviceComposition =</span><br><span class="line">                mHadDeviceComposition || <span class="built_in">getHwComposer</span>().<span class="built_in">hasDeviceComposition</span>(displayId);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mVsyncModulator.<span class="built_in">onRefreshed</span>(mHadClientComposition);</span><br><span class="line"></span><br><span class="line">    mLayersWithQueuedFrames.<span class="built_in">clear</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>再继续分析之前，我们需要先了解Layer的结构，以及他是如何被添加至SurfaceFlinger中的。</p>
+<h1 id="三-Layer的产生"><a href="#三-Layer的产生" class="headerlink" title="三. Layer的产生"></a>三. Layer的产生</h1><p>Layer, 即图层。Layer是图像合成中最重要的单元。图层是Surface和SurfaceControl的组合。<br>说到底也就是每个Window都有对应Surface，也就对应一个Layer;SurfaceFlinger的合成就是将所有图层按照顺序和特定属性合成一帧画面。<br>每个图层都有一组属性，用于定义它与其他图层的交互方式。 </p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Positional</td>
+<td>定义图层在其显示屏上显示的位置。 包括诸如图层边缘的位置及其相对于其他图层的Z顺序的信息</td>
+</tr>
+<tr>
+<td>Content</td>
+<td>定义图层上显示的内容应如何在位置属性定义的边界内显示。 包括裁剪和变换等信息</td>
+</tr>
+<tr>
+<td>Composition</td>
+<td>定义图层应如何与其他图层合成。 包括混合模式和alpha合成的图层范围Alpha值等信息</td>
+</tr>
+<tr>
+<td>Optimization</td>
+<td>提供正确合成图层非必要的信息，但硬件编写器（HWC）设备可以使用该信息来优化其执行合成的方式。 包括诸如图层的可见区域以及自上一帧以来图层的哪个部分已更新的信息。</td>
+</tr>
+</tbody></table>
+<p>在创建Window或者Window产生变化时就会更新对应的Surface所属的Layer.</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">ViewRootImpl.performTraversals() --[App进程] 绘制三部曲</span><br><span class="line">Session.relayout(...) --[App进程] 通过binder与WMS通信:窗口属性有更新</span><br><span class="line">    WindowManagerService.relayoutWindow(...) --[SystemServer进程]</span><br><span class="line">    WindowManagerService.createSurfaceControl(...) --[SystemServer进程]</span><br><span class="line">    WindowStateAnimator.createSurfaceLocked(...) --[SystemServer进程] 这里传入Surface的FLAG</span><br><span class="line">    WindowSurfaceController.new() --[SystemServer进程]</span><br><span class="line">        WindowContainer.makeSurface() --[SystemServer进程]</span><br><span class="line">        WindowContainer.makeSurface(WindowContainer) --[SystemServer进程]</span><br><span class="line">    SurfaceControl.Builder.build() --[SystemServer进程]</span><br><span class="line">    SurfaceControl.new() --[SystemServer进程]</span><br><span class="line">        android_view_SurfaceControl:nativeCreate() --[JNI][SystemServer进程]</span><br><span class="line">            SurfaceComposerClient:getDefault() --[SystemServer进程]</span><br><span class="line">            DefaultComposerClient:getComposerClient() --[SystemServer进程]</span><br><span class="line">            SurfaceComposerClient:<span class="keyword">new</span>() --[SystemServer进程]</span><br><span class="line">            SurfaceComposerClient:onFirstRef() --[SystemServer进程]通过Binder从SF获取SurfaceComposerClient</span><br><span class="line">                SurfaceFlinger:createConnection() --[SurfaceFlinger进程] 创建SurfaceComposerClient</span><br><span class="line">        SurfaceComposerClient:createSurfaceChecked(...) --[SystemServer进程]Binder调用</span><br><span class="line">        Client:createSurface(...) --[SurfaceFlinger进程]</span><br><span class="line">            SurfaceFlinger:createLayer(...) --[SurfaceFlinger进程] 这里假设创建一个默认Surface</span><br><span class="line">            SurfaceFlinger:createBufferQueueLayer(...) --[SurfaceFlinger进程]</span><br><span class="line">            SurfaceFlingerFactory:createBufferQueueLayer(...) --[SurfaceFlinger进程]</span><br><span class="line">            BufferQueueLayer:<span class="keyword">new</span>(LayerCreationArgs) --[SurfaceFlinger进程]</span><br><span class="line">                BufferLayer:<span class="keyword">new</span>(LayerCreationArgs) --[SurfaceFlinger进程]</span><br><span class="line">        SurfaceControl:<span class="keyword">new</span>(...) --[SystemServer进程]</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><img src="/.io//4_1.png" alt="图片"></p>
+<p>Surface FLAG一览</p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>值</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>HIDDEN</td>
+<td>0x00000004</td>
+<td>Surface是隐藏的</td>
+</tr>
+<tr>
+<td>SECURE</td>
+<td>0x00000080</td>
+<td>包含安全内容，禁止内容被其他进程复制。而且屏幕截图和VNC服务器将被禁用，但可能不会采用硬件加速。Window带有FLAG_SECURE标签，或者该应用禁止截图就会带有这个FLAG</td>
+</tr>
+<tr>
+<td>NON_PREMULTIPLIED</td>
+<td>0x00000100</td>
+<td>预乘透明度，创建一个Surface，其中颜色分量被Alpha通道解释为“非预乘”。对于没有alpha通道的Surface，这个标志是没有意义的。 默认情况下，Surface是预乘的，这意味着每个颜色分量已经乘以其alpha值。</td>
+</tr>
+<tr>
+<td>OPAQUE</td>
+<td>0x00000400</td>
+<td>表示Surface必须为不透明，即使其像素格式包含Alpha通道。</td>
+</tr>
+<tr>
+<td>PROTECTED_APP</td>
+<td>0x00000800</td>
+<td>应用程序需要通过外部显示接收器的硬件保护路径。 如果硬件保护路径不可用，则此表面将不会显示在外部接收器上。</td>
+</tr>
+<tr>
+<td>CURSOR_WINDOW</td>
+<td>0x00002000</td>
+<td>窗口表示光标字形。</td>
+</tr>
+<tr>
+<td>FX_SURFACE_NORMAL</td>
+<td>0x00000000</td>
+<td>创建一个默认Surface</td>
+</tr>
+<tr>
+<td>FX_SURFACE_DIM</td>
+<td>0x00020000</td>
+<td>创建一个暗淡的Surface。 此Surface后面的所有内容都会被{@link #setAlpha}中指定的数量调暗。 锁定Dim Surface是错误的，因为它没有后备存储。</td>
+</tr>
+<tr>
+<td>FX_SURFACE_CONTAINER</td>
+<td>创建容器Surface。 此Surface将没有缓冲区，仅用作其他Surface或其InputInfo的容器。</td>
+<td></td>
+</tr>
+<tr>
+<td>SURFACE_HIDDEN</td>
+<td>0x01</td>
+<td>隐藏该Surface, 等同于调用Surface.hide()</td>
+</tr>
+<tr>
+<td>SURFACE_OPAQUE</td>
+<td>0x02</td>
+<td>尽可能不混合的复合材料。 更新Surface创建期间设置的值（请参阅{@link #OPAQUE}）。</td>
+</tr>
+</tbody></table>
+<h2 id="3-1-SurfaceFlinger-createLayer"><a href="#3-1-SurfaceFlinger-createLayer" class="headerlink" title="3.1 SurfaceFlinger:createLayer"></a>3.1 SurfaceFlinger:createLayer</h2><p>当上次Window变化时，或者会创建Layer，并保存在SurfaceFlinger中.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">SurfaceFlinger::createLayer</span><span class="params">(<span class="type">const</span> String8&amp; name, <span class="type">const</span> sp&lt;Client&gt;&amp; client, <span class="type">uint32_t</span> w,</span></span></span><br><span class="line"><span class="params"><span class="function">                                     <span class="type">uint32_t</span> h, PixelFormat format, <span class="type">uint32_t</span> flags,</span></span></span><br><span class="line"><span class="params"><span class="function">                                     LayerMetadata metadata, sp&lt;IBinder&gt;* handle,</span></span></span><br><span class="line"><span class="params"><span class="function">                                     sp&lt;IGraphicBufferProducer&gt;* gbp,</span></span></span><br><span class="line"><span class="params"><span class="function">                                     <span class="type">const</span> sp&lt;IBinder&gt;&amp; parentHandle,</span></span></span><br><span class="line"><span class="params"><span class="function">                                     <span class="type">const</span> sp&lt;Layer&gt;&amp; parentLayer)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 假设创建默认的Surface</span></span><br><span class="line">    <span class="keyword">switch</span> (flags &amp; ISurfaceComposerClient::eFXSurfaceMask) &#123;</span><br><span class="line">        <span class="keyword">case</span> ISurfaceComposerClient::eFXSurfaceBufferQueue:</span><br><span class="line">            result = <span class="built_in">createBufferQueueLayer</span>(client, uniqueName, w, h, flags, std::<span class="built_in">move</span>(metadata),</span><br><span class="line">                                            format, handle, gbp, &amp;layer);</span><br><span class="line"></span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        ......</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 检查是否有访问SurfaceFlinger的权限</span></span><br><span class="line">    <span class="type">bool</span> addToCurrentState = <span class="built_in">callingThreadHasUnscopedSurfaceFlingerAccess</span>();</span><br><span class="line">    <span class="comment">// 3.2 保存新建的Layer</span></span><br><span class="line">    result = <span class="built_in">addClientLayer</span>(client, *handle, *gbp, layer, parentHandle, parentLayer,</span><br><span class="line">                            addToCurrentState);</span><br><span class="line">    <span class="keyword">if</span> (result != NO_ERROR) &#123;</span><br><span class="line">        <span class="keyword">return</span> result;</span><br><span class="line">    &#125;</span><br><span class="line">    mInterceptor-&gt;<span class="built_in">saveSurfaceCreation</span>(layer);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">setTransactionFlags</span>(eTransactionNeeded);</span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="3-1-1-SurfaceFlinger-createBufferQueueLayer"><a href="#3-1-1-SurfaceFlinger-createBufferQueueLayer" class="headerlink" title="3.1.1 SurfaceFlinger.createBufferQueueLayer"></a>3.1.1 SurfaceFlinger.createBufferQueueLayer</h3><p>中间细琐流程略过，最终是创建了一个Layer对象</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line">Layer::<span class="built_in">Layer</span>(<span class="type">const</span> LayerCreationArgs&amp; args)</span><br><span class="line">      : <span class="built_in">mFlinger</span>(args.flinger),</span><br><span class="line">        <span class="built_in">mName</span>(args.name),</span><br><span class="line">        <span class="built_in">mClientRef</span>(args.client),</span><br><span class="line">        <span class="built_in">mWindowType</span>(args.metadata.<span class="built_in">getInt32</span>(METADATA_WINDOW_TYPE, <span class="number">0</span>)) &#123;</span><br><span class="line">    mCurrentCrop.<span class="built_in">makeInvalid</span>();</span><br><span class="line"></span><br><span class="line">    <span class="type">uint32_t</span> layerFlags = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (args.flags &amp; ISurfaceComposerClient::eHidden) layerFlags |= <span class="type">layer_state_t</span>::eLayerHidden;</span><br><span class="line">    <span class="keyword">if</span> (args.flags &amp; ISurfaceComposerClient::eOpaque) layerFlags |= <span class="type">layer_state_t</span>::eLayerOpaque;</span><br><span class="line">    <span class="keyword">if</span> (args.flags &amp; ISurfaceComposerClient::eSecure) layerFlags |= <span class="type">layer_state_t</span>::eLayerSecure;</span><br><span class="line"></span><br><span class="line">    mTransactionName = <span class="built_in">String8</span>(<span class="string">&quot;TX - &quot;</span>) + mName;</span><br><span class="line"></span><br><span class="line">    mCurrentState.active_legacy.w = args.w;</span><br><span class="line">    mCurrentState.active_legacy.h = args.h;</span><br><span class="line">    mCurrentState.flags = layerFlags;</span><br><span class="line">    mCurrentState.active_legacy.transform.<span class="built_in">set</span>(<span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">    mCurrentState.crop_legacy.<span class="built_in">makeInvalid</span>();</span><br><span class="line">    mCurrentState.requestedCrop_legacy = mCurrentState.crop_legacy;</span><br><span class="line">    mCurrentState.z = <span class="number">0</span>; <span class="comment">// 这里就是layer在Z轴的位置</span></span><br><span class="line">    mCurrentState.color.a = <span class="number">1.0f</span>;</span><br><span class="line">    mCurrentState.layerStack = <span class="number">0</span>; <span class="comment">// layer所在layerStack</span></span><br><span class="line">    mCurrentState.sequence = <span class="number">0</span>; <span class="comment">// layer序号</span></span><br><span class="line">    mCurrentState.requested_legacy = mCurrentState.active_legacy;</span><br><span class="line">    mCurrentState.active.w = UINT32_MAX;</span><br><span class="line">    mCurrentState.active.h = UINT32_MAX;</span><br><span class="line">    mCurrentState.active.transform.<span class="built_in">set</span>(<span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">    mCurrentState.transform = <span class="number">0</span>;</span><br><span class="line">    mCurrentState.transformToDisplayInverse = <span class="literal">false</span>;</span><br><span class="line">    mCurrentState.crop.<span class="built_in">makeInvalid</span>();</span><br><span class="line">    mCurrentState.acquireFence = <span class="keyword">new</span> <span class="built_in">Fence</span>(<span class="number">-1</span>);</span><br><span class="line">    mCurrentState.dataspace = ui::Dataspace::UNKNOWN;</span><br><span class="line">    mCurrentState.hdrMetadata.validTypes = <span class="number">0</span>;</span><br><span class="line">    mCurrentState.surfaceDamageRegion.<span class="built_in">clear</span>();</span><br><span class="line">    mCurrentState.cornerRadius = <span class="number">0.0f</span>;</span><br><span class="line">    mCurrentState.api = <span class="number">-1</span>;</span><br><span class="line">    mCurrentState.hasColorTransform = <span class="literal">false</span>;</span><br><span class="line">    mCurrentState.colorSpaceAgnostic = <span class="literal">false</span>;</span><br><span class="line">    mCurrentState.metadata = args.metadata;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// drawing state &amp; current state are identical</span></span><br><span class="line">    mDrawingState = mCurrentState;</span><br><span class="line"></span><br><span class="line">    CompositorTiming compositorTiming;</span><br><span class="line">    args.flinger-&gt;<span class="built_in">getCompositorTiming</span>(&amp;compositorTiming);</span><br><span class="line">    mFrameEventHistory.<span class="built_in">initializeCompositorTiming</span>(compositorTiming);</span><br><span class="line">    mFrameTracker.<span class="built_in">setDisplayRefreshPeriod</span>(compositorTiming.interval);</span><br><span class="line"></span><br><span class="line">    mSchedulerLayerHandle = mFlinger-&gt;mScheduler-&gt;<span class="built_in">registerLayer</span>(mName.<span class="built_in">c_str</span>(), mWindowType);</span><br><span class="line"></span><br><span class="line">    mFlinger-&gt;<span class="built_in">onLayerCreated</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>重点关注的是：</p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>z</td>
+<td>z-order，表示x,y,z轴的z轴上的顺序。数字越大，表示越在上面，数字越小，表示越在下面。</td>
+</tr>
+<tr>
+<td>layerStack</td>
+<td>layerStack是存储layer的容器,我们知道每个display只会有一个layerstack来存储他要显示的layer,但是不同的display可以使用同一个layerStack,也可以使用不同的layerStack。可以理解为组的含义。也就是说属于不同组的layer之间互不干扰。SurfaceFlinger中有一个DisplayDevice类，他表示用来显示的设备，譬如LCD或者是HDMI。DisplayDevice里也有一个成员变量mLayerStack，在进行composition的时候，只有和这个device的layerstack相同的layer才可能被显示在这个设备上。</td>
+</tr>
+<tr>
+<td>sequence</td>
+<td>sSequence是一个static的变量，所以递加的效果就是为每一个layer设置一个唯一且递增的序列号。</td>
+</tr>
+</tbody></table>
+<h2 id="3-2-SurfaceFlinger-addClientLayer"><a href="#3-2-SurfaceFlinger-addClientLayer" class="headerlink" title="3.2 SurfaceFlinger.addClientLayer"></a>3.2 SurfaceFlinger.addClientLayer</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">SurfaceFlinger::addClientLayer</span><span class="params">(<span class="type">const</span> sp&lt;Client&gt;&amp; client, <span class="type">const</span> sp&lt;IBinder&gt;&amp; handle,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        <span class="type">const</span> sp&lt;IGraphicBufferProducer&gt;&amp; gbc, <span class="type">const</span> sp&lt;Layer&gt;&amp; lbc,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        <span class="type">const</span> sp&lt;IBinder&gt;&amp; parentHandle,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        <span class="type">const</span> sp&lt;Layer&gt;&amp; parentLayer, <span class="type">bool</span> addToCurrentState)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// add this layer to the current state list</span></span><br><span class="line">    &#123;</span><br><span class="line">        Mutex::Autolock _l(mStateLock);</span><br><span class="line">        ......</span><br><span class="line">        <span class="keyword">if</span> (parent == <span class="literal">nullptr</span> &amp;&amp; addToCurrentState) &#123;</span><br><span class="line">            <span class="comment">// 3.2.1 将新创建的Layer按照Z轴顺序存储至队列中</span></span><br><span class="line">            mCurrentState.layersSortedByZ.<span class="built_in">add</span>(lbc);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (parent == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            lbc-&gt;<span class="built_in">onRemovedFromCurrentState</span>();</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (parent-&gt;<span class="built_in">isRemovedFromCurrentState</span>()) &#123;</span><br><span class="line">            parent-&gt;<span class="built_in">addChild</span>(lbc);</span><br><span class="line">            lbc-&gt;<span class="built_in">onRemovedFromCurrentState</span>();</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            parent-&gt;<span class="built_in">addChild</span>(lbc);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (gbc != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            mGraphicBufferProducerList.<span class="built_in">insert</span>(IInterface::<span class="built_in">asBinder</span>(gbc).<span class="built_in">get</span>());</span><br><span class="line">            <span class="built_in">LOG_ALWAYS_FATAL_IF</span>(mGraphicBufferProducerList.<span class="built_in">size</span>() &gt;</span><br><span class="line">                                        mMaxGraphicBufferProducerListSize,</span><br><span class="line">                                <span class="string">&quot;Suspected IGBP leak: %zu IGBPs (%zu max), %zu Layers&quot;</span>,</span><br><span class="line">                                mGraphicBufferProducerList.<span class="built_in">size</span>(),</span><br><span class="line">                                mMaxGraphicBufferProducerListSize, mNumLayers);</span><br><span class="line">        &#125;</span><br><span class="line">        mLayersAdded = <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3.2.2 将该Layer保存至mClient的mLayers中,键为IBinder,供后续使用</span></span><br><span class="line">    client-&gt;<span class="built_in">attachLayer</span>(handle, lbc);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>搞清楚Layer的Z轴顺序，对与我们理解Layer合成过程有很大帮助。<br>Layer排序建议参考：<a target="_blank" rel="noopener" href="https://www.cnblogs.com/riskyer/p/3297226.html">https://www.cnblogs.com/riskyer/p/3297226.html</a></p>
+<h3 id="3-2-1-LayerVector-add"><a href="#3-2-1-LayerVector-add" class="headerlink" title="3.2.1 LayerVector.add"></a>3.2.1 LayerVector.add</h3><p>将新创建的Layer按照Z轴顺序存储至队列中.<br>LayerVector继承了SortedVector,并且重载了函数 do_compare.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">int</span> <span class="title">LayerVector::do_compare</span><span class="params">(<span class="type">const</span> <span class="type">void</span>* lhs, <span class="type">const</span> <span class="type">void</span>* rhs)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 先对LayerStack排序，然后是Z轴排序，最后是序号</span></span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; l = *<span class="keyword">reinterpret_cast</span>&lt;<span class="type">const</span> sp&lt;Layer&gt;*&gt;(lhs);</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; r = *<span class="keyword">reinterpret_cast</span>&lt;<span class="type">const</span> sp&lt;Layer&gt;*&gt;(rhs);</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; lState =</span><br><span class="line">            (mStateSet == StateSet::Current) ? l-&gt;<span class="built_in">getCurrentState</span>() : l-&gt;<span class="built_in">getDrawingState</span>();</span><br><span class="line">    <span class="type">const</span> <span class="keyword">auto</span>&amp; rState =</span><br><span class="line">            (mStateSet == StateSet::Current) ? r-&gt;<span class="built_in">getCurrentState</span>() : r-&gt;<span class="built_in">getDrawingState</span>();</span><br><span class="line"></span><br><span class="line">    <span class="type">uint32_t</span> ls = lState.layerStack;</span><br><span class="line">    <span class="type">uint32_t</span> rs = rState.layerStack;</span><br><span class="line">    <span class="keyword">if</span> (ls != rs)</span><br><span class="line">        <span class="keyword">return</span> (ls &gt; rs) ? <span class="number">1</span> : <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">    <span class="type">int32_t</span> lz = lState.z;</span><br><span class="line">    <span class="type">int32_t</span> rz = rState.z;</span><br><span class="line">    <span class="keyword">if</span> (lz != rz)</span><br><span class="line">        <span class="keyword">return</span> (lz &gt; rz) ? <span class="number">1</span> : <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (l-&gt;sequence == r-&gt;sequence)</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> (l-&gt;sequence &gt; r-&gt;sequence) ? <span class="number">1</span> : <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>先比较layerstack，不同的layerstack分开。然后再比较z，假设都相同，就比较唯一的layer序列号。<br>但是至今为止，layerStack和z都还只是初始化时的0，所以在创建layer的时候，只是把他根据序列号放进layersSortedByZ而已，其实他的顺序还是没有设置的。</p>
+<h3 id="3-2-2-SurfaceFlinger-addClientLayer"><a href="#3-2-2-SurfaceFlinger-addClientLayer" class="headerlink" title="3.2.2 SurfaceFlinger:addClientLayer"></a>3.2.2 SurfaceFlinger:addClientLayer</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Client::attachLayer</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; handle, <span class="type">const</span> sp&lt;Layer&gt;&amp; layer)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    Mutex::Autolock _l(mLock);</span><br><span class="line">    mLayers.<span class="built_in">add</span>(handle, layer);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-4-Layer更新流程"><a href="#3-4-Layer更新流程" class="headerlink" title="3.4 Layer更新流程"></a>3.4 Layer更新流程</h2><p>当java层调用setLayer时就会确定对应Layer的Z-Order顺序。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line">ViewRootImpl.performTraversals() --[App进程] 绘制三部曲</span><br><span class="line">ViewRootImpl.relayoutWindow(...) --[App进程]</span><br><span class="line">Session.relayout(...) --[App进程] 通过binder与WMS通信:窗口属性有更新</span><br><span class="line">WindowManagerService.relayoutWindow(...) --[SystemServer进程]</span><br><span class="line">WindowSurfacePlacer.performSurfacePlacement(...) --[SystemServer进程]</span><br><span class="line">WindowSurfacePlacer.performSurfacePlacementLoop() --[SystemServer进程]</span><br><span class="line">RootWindowContainer.performSurfacePlacement(<span class="type">boolean</span>) --[SystemServer进程]</span><br><span class="line">RootWindowContainer.performSurfacePlacementNoTrace(<span class="type">boolean</span>) --[SystemServer进程]</span><br><span class="line">WindowManagerService.openSurfaceTransaction() --[SystemServer进程]</span><br><span class="line">    SurfaceControl.openTransaction() --[SystemServer进程] 创建Transaction, 或者计数+<span class="number">1</span></span><br><span class="line">    android_view_SurfaceControl:nativeCreateTransaction(...) --[SystemServer进程]</span><br><span class="line">    SurfaceComposerClient:Transaction:<span class="keyword">new</span>() --[SystemServer进程]</span><br><span class="line">WindowManagerService.applySurfaceChangesTransaction(<span class="type">boolean</span>) --[SystemServer进程]</span><br><span class="line">    SurfaceControl.mergeToGlobalTransaction(Transaction) --[SystemServer进程]</span><br><span class="line">    SurfaceControl.Transaction.merge(Transaction) --[SystemServer进程]合并更新后的属性</span><br><span class="line">    android_view_SurfaceControl:nativeMergeTransaction(...) --[SystemServer进程]</span><br><span class="line">    SurfaceComposerClient:Transaction:merge(Transaction) --[SystemServer进程]也就是保存新的属性</span><br><span class="line">WindowManagerService.closeSurfaceTransaction(String) --[SystemServer进程]</span><br><span class="line">    SurfaceControl.closeTransaction() --[SystemServer进程]</span><br><span class="line">    SurfaceControl.Transaction.apply() --[SystemServer进程]</span><br><span class="line">    android_view_SurfaceControl:nativeApplyTransaction(...) --[SystemServer进程]</span><br><span class="line">    SurfaceComposerClient:Transaction:apply(bool) --[SystemServer进程]</span><br><span class="line">    SurfaceFlinger:setTransactionState(...) --[SurfaceFlinger进程]传递更新后的属性到sf</span><br><span class="line">    SurfaceFlinger:applyTransactionState(...) --[SurfaceFlinger进程]</span><br><span class="line">        TransactionCompletedThread:run() --[SurfaceFlinger进程]</span><br><span class="line">            TransactionCompletedThread:threadMain() --[SurfaceFlinger子线程]</span><br><span class="line">                mConditionVariable.wait(mMutex);<span class="comment">// 等待执行</span></span><br><span class="line">                TransactionCompletedListener:onTransactionCompleted(...)--[SurfaceFlinger子线程]</span><br><span class="line">        TransactionCompletedThread:addCallback() --[SurfaceFlinger进程]</span><br><span class="line">        TransactionCompletedThread:sendCallbacks() --notify TransactionCompletedThread执行</span><br><span class="line">        SurfaceFlinger:setClientStateLocked(...) --[SurfaceFlinger进程]</span><br><span class="line">            Layer:setLayer(int32_t) --[SurfaceFlinger进程] 更新Layer所处Z轴的位置</span><br></pre></td></tr></table></figure>
+<p>如图：<br><img src="/.io//4_2.png" alt="图片"></p>
+<p>到目前为止还只是创建了一个SurfaceControl，对应SurfaceFlinger中的BufferQueueLayer。<br>真正的Surface还没有被创建，那是什么时候创建的呢？</p>
+<h1 id="四-Surface的生成"><a href="#四-Surface的生成" class="headerlink" title="四. Surface的生成"></a>四. Surface的生成</h1><p>一个ViewRootImpl对应一个Suface, 也就是一个Layer.<br>当我们创建了Layer之后，总要向其中填充数据内容，SurfaceFlinger才好做合成。<br>在RendererThread中，我们知道了Surface数据是通过渲染引擎OpenGL(android Q上是Vulkan)生成的。</p>
+<h2 id="4-1-Suface的生成"><a href="#4-1-Suface的生成" class="headerlink" title="4.1 Suface的生成"></a>4.1 Suface的生成</h2><p>参阅：RenderThread深入分析(三)–绑定窗口对应的Surface到RenderThread的过程</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">ViewRootImpl.performTraversals(...) --[App UI进程] 绘制三部曲</span><br><span class="line">ViewRootImpl.relayoutWindow(...) --[App UI进程]</span><br><span class="line">    mSurface.copyFrom(mSurfaceControl) 注意这里会将赋值mSurface</span><br><span class="line">    android_view_Surface:nativeCreateFromSurfaceControl(...) --[App UI进程]</span><br><span class="line">    SurfaceControl:createSurface() --[App UI进程]</span><br><span class="line">        SurfaceControl:generateSurfaceLocked()</span><br><span class="line">        Surface:<span class="keyword">new</span>() 这里创建了<span class="keyword">native</span> Surface</span><br><span class="line">ThreadedRenderer.initializeIfNeeded(...) --[App UI进程]</span><br><span class="line">    ThreadedRenderer.initialize(Surface) --[App UI进程]</span><br><span class="line">    ThreadedRenderer.setSurface(Surface) --[App UI进程]</span><br><span class="line">    HardwareRenderer.setSurface(Surface) --[App UI进程]</span><br><span class="line">    android_view_ThreadedRenderer:setSurface(...) --[App UI进程]</span><br><span class="line">        android_view_Surface:getSurface(...) --[App UI进程] 这里返回上面创建的<span class="keyword">native</span> Surface</span><br><span class="line">    RenderProxy:setSurface(Surface) --[App UI进程] 接下来转进RenderThread线程处理</span><br><span class="line">        CanvasContext:setSurface(...) --[RenderThread线程]</span><br><span class="line">        SkiaVulkanPipeline:setSurface(...) --[RenderThread线程]</span><br><span class="line">        VulkanManager:createSurface(...) --[RenderThread线程]</span><br><span class="line">        VulkanSurface:Create(...) --[RenderThread线程]</span><br><span class="line">        VulkanManager.mGetPhysicalDeviceSurfaceCapabilitiesKHR(...)</span><br><span class="line">            获取Vulkan引擎中的Surface</span><br></pre></td></tr></table></figure>
+<p>大致流程如下图：<br><img src="/.io//4_3.png" alt="图片"></p>
+<p>现在我们已经获取了渲染引擎中的Surface，向其中填充数据的过程就是performDraw的流程；<br>这个部分在RenderThread中有分析，不在赘述。</p>
+<p>那当我们的Surface中已经被填充了数据后，是如何传递给SurfaceFlinger做合成的呢？<br>这个部分我们稍后详细分析，目前仅从trace上也可以看出来：</p>
+<p><img src="/.io//4_4_app.png" alt="图片"></p>
+<p>上图中eglSwapBuffer最终就是通过binder通知到surfaceflinger中处理的：</p>
+<p><img src="/.io//4_4_sf.png" alt="图片"></p>
+<h1 id="五-Layer实例"><a href="#五-Layer实例" class="headerlink" title="五. Layer实例"></a>五. Layer实例</h1><p>以如下图为例，看看对应Layer：</p>
+<img src="/.io//screenshot_phone.png" width="100" hegiht="200" align="center">
+
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br></pre></td><td class="code"><pre><span class="line">Display 19260235133379457 HWC layers:</span><br><span class="line">-------------------------------------------------------------------------------------------</span><br><span class="line"> Layer name</span><br><span class="line">           Z |  Window Type |  Comp Type |  Transform |   Disp Frame (LTRB) |          Source Crop (LTRB)</span><br><span class="line">-------------------------------------------------------------------------------------------</span><br><span class="line"> com.android.dialer/com.oneplus.contacts.activities.OPDialtactsActivity#0</span><br><span class="line">  rel      0 |            1 |     DEVICE |          0 |    0    0 1080 2340 |    0.0    0.0 1080.0 2340.0</span><br><span class="line">- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - -</span><br><span class="line"> PopupWindow:b04e24#0</span><br><span class="line">  rel      0 |         1002 |     DEVICE |          0 |  646   56 1080  656 |    0.0    0.0  434.0  600.0</span><br><span class="line">- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - -</span><br><span class="line"> StatusBar#0</span><br><span class="line">  rel      0 |         2000 |     DEVICE |          0 |    0    0 1080   80 |    0.0    0.0 1080.0   80.0</span><br><span class="line">- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - -</span><br><span class="line"> NavigationBar0#0</span><br><span class="line">  rel      0 |         2019 |     DEVICE |          0 |    0 2214 1080 2340 |    0.0    0.0 1080.0  126.0</span><br><span class="line">- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - -</span><br><span class="line"> ScreenDecorOverlay#0</span><br><span class="line">  rel      0 |         2024 |     DEVICE |          0 |    0    0 1080  240 |    0.0    0.0 1080.0  240.0</span><br><span class="line">- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - -</span><br><span class="line"> ScreenDecorOverlayBottom#0</span><br><span class="line">  rel      0 |         2024 |     DEVICE |          0 |    0 2100 1080 2340 |    0.0    0.0 1080.0  240.0</span><br><span class="line">- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - - -- - - - - - - - - - - - - - -</span><br><span class="line"></span><br><span class="line">+ ContainerLayer (5fd44db PopupWindow:b04e24#0)</span><br><span class="line">  Region TransparentRegion (this=0 count=0)</span><br><span class="line">  Region VisibleRegion (this=0 count=0)</span><br><span class="line">  Region SurfaceDamageRegion (this=0 count=0)</span><br><span class="line">      layerStack=   0, z=        2, pos=(646,56), size=(   0,   0), crop=[  0,   0,  -1,  -1], cornerRadius=0.000000, isProtected=0, isOpaque=0, invalidate=1, dataspace=Default, defaultPixelFormat=Unknown/None, color=(0.000,0.000,0.000,1.000), flags=0x00000000, tr=[0.00, 0.00][0.00, 0.00]</span><br><span class="line">      parent=9628544 com.android.dialer/com.oneplus.contacts.activities.OPDialtactsActivity#0</span><br><span class="line">      zOrderRelativeOf=none</span><br><span class="line">      activeBuffer=[   0x   0:   0,Unknown/None], tr=[0.00, 0.00][0.00, 0.00] queued-frames=0, mRefreshPending=0, metadata=&#123;&#125;</span><br><span class="line"></span><br><span class="line">+ ContainerLayer (9628544 com.android.dialer/com.oneplus.contacts.activities.OPDialtactsActivity#0)</span><br><span class="line">  Region TransparentRegion (this=0 count=0)</span><br><span class="line">  Region VisibleRegion (this=0 count=0)</span><br><span class="line">  Region SurfaceDamageRegion (this=0 count=0)</span><br><span class="line">      layerStack=   0, z=        0, pos=(0,0), size=(   0,   0), crop=[  0,   0,  -1,  -1], cornerRadius=0.000000, isProtected=0, isOpaque=0, invalidate=1, dataspace=Default, defaultPixelFormat=Unknown/None, color=(0.000,0.000,0.000,1.000), flags=0x00000000, tr=[0.00, 0.00][0.00, 0.00]</span><br><span class="line">      parent=AppWindowToken&#123;8380fd9 token=Token&#123;2f31a20 ActivityRecord&#123;7c5523 u0 com.android.dialer/com.oneplus.contacts.activities.OPDialtactsActivity t5&#125;&#125;&#125;#0</span><br><span class="line">      zOrderRelativeOf=none</span><br><span class="line">      activeBuffer=[   0x   0:   0,Unknown/None], tr=[0.00, 0.00][0.00, 0.00] queued-frames=0, mRefreshPending=0, metadata=&#123;&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">+ ContainerLayer (AppWindowToken&#123;8380fd9 token=Token&#123;2f31a20 ActivityRecord&#123;7c5523 u0 com.android.dialer/com.oneplus.contacts.activities.OPDialtactsActivity t5&#125;&#125;&#125;#0)</span><br><span class="line">  Region TransparentRegion (this=0 count=0)</span><br><span class="line">  Region VisibleRegion (this=0 count=0)</span><br><span class="line">  Region SurfaceDamageRegion (this=0 count=0)</span><br><span class="line">      layerStack=   0, z=        0, pos=(0,0), size=(   0,   0), crop=[  0,   0,  -1,  -1], cornerRadius=0.000000, isProtected=0, isOpaque=0, invalidate=1, dataspace=Default, defaultPixelFormat=Unknown/None, color=(0.000,0.000,0.000,1.000), flags=0x00000000, tr=[0.00, 0.00][0.00, 0.00]</span><br><span class="line">      parent=Task=5#0</span><br><span class="line">      zOrderRelativeOf=none</span><br><span class="line">      activeBuffer=[   0x   0:   0,Unknown/None], tr=[0.00, 0.00][0.00, 0.00] queued-frames=0, mRefreshPending=0, metadata=&#123;&#125;</span><br><span class="line"></span><br><span class="line">+ ContainerLayer (Task=5#0)</span><br><span class="line">  Region TransparentRegion (this=0 count=0)</span><br><span class="line">  Region VisibleRegion (this=0 count=0)</span><br><span class="line">  Region SurfaceDamageRegion (this=0 count=0)</span><br><span class="line">      layerStack=   0, z=        0, pos=(0,0), size=(   0,   0), crop=[  0,   0,  -1,  -1], cornerRadius=0.000000, isProtected=0, isOpaque=0, invalidate=1, dataspace=Default, defaultPixelFormat=Unknown/None, color=(0.000,0.000,0.000,1.000), flags=0x00000000, tr=[0.00, 0.00][0.00, 0.00]</span><br><span class="line">      parent=Stack=2#0</span><br><span class="line">      zOrderRelativeOf=none</span><br><span class="line">      activeBuffer=[   0x   0:   0,Unknown/None], tr=[0.00, 0.00][0.00, 0.00] queued-frames=0, mRefreshPending=0, metadata=&#123;taskId:5&#125;</span><br><span class="line"></span><br><span class="line">+ ContainerLayer (Stack=2#0)</span><br><span class="line">  Region TransparentRegion (this=0 count=0)</span><br><span class="line">  Region VisibleRegion (this=0 count=0)</span><br><span class="line">  Region SurfaceDamageRegion (this=0 count=0)</span><br><span class="line">      layerStack=   0, z=        5, pos=(0,0), size=(   0,   0), crop=[  0,   0, 1080, 2340], cornerRadius=0.000000, isProtected=0, isOpaque=0, invalidate=1, dataspace=Default, defaultPixelFormat=Unknown/None, color=(0.000,0.000,0.000,1.000), flags=0x00000000, tr=[0.00, 0.00][0.00, 0.00]</span><br><span class="line">      parent=com.android.server.wm.DisplayContent$TaskStackContainers@c19f2e#0</span><br><span class="line">      zOrderRelativeOf=none</span><br><span class="line">      activeBuffer=[   0x   0:   0,Unknown/None], tr=[0.00, 0.00][0.00, 0.00] queued-frames=0, mRefreshPending=0, metadata=&#123;&#125;</span><br><span class="line"></span><br><span class="line">+ ContainerLayer (com.android.server.wm.DisplayContent$TaskStackContainers@c19f2e#0)</span><br><span class="line">  Region TransparentRegion (this=0 count=0)</span><br><span class="line">  Region VisibleRegion (this=0 count=0)</span><br><span class="line">  Region SurfaceDamageRegion (this=0 count=0)</span><br><span class="line">      layerStack=   0, z=        1, pos=(0,0), size=(   0,   0), crop=[  0,   0,  -1,  -1], cornerRadius=0.000000, isProtected=0, isOpaque=0, invalidate=1, dataspace=Default, defaultPixelFormat=Unknown/None, color=(0.000,0.000,0.000,1.000), flags=0x00000000, tr=[0.00, 0.00][0.00, 0.00]</span><br><span class="line">      parent=Display Root#0</span><br><span class="line">      zOrderRelativeOf=none</span><br><span class="line">      activeBuffer=[   0x   0:   0,Unknown/None], tr=[0.00, 0.00][0.00, 0.00] queued-frames=0, mRefreshPending=0, metadata=&#123;&#125;</span><br><span class="line"></span><br><span class="line">+ ContainerLayer (Display Root#0)</span><br><span class="line">  Region TransparentRegion (this=0 count=0)</span><br><span class="line">  Region VisibleRegion (this=0 count=0)</span><br><span class="line">  Region SurfaceDamageRegion (this=0 count=0)</span><br><span class="line">      layerStack=   0, z=        0, pos=(0,0), size=(   0,   0), crop=[  0,   0,  -1,  -1], cornerRadius=0.000000, isProtected=0, isOpaque=0, invalidate=1, dataspace=Default, defaultPixelFormat=Unknown/None, color=(0.000,0.000,0.000,1.000), flags=0x00000002, tr=[0.00, 0.00][0.00, 0.00]</span><br><span class="line">      parent=none</span><br><span class="line">      zOrderRelativeOf=none</span><br><span class="line">      activeBuffer=[   0x   0:   0,Unknown/None], tr=[0.00, 0.00][0.00, 0.00] queued-frames=0, mRefreshPending=0, metadata=&#123;&#125;</span><br></pre></td></tr></table></figure>
+<p>示意图如下：</p>
+<p><img src="/.io//screenshot_phone_layer.png" alt="图片"></p>
+<p>总的来说就是，树形结构+Z order排序。</p>
+<h1 id="六-类图"><a href="#六-类图" class="headerlink" title="六. 类图"></a>六. 类图</h1><p><img src="/.io//4_5_classmap.png" alt="图片"></p>
+<p>现在我们Surface有了，也有渲染的内容了，那SurfaceFlinger是如何将这些Surface对应的Layer合成为一帧并显示出来的呢?</p>
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li>[Android Synchronization Fences – An Introduction]<a target="_blank" rel="noopener" href="http://netaz.blogspot.com/2013/10/android-fences-introduction-in-any.html">http://netaz.blogspot.com/2013/10/android-fences-introduction-in-any.html</a></li>
+<li>[Android中的GraphicBuffer同步机制-Fence]<a target="_blank" rel="noopener" href="https://blog.csdn.net/jinzhuojun/article/details/39698317">https://blog.csdn.net/jinzhuojun/article/details/39698317</a></li>
+<li>[深入浅出Android BufferQueue]<a target="_blank" rel="noopener" href="https://blog.51cto.com/13591395/2380727">https://blog.51cto.com/13591395/2380727</a></li>
+<li>[从systrace看app冷启动过程（三）-首帧的合成与送显]<a target="_blank" rel="noopener" href="https://www.jianshu.com/p/3829158b4699">https://www.jianshu.com/p/3829158b4699</a></li>
+<li>[Android显示Surface]<a target="_blank" rel="noopener" href="https://www.jianshu.com/p/fc3c3d6f9bf7">https://www.jianshu.com/p/fc3c3d6f9bf7</a></li>
+<li>[surfaceflinger中各个layer的排序]<a target="_blank" rel="noopener" href="https://www.cnblogs.com/riskyer/p/3297226.html">https://www.cnblogs.com/riskyer/p/3297226.html</a></li>
+<li>[Android 4.0.3 显示系统深入理解]<a target="_blank" rel="noopener" href="https://www.linuxidc.com/Linux/2012-03/55898p4.htm">https://www.linuxidc.com/Linux/2012-03/55898p4.htm</a></li>
+<li>[Android窗口管理分析（3）：窗口分组及Z-order的确定]<a target="_blank" rel="noopener" href="https://www.jianshu.com/p/90ede7b2a64a">https://www.jianshu.com/p/90ede7b2a64a</a></li>
+</ol>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-4-Layer-Surface/" title="SurfaceFlinger(4)--Layer&amp;Surface">https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-4-Layer-Surface/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Vsync/" rel="tag"># Vsync</a>
+              <a href="/tags/SurfaceFlinger/" rel="tag"># SurfaceFlinger</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/04/04/SurfaceFlinger-3-AppEventThread%E6%8E%A5%E5%8F%97vsync%E4%BF%A1%E5%8F%B7/" rel="prev" title="SurfaceFlinger(3)--AppEventThread接受vsync信号">
+      <i class="fa fa-chevron-left"></i> SurfaceFlinger(3)--AppEventThread接受vsync信号
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/04/04/SurfaceFlinger-5-composer/" rel="next" title="SurfaceFlinger(5)--composer">
+      SurfaceFlinger(5)--composer <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-SF-EventThread%E6%8E%A5%E6%94%B6vsync%E7%9A%84%E5%87%86%E5%A4%87"><span class="nav-text">一. SF EventThread接收vsync的准备</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-SurfaceFlinger-init"><span class="nav-text">1.1 SurfaceFlinger.init</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-1-Scheduler-createConnection"><span class="nav-text">1.1.1 Scheduler.createConnection</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-2-EventThread-createEventConnection"><span class="nav-text">1.1.2 EventThread.createEventConnection</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-MessageQueue-setEventConnection"><span class="nav-text">1.2 MessageQueue.setEventConnection</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-1-EventThreadConnection-stealReceiveChannel"><span class="nav-text">1.2.1 EventThreadConnection.stealReceiveChannel</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-SF-EventThread%E6%8E%A5%E6%94%B6vsync"><span class="nav-text">二. SF EventThread接收vsync</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-MessageQueue-cb-eventReceiver"><span class="nav-text">2.1 MessageQueue.cb_eventReceiver</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-MessageQueue-Handler-dispatchInvalidate"><span class="nav-text">2.2 MessageQueue.Handler.dispatchInvalidate</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-SurfaceFlinger-onMessageReceived"><span class="nav-text">2.3 SurfaceFlinger.onMessageReceived</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-SurfaceFlinger-handleMessageInvalidate"><span class="nav-text">2.4 SurfaceFlinger.handleMessageInvalidate</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-SurfaceFlinger-handlePageFlip"><span class="nav-text">2.5 SurfaceFlinger.handlePageFlip</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-6-SurfaceFlinger-handleMessageRefresh"><span class="nav-text">2.6 SurfaceFlinger.handleMessageRefresh</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-Layer%E7%9A%84%E4%BA%A7%E7%94%9F"><span class="nav-text">三. Layer的产生</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-SurfaceFlinger-createLayer"><span class="nav-text">3.1 SurfaceFlinger:createLayer</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-1-SurfaceFlinger-createBufferQueueLayer"><span class="nav-text">3.1.1 SurfaceFlinger.createBufferQueueLayer</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-SurfaceFlinger-addClientLayer"><span class="nav-text">3.2 SurfaceFlinger.addClientLayer</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-1-LayerVector-add"><span class="nav-text">3.2.1 LayerVector.add</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-2-SurfaceFlinger-addClientLayer"><span class="nav-text">3.2.2 SurfaceFlinger:addClientLayer</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-Layer%E6%9B%B4%E6%96%B0%E6%B5%81%E7%A8%8B"><span class="nav-text">3.4 Layer更新流程</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%9B%9B-Surface%E7%9A%84%E7%94%9F%E6%88%90"><span class="nav-text">四. Surface的生成</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#4-1-Suface%E7%9A%84%E7%94%9F%E6%88%90"><span class="nav-text">4.1 Suface的生成</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%94-Layer%E5%AE%9E%E4%BE%8B"><span class="nav-text">五. Layer实例</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%85%AD-%E7%B1%BB%E5%9B%BE"><span class="nav-text">六. 类图</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">25</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

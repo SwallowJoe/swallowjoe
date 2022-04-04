@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Andorid Q 一. SFEventThread EventControlThread: 控制硬件vsync的开关 DispSyncThread: 软件产生vsync的线程 SF EventThread: 该线程用于SurfaceFlinger接收vsync信号用于渲染 App EventThread: 该线程用于接收vsync信号并且上报给App进程，App开始画图  从这4个线程，可以">
+<meta property="og:type" content="article">
+<meta property="og:title" content="SurfaceFlinger(1)--SFEventThread">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-1-SFEventThread/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="Andorid Q 一. SFEventThread EventControlThread: 控制硬件vsync的开关 DispSyncThread: 软件产生vsync的线程 SF EventThread: 该线程用于SurfaceFlinger接收vsync信号用于渲染 App EventThread: 该线程用于接收vsync信号并且上报给App进程，App开始画图  从这4个线程，可以">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/.io//1_1.png">
+<meta property="article:published_time" content="2022-04-04T01:52:04.000Z">
+<meta property="article:modified_time" content="2022-04-04T02:13:32.823Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="Vsync">
+<meta property="article:tag" content="SurfaceFlinger">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/.io//1_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-1-SFEventThread/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>SurfaceFlinger(1)--SFEventThread | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-1-SFEventThread/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          SurfaceFlinger(1)--SFEventThread
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-04 09:52:04 / 修改时间：10:13:32" itemprop="dateCreated datePublished" datetime="2022-04-04T09:52:04+08:00">2022-04-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/SurfaceFlinger/" itemprop="url" rel="index"><span itemprop="name">SurfaceFlinger</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/04/04/SurfaceFlinger-1-SFEventThread/" class="post-meta-item leancloud_visitors" data-flag-title="SurfaceFlinger(1)--SFEventThread" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/04/SurfaceFlinger-1-SFEventThread/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/04/SurfaceFlinger-1-SFEventThread/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+
+<p><strong>Andorid Q</strong></p>
+<h1 id="一-SFEventThread"><a href="#一-SFEventThread" class="headerlink" title="一. SFEventThread"></a>一. SFEventThread</h1><ol>
+<li>EventControlThread: 控制硬件vsync的开关</li>
+<li>DispSyncThread: 软件产生vsync的线程</li>
+<li>SF EventThread: 该线程用于SurfaceFlinger接收vsync信号用于渲染</li>
+<li>App EventThread: 该线程用于接收vsync信号并且上报给App进程，App开始画图</li>
+</ol>
+<p>从这4个线程，可以将vsync分为4种不同的类型</p>
+<ol>
+<li>HW vsync, 真实由硬件产生的vsync信号</li>
+<li>SW vsync, 由DispSync产生的vsync信号</li>
+<li>SF vsync,  SF接收到的vsync信号</li>
+<li>App vsync, App接收到的vsync信号</li>
+</ol>
+<p>这里我们着重看看SF EventThread.</p>
+<h2 id="1-1-BitTube"><a href="#1-1-BitTube" class="headerlink" title="1.1 BitTube"></a>1.1 BitTube</h2><p>先大致了解下BitTube，其实现是socketpairt套接字，用于传递消息。<br>Buffer大小是4KB。</p>
+<h1 id="二-EventThread启动"><a href="#二-EventThread启动" class="headerlink" title="二. EventThread启动"></a>二. EventThread启动</h1><h2 id="2-1-SurfaceFlinger-init"><a href="#2-1-SurfaceFlinger-init" class="headerlink" title="2.1 SurfaceFlinger.init"></a>2.1 SurfaceFlinger.init</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::init</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="comment">// start the EventThread</span></span><br><span class="line">    mEventThreadSource =</span><br><span class="line">            std::<span class="built_in">make_unique</span>&lt;DispSyncSource&gt;(&amp;mPrimaryDispSync, SurfaceFlinger::vsyncPhaseOffsetNs,</span><br><span class="line">                                             <span class="literal">true</span>, <span class="string">&quot;app&quot;</span>);</span><br><span class="line">    mEventThread = std::<span class="built_in">make_unique</span>&lt;impl::EventThread&gt;(mEventThreadSource.<span class="built_in">get</span>(),</span><br><span class="line">                                                       [<span class="keyword">this</span>]() &#123; <span class="built_in">resyncWithRateLimit</span>(); &#125;,</span><br><span class="line">                                                       impl::EventThread::<span class="built_in">InterceptVSyncsCallback</span>(),</span><br><span class="line">                                                       <span class="string">&quot;appEventThread&quot;</span>);</span><br><span class="line">    mSfEventThreadSource =</span><br><span class="line">            std::<span class="built_in">make_unique</span>&lt;DispSyncSource&gt;(&amp;mPrimaryDispSync,</span><br><span class="line">                                             SurfaceFlinger::sfVsyncPhaseOffsetNs, <span class="literal">true</span>, <span class="string">&quot;sf&quot;</span>);</span><br><span class="line"></span><br><span class="line">    mSFEventThread =</span><br><span class="line">            std::<span class="built_in">make_unique</span>&lt;impl::EventThread&gt;(mSfEventThreadSource.<span class="built_in">get</span>(),</span><br><span class="line">                                                [<span class="keyword">this</span>]() &#123; <span class="built_in">resyncWithRateLimit</span>(); &#125;,</span><br><span class="line">                                                [<span class="keyword">this</span>](<span class="type">nsecs_t</span> timestamp) &#123;</span><br><span class="line">                                                    mInterceptor-&gt;<span class="built_in">saveVSyncEvent</span>(timestamp);</span><br><span class="line">                                                &#125;,</span><br><span class="line">                                                <span class="string">&quot;sfEventThread&quot;</span>);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里注意传入的偏移是不同的。</p>
+<ol>
+<li>app EventThread : vsyncPhaseOffsetNs &#x3D; 2000000ns</li>
+<li>sf EventThread : sfVsyncPhaseOffsetNs &#x3D; 6000000ns</li>
+</ol>
+<p>这个值是编译期间固定的，定义在BoardConfig.mk中</p>
+<h2 id="2-2-EventThread初始化"><a href="#2-2-EventThread初始化" class="headerlink" title="2.2 EventThread初始化"></a>2.2 EventThread初始化</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">EventThread::<span class="built_in">EventThread</span>(VSyncSource* src, ResyncWithRateLimitCallback resyncWithRateLimitCallback,</span><br><span class="line">                         InterceptVSyncsCallback interceptVSyncsCallback, <span class="type">const</span> <span class="type">char</span>* threadName)</span><br><span class="line">      : <span class="built_in">mVSyncSource</span>(src),</span><br><span class="line">        <span class="built_in">mResyncWithRateLimitCallback</span>(resyncWithRateLimitCallback),</span><br><span class="line">        <span class="built_in">mInterceptVSyncsCallback</span>(interceptVSyncsCallback) &#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; event : mVSyncEvent) &#123;</span><br><span class="line">        event.header.type = DisplayEventReceiver::DISPLAY_EVENT_VSYNC;</span><br><span class="line">        event.header.id = <span class="number">0</span>;</span><br><span class="line">        event.header.timestamp = <span class="number">0</span>;</span><br><span class="line">        event.vsync.count = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 绑定thread函数</span></span><br><span class="line">    mThread = std::<span class="built_in">thread</span>(&amp;EventThread::threadMain, <span class="keyword">this</span>);</span><br><span class="line">    <span class="comment">// 设置thread名称</span></span><br><span class="line">    <span class="built_in">pthread_setname_np</span>(mThread.<span class="built_in">native_handle</span>(), threadName);</span><br><span class="line"></span><br><span class="line">    <span class="type">pid_t</span> tid = <span class="built_in">pthread_gettid_np</span>(mThread.<span class="built_in">native_handle</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Use SCHED_FIFO to minimize jitter</span></span><br><span class="line">    <span class="keyword">constexpr</span> <span class="type">int</span> EVENT_THREAD_PRIORITY = <span class="number">2</span>;</span><br><span class="line">    <span class="keyword">struct</span> <span class="title class_">sched_param</span> param = &#123;<span class="number">0</span>&#125;;</span><br><span class="line">    param.sched_priority = EVENT_THREAD_PRIORITY;</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">pthread_setschedparam</span>(mThread.<span class="built_in">native_handle</span>(), SCHED_FIFO, &amp;param) != <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="built_in">ALOGE</span>(<span class="string">&quot;Couldn&#x27;t set SCHED_FIFO for EventThread&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">set_sched_policy</span>(tid, SP_FOREGROUND);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-3-EventThread-threadMain"><a href="#2-3-EventThread-threadMain" class="headerlink" title="2.3 EventThread.threadMain"></a>2.3 EventThread.threadMain</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">EventThread::threadMain</span><span class="params">()</span> NO_THREAD_SAFETY_ANALYSIS </span>&#123;</span><br><span class="line">    <span class="function">std::unique_lock&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    <span class="keyword">while</span> (mKeepRunning) &#123;</span><br><span class="line">        DisplayEventReceiver::Event event;</span><br><span class="line">        Vector&lt;sp&lt;EventThread::Connection&gt; &gt; signalConnections;</span><br><span class="line">        <span class="comment">// 2.4 阻塞等待事件</span></span><br><span class="line">        signalConnections = <span class="built_in">waitForEventLocked</span>(&amp;lock, &amp;event);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 分发事件给connection</span></span><br><span class="line">        <span class="type">const</span> <span class="type">size_t</span> count = signalConnections.<span class="built_in">size</span>();</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; count; i++) &#123;</span><br><span class="line">            <span class="function"><span class="type">const</span> sp&lt;Connection&gt;&amp; <span class="title">conn</span><span class="params">(signalConnections[i])</span></span>;</span><br><span class="line">            <span class="comment">// 2.5 分发事件</span></span><br><span class="line">            <span class="type">status_t</span> err = conn-&gt;<span class="built_in">postEvent</span>(event);</span><br><span class="line">            <span class="keyword">if</span> (err == -EAGAIN || err == -EWOULDBLOCK) &#123;</span><br><span class="line">                <span class="comment">// The destination doesn&#x27;t accept events anymore, it&#x27;s probably</span></span><br><span class="line">                <span class="comment">// full. For now, we just drop the events on the floor.</span></span><br><span class="line">                <span class="comment">// <span class="doctag">FIXME:</span> Note that some events cannot be dropped and would have</span></span><br><span class="line">                <span class="comment">// to be re-sent later.</span></span><br><span class="line">                <span class="comment">// Right-now we don&#x27;t have the ability to do this.</span></span><br><span class="line">                <span class="comment">//ALOGW(&quot;EventThread: dropping event (%08x) for connection %p&quot;, event.header.type,</span></span><br><span class="line">                <span class="comment">//      conn.get());</span></span><br><span class="line">            &#125; <span class="keyword">else</span> <span class="keyword">if</span> (err &lt; <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="comment">// handle any other error on the pipe as fatal. the only</span></span><br><span class="line">                <span class="comment">// reasonable thing to do is to clean-up this connection.</span></span><br><span class="line">                <span class="comment">// The most common error we&#x27;ll get here is -EPIPE.</span></span><br><span class="line">                <span class="built_in">removeDisplayEventConnectionLocked</span>(signalConnections[i]);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-4-EventThread-waitForEventLocked"><a href="#2-4-EventThread-waitForEventLocked" class="headerlink" title="2.4 EventThread.waitForEventLocked"></a>2.4 EventThread.waitForEventLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// This will return when (1) a vsync event has been received, and (2) there was</span></span><br><span class="line"><span class="comment">// at least one connection interested in receiving it when we started waiting.</span></span><br><span class="line">Vector&lt;sp&lt;EventThread::Connection&gt; &gt; EventThread::<span class="built_in">waitForEventLocked</span>(</span><br><span class="line">        std::unique_lock&lt;std::mutex&gt;* lock, DisplayEventReceiver::Event* event) &#123;</span><br><span class="line">    Vector&lt;sp&lt;EventThread::Connection&gt; &gt; signalConnections;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">while</span> (signalConnections.<span class="built_in">isEmpty</span>() &amp;&amp; mKeepRunning) &#123;</span><br><span class="line">        <span class="type">bool</span> eventPending = <span class="literal">false</span>;</span><br><span class="line">        <span class="type">bool</span> waitForVSync = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">        <span class="type">size_t</span> vsyncCount = <span class="number">0</span>;</span><br><span class="line">        <span class="type">nsecs_t</span> timestamp = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int32_t</span> i = <span class="number">0</span>; i &lt; DisplayDevice::NUM_BUILTIN_DISPLAY_TYPES; i++) &#123;</span><br><span class="line">            timestamp = mVSyncEvent[i].header.timestamp;</span><br><span class="line">            <span class="keyword">if</span> (timestamp) &#123;</span><br><span class="line">                <span class="comment">// 当timestamp不为0时，说明有事件发生</span></span><br><span class="line">                <span class="keyword">if</span> (mInterceptVSyncsCallback) &#123;</span><br><span class="line">                    <span class="built_in">mInterceptVSyncsCallback</span>(timestamp);</span><br><span class="line">                &#125;</span><br><span class="line">                *event = mVSyncEvent[i];</span><br><span class="line">                <span class="comment">// 置timestamp为0，标记为当前事件被消费</span></span><br><span class="line">                mVSyncEvent[i].header.timestamp = <span class="number">0</span>;</span><br><span class="line">                vsyncCount = mVSyncEvent[i].vsync.count;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// mDisplayEventConnections保存的是注册的Connection的,</span></span><br><span class="line">        <span class="comment">// SF EventThread线程里只有一个Connection, 而这个Connection主要是用来渲染</span></span><br><span class="line">        <span class="comment">// 而如果是APP EventThread, 这里会有多个connection</span></span><br><span class="line">        <span class="type">size_t</span> count = mDisplayEventConnections.<span class="built_in">size</span>();</span><br><span class="line">        <span class="keyword">if</span> (!timestamp &amp;&amp; count) &#123;</span><br><span class="line">            <span class="comment">// 没有vsync事件， 来看下是否有其它pending的event, 这里主要是hotplug的事件</span></span><br><span class="line">            eventPending = !mPendingEvents.<span class="built_in">isEmpty</span>();</span><br><span class="line">            <span class="keyword">if</span> (eventPending) &#123;</span><br><span class="line">                <span class="comment">// we have some other event to dispatch</span></span><br><span class="line">                *event = mPendingEvents[<span class="number">0</span>];</span><br><span class="line">                mPendingEvents.<span class="built_in">removeAt</span>(<span class="number">0</span>);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="number">0</span>; i &lt; count;) &#123;</span><br><span class="line">            <span class="function">sp&lt;Connection&gt; <span class="title">connection</span><span class="params">(mDisplayEventConnections[i].promote())</span></span>;</span><br><span class="line">            <span class="keyword">if</span> (connection != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">                <span class="type">bool</span> added = <span class="literal">false</span>;</span><br><span class="line">                <span class="comment">// Connection-&gt;count的值大小含义如下：</span></span><br><span class="line">                <span class="comment">// 1. &gt;=1:  表示持续接收Vsync信号</span></span><br><span class="line">                <span class="comment">// 2. ==0:  只接收一次Vsync信号</span></span><br><span class="line">                <span class="comment">// 3. ==-1: 不接收Vsync信号</span></span><br><span class="line">                <span class="keyword">if</span> (connection-&gt;count &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">                    <span class="comment">// 如果有 connection-&gt;count &gt;= 0，说明需要Vsync信号</span></span><br><span class="line">                    waitForVSync = <span class="literal">true</span>;</span><br><span class="line">                    <span class="keyword">if</span> (timestamp) &#123; <span class="comment">// 大于0.说明有事件</span></span><br><span class="line">                        <span class="comment">// 处理本次事件</span></span><br><span class="line">                        <span class="keyword">if</span> (connection-&gt;count == <span class="number">0</span>) &#123;</span><br><span class="line">                            <span class="comment">// fired this time around</span></span><br><span class="line">                            connection-&gt;count = <span class="number">-1</span>;</span><br><span class="line">                            signalConnections.<span class="built_in">add</span>(connection);</span><br><span class="line">                            added = <span class="literal">true</span>;</span><br><span class="line">                        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (connection-&gt;count == <span class="number">1</span> ||</span><br><span class="line">                                   (vsyncCount % connection-&gt;count) == <span class="number">0</span>) &#123;</span><br><span class="line">                            <span class="comment">// continuous event, and time to report it</span></span><br><span class="line">                            signalConnections.<span class="built_in">add</span>(connection);</span><br><span class="line">                            added = <span class="literal">true</span>;</span><br><span class="line">                        &#125;</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                <span class="keyword">if</span> (eventPending &amp;&amp; !timestamp &amp;&amp; !added) &#123;</span><br><span class="line">                    <span class="comment">// we don&#x27;t have a vsync event to process</span></span><br><span class="line">                    <span class="comment">// (timestamp==0), but we have some pending</span></span><br><span class="line">                    <span class="comment">// messages.</span></span><br><span class="line">                    signalConnections.<span class="built_in">add</span>(connection);</span><br><span class="line">                &#125;</span><br><span class="line">                ++i;</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="comment">// we couldn&#x27;t promote this reference, the connection has</span></span><br><span class="line">                <span class="comment">// died, so clean-up!</span></span><br><span class="line">                mDisplayEventConnections.<span class="built_in">removeAt</span>(i);</span><br><span class="line">                --count;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Here we figure out if we need to enable or disable vsyncs</span></span><br><span class="line">        <span class="keyword">if</span> (timestamp &amp;&amp; !waitForVSync) &#123;</span><br><span class="line">            <span class="comment">// 收到Vsync信号，但是没有Connection监听，所以关闭Vsync</span></span><br><span class="line">            <span class="built_in">disableVSyncLocked</span>();</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (!timestamp &amp;&amp; waitForVSync) &#123;</span><br><span class="line">            <span class="comment">// 有Connection监听，但是还没有Vsync信号，所以打开Vsync</span></span><br><span class="line">            <span class="built_in">enableVSyncLocked</span>();</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 没有事件发生</span></span><br><span class="line">        <span class="keyword">if</span> (!timestamp &amp;&amp; !eventPending) &#123;</span><br><span class="line">            <span class="keyword">if</span> (waitForVSync) &#123; <span class="comment">// 如果有connection监听，则需要等待Vsync事件</span></span><br><span class="line">                <span class="comment">// 以防止硬件Driver出问题，设置一个超时时间16ms</span></span><br><span class="line">                <span class="type">bool</span> softwareSync = mUseSoftwareVSync;</span><br><span class="line">                <span class="keyword">auto</span> timeout = softwareSync ? <span class="number">16</span>ms : <span class="number">1000</span>ms;</span><br><span class="line">                <span class="keyword">if</span> (mCondition.<span class="built_in">wait_for</span>(*lock, timeout) == std::cv_status::timeout) &#123;</span><br><span class="line">                    <span class="keyword">if</span> (!softwareSync) &#123;</span><br><span class="line">                        <span class="built_in">ALOGW</span>(<span class="string">&quot;Timed out waiting for hw vsync; faking it&quot;</span>);</span><br><span class="line">                    &#125;</span><br><span class="line">                    <span class="comment">// <span class="doctag">FIXME:</span> how do we decide which display id the fake</span></span><br><span class="line">                    <span class="comment">// vsync came from ?</span></span><br><span class="line">                    mVSyncEvent[<span class="number">0</span>].header.type = DisplayEventReceiver::DISPLAY_EVENT_VSYNC;</span><br><span class="line">                    mVSyncEvent[<span class="number">0</span>].header.id = DisplayDevice::DISPLAY_PRIMARY;</span><br><span class="line">                    mVSyncEvent[<span class="number">0</span>].header.timestamp = <span class="built_in">systemTime</span>(SYSTEM_TIME_MONOTONIC);</span><br><span class="line">                    mVSyncEvent[<span class="number">0</span>].vsync.count++;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="comment">// 没有connection监听，也没有收到事件，则一直等待</span></span><br><span class="line">                mCondition.<span class="built_in">wait</span>(*lock);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// here we&#x27;re guaranteed to have a timestamp and some connections to signal</span></span><br><span class="line">    <span class="comment">// (The connections might have dropped out of mDisplayEventConnections</span></span><br><span class="line">    <span class="comment">// while we were asleep, but we&#x27;ll still have strong references to them.)</span></span><br><span class="line">    <span class="keyword">return</span> signalConnections;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>当EventThread初始化进入时，由于没有Connection，timestamp也为0，直接进入waitForEventLocked一直等待。</p>
+<h2 id="2-5-EventThread-Connection-postEvent"><a href="#2-5-EventThread-Connection-postEvent" class="headerlink" title="2.5 EventThread.Connection.postEvent"></a>2.5 EventThread.Connection.postEvent</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">status_t</span> EventThread::Connection::<span class="built_in">postEvent</span>(<span class="type">const</span> DisplayEventReceiver::Event&amp; event) &#123;</span><br><span class="line">    <span class="type">ssize_t</span> size = DisplayEventReceiver::<span class="built_in">sendEvents</span>(&amp;mChannel, &amp;event, <span class="number">1</span>);</span><br><span class="line">    <span class="keyword">return</span> size &lt; <span class="number">0</span> ? <span class="built_in">status_t</span>(size) : <span class="built_in">status_t</span>(NO_ERROR);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过BitTube发送事件。</p>
+<h1 id="三-SF-EventThread-添加Connection"><a href="#三-SF-EventThread-添加Connection" class="headerlink" title="三. SF EventThread 添加Connection"></a>三. SF EventThread 添加Connection</h1><h2 id="3-1-SurfaceFlinger-init"><a href="#3-1-SurfaceFlinger-init" class="headerlink" title="3.1 SurfaceFlinger.init"></a>3.1 SurfaceFlinger.init</h2><p>sfEventThread添加Connection是在这个线程启动后就添加的。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::init</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// mEventQueue就是MessageQueue类的对象</span></span><br><span class="line">    mEventQueue-&gt;<span class="built_in">setEventThread</span>(mSFEventThread.<span class="built_in">get</span>());</span><br><span class="line">    mVsyncModulator.<span class="built_in">setEventThreads</span>(mSFEventThread.<span class="built_in">get</span>(), mEventThread.<span class="built_in">get</span>());</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="3-2-MessageQueue-setEventThread"><a href="#3-2-MessageQueue-setEventThread" class="headerlink" title="3.2 MessageQueue.setEventThread"></a>3.2 MessageQueue.setEventThread</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">MessageQueue::setEventThread</span><span class="params">(android::EventThread* eventThread)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (mEventThread == eventThread) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mEventTube.<span class="built_in">getFd</span>() &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">        mLooper-&gt;<span class="built_in">removeFd</span>(mEventTube.<span class="built_in">getFd</span>());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    mEventThread = eventThread;</span><br><span class="line">    <span class="comment">// 3.3 创建Connection</span></span><br><span class="line">    mEvents = eventThread-&gt;<span class="built_in">createEventConnection</span>();</span><br><span class="line">    <span class="comment">// 3.4 建立BitTube连接</span></span><br><span class="line">    mEvents-&gt;<span class="built_in">stealReceiveChannel</span>(&amp;mEventTube);</span><br><span class="line">    <span class="comment">// 3.5 接受BitTube事件，调用cb_eventReceiver方法</span></span><br><span class="line">    mLooper-&gt;<span class="built_in">addFd</span>(mEventTube.<span class="built_in">getFd</span>(), <span class="number">0</span>, Looper::EVENT_INPUT, MessageQueue::cb_eventReceiver,</span><br><span class="line">                   <span class="keyword">this</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-3-EventThread-createEventConnection"><a href="#3-3-EventThread-createEventConnection" class="headerlink" title="3.3 EventThread.createEventConnection"></a>3.3 EventThread.createEventConnection</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;BnDisplayEventConnection&gt; <span class="title">EventThread::createEventConnection</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="built_in">Connection</span>(<span class="built_in">const_cast</span>&lt;EventThread*&gt;(<span class="keyword">this</span>));</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">EventThread::Connection::<span class="built_in">Connection</span>(EventThread* eventThread)</span><br><span class="line">      <span class="comment">// 注意这里的count是被赋值为-1，也就是不接收Vsync事件</span></span><br><span class="line">      : <span class="built_in">count</span>(<span class="number">-1</span>), <span class="built_in">mEventThread</span>(eventThread), <span class="built_in">mChannel</span>(gui::BitTube::DefaultSize) &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-3-1-EventThread-Connection-onFirstRef"><a href="#3-3-1-EventThread-Connection-onFirstRef" class="headerlink" title="3.3.1 EventThread.Connection.onFirstRef"></a>3.3.1 EventThread.Connection.onFirstRef</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> EventThread::Connection::<span class="built_in">onFirstRef</span>() &#123;</span><br><span class="line">    <span class="comment">// <span class="doctag">NOTE:</span> mEventThread doesn&#x27;t hold a strong reference on us</span></span><br><span class="line">    mEventThread-&gt;<span class="built_in">registerDisplayEventConnection</span>(<span class="keyword">this</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在Connection对象生成之后，就被注册到其对应的EventThread中</p>
+<h3 id="3-3-2-EventThread-registerDisplayEventConnection"><a href="#3-3-2-EventThread-registerDisplayEventConnection" class="headerlink" title="3.3.2 EventThread.registerDisplayEventConnection"></a>3.3.2 EventThread.registerDisplayEventConnection</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">EventThread::registerDisplayEventConnection</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> sp&lt;EventThread::Connection&gt;&amp; connection)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    <span class="comment">// 添加到mDisplayEventConnections集合中</span></span><br><span class="line">    mDisplayEventConnections.<span class="built_in">add</span>(connection);</span><br><span class="line">    <span class="comment">// waitForEventLocked 可以继续执行了。</span></span><br><span class="line">    mCondition.<span class="built_in">notify_all</span>();</span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>注册connection后，waitForEventLocked便可以开始继续执行了。但是由于只有这一个connection，而且这个connection.count 还是 -1，所以最后还是会在waitForEventLocked中一直等待Vsync事件</p>
+<h2 id="3-4-EventThread-Connection-stealReceiveChannel"><a href="#3-4-EventThread-Connection-stealReceiveChannel" class="headerlink" title="3.4  EventThread.Connection.stealReceiveChannel"></a>3.4  EventThread.Connection.stealReceiveChannel</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">status_t</span> EventThread::Connection::<span class="built_in">stealReceiveChannel</span>(gui::BitTube* outChannel) &#123;</span><br><span class="line">    <span class="comment">// 将Connection的mChannel复制</span></span><br><span class="line">    outChannel-&gt;<span class="built_in">setReceiveFd</span>(mChannel.<span class="built_in">moveReceiveFd</span>());</span><br><span class="line">    <span class="keyword">return</span> NO_ERROR;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-5-SF-EventThread-connection开始监听Vsync信号"><a href="#3-5-SF-EventThread-connection开始监听Vsync信号" class="headerlink" title="3.5 SF EventThread connection开始监听Vsync信号"></a>3.5 SF EventThread connection开始监听Vsync信号</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">SurfaceFlinger::initializeDisplays</span><br><span class="line">    SurfaceFlinger::onInitializeDisplays</span><br><span class="line">        SurfaceFlinger::setTransactionState</span><br><span class="line">            SurfaceFlinger::setTransactionFlags</span><br><span class="line">                SurfaceFlinger::signalTransaction</span><br><span class="line">                    MessageQueue::invalidate</span><br><span class="line">                        EventThread::Connection::requestNextVsync</span><br><span class="line">                            EventThread::requestNextVsync</span><br></pre></td></tr></table></figure>
+<p>也就是说当显示屏准备完毕，sfEventThread就可以开始监听Vsync信号了</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">EventThread::requestNextVsync</span><span class="params">(<span class="type">const</span> sp&lt;EventThread::Connection&gt;&amp; connection)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard&lt;std::mutex&gt; <span class="title">lock</span><span class="params">(mMutex)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mResyncWithRateLimitCallback) &#123;</span><br><span class="line">        <span class="built_in">mResyncWithRateLimitCallback</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (connection-&gt;count &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        connection-&gt;count = <span class="number">0</span>; <span class="comment">// 只接受一次Vsync信号</span></span><br><span class="line">        mCondition.<span class="built_in">notify_all</span>();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-6-MessageQueue-cb-eventReceiver-处理Vsync信号"><a href="#3-6-MessageQueue-cb-eventReceiver-处理Vsync信号" class="headerlink" title="3.6 MessageQueue.cb_eventReceiver 处理Vsync信号"></a>3.6 MessageQueue.cb_eventReceiver 处理Vsync信号</h2><p>当SF EventThread收到Vsync信号时，最终会通过BitTube发送给对应connection的receiver[2.5]。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">MessageQueue::cb_eventReceiver</span><span class="params">(<span class="type">int</span> fd, <span class="type">int</span> events, <span class="type">void</span>* data)</span> </span>&#123;</span><br><span class="line">    MessageQueue* queue = <span class="built_in">reinterpret_cast</span>&lt;MessageQueue*&gt;(data);</span><br><span class="line">    <span class="keyword">return</span> queue-&gt;<span class="built_in">eventReceiver</span>(fd, events);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">MessageQueue::eventReceiver</span><span class="params">(<span class="type">int</span> <span class="comment">/*fd*/</span>, <span class="type">int</span> <span class="comment">/*events*/</span>)</span> </span>&#123;</span><br><span class="line">    <span class="type">ssize_t</span> n;</span><br><span class="line">    DisplayEventReceiver::Event buffer[<span class="number">8</span>];</span><br><span class="line">    <span class="keyword">while</span> ((n = DisplayEventReceiver::<span class="built_in">getEvents</span>(&amp;mEventTube, buffer, <span class="number">8</span>)) &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; n; i++) &#123;</span><br><span class="line">            <span class="keyword">if</span> (buffer[i].header.type == DisplayEventReceiver::DISPLAY_EVENT_VSYNC) &#123;</span><br><span class="line">                mHandler-&gt;<span class="built_in">dispatchInvalidate</span>();</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-6-1-MessageQueue-Handler-dispatchInvalidate"><a href="#3-6-1-MessageQueue-Handler-dispatchInvalidate" class="headerlink" title="3.6.1 MessageQueue.Handler.dispatchInvalidate"></a>3.6.1 MessageQueue.Handler.dispatchInvalidate</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> MessageQueue::Handler::<span class="built_in">dispatchInvalidate</span>() &#123;</span><br><span class="line">    <span class="keyword">if</span> ((<span class="built_in">android_atomic_or</span>(eventMaskInvalidate, &amp;mEventMask) &amp; eventMaskInvalidate) == <span class="number">0</span>) &#123;</span><br><span class="line">        mQueue.mLooper-&gt;<span class="built_in">sendMessage</span>(<span class="keyword">this</span>, <span class="built_in">Message</span>(MessageQueue::INVALIDATE));</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> MessageQueue::Handler::<span class="built_in">handleMessage</span>(<span class="type">const</span> Message&amp; message) &#123;</span><br><span class="line">    <span class="keyword">switch</span> (message.what) &#123;</span><br><span class="line">        <span class="keyword">case</span> INVALIDATE:</span><br><span class="line">            <span class="built_in">android_atomic_and</span>(~eventMaskInvalidate, &amp;mEventMask);</span><br><span class="line">            mQueue.mFlinger-&gt;<span class="built_in">onMessageReceived</span>(message.what);</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        <span class="keyword">case</span> REFRESH:</span><br><span class="line">            <span class="built_in">android_atomic_and</span>(~eventMaskRefresh, &amp;mEventMask);</span><br><span class="line">            mQueue.mFlinger-&gt;<span class="built_in">onMessageReceived</span>(message.what);</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>转到SufaceFlinger主线程中处理了。</p>
+<h1 id="四-开启硬件Vsync"><a href="#四-开启硬件Vsync" class="headerlink" title="四. 开启硬件Vsync"></a>四. 开启硬件Vsync</h1><h2 id="4-1-EventThread-enableVSyncLocked"><a href="#4-1-EventThread-enableVSyncLocked" class="headerlink" title="4.1 EventThread.enableVSyncLocked"></a>4.1 EventThread.enableVSyncLocked</h2><p>当显示屏准备完毕后，SF EventThread请求一次Vsync信号。那么走到waitForEventLocked中，会调用enableVSyncLocked方法开启硬件Vsync信号。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">EventThread::enableVSyncLocked</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (!mUseSoftwareVSync) &#123; </span><br><span class="line">        <span class="comment">// mUseSoftwareVSync也就是显示屏power状态</span></span><br><span class="line">        <span class="comment">// 灭屏为true，亮屏置为false</span></span><br><span class="line">        <span class="keyword">if</span> (!mVsyncEnabled) &#123;</span><br><span class="line">            mVsyncEnabled = <span class="literal">true</span>;</span><br><span class="line">            mVSyncSource-&gt;<span class="built_in">setCallback</span>(<span class="keyword">this</span>);</span><br><span class="line">            mVSyncSource-&gt;<span class="built_in">setVSyncEnabled</span>(<span class="literal">true</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    mDebugVsyncEnabled = <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="4-2-DispSyncSource-setVSyncEnabled"><a href="#4-2-DispSyncSource-setVSyncEnabled" class="headerlink" title="4.2 DispSyncSource.setVSyncEnabled"></a>4.2 DispSyncSource.setVSyncEnabled</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">DispSyncSource::setVSyncEnabled</span><span class="params">(<span class="type">bool</span> enable)</span> </span>&#123;</span><br><span class="line">    <span class="function">std::lock_guard <span class="title">lock</span><span class="params">(mVsyncMutex)</span></span>;</span><br><span class="line">    <span class="keyword">if</span> (enable) &#123;</span><br><span class="line">        <span class="type">status_t</span> err = mDispSync-&gt;<span class="built_in">addEventListener</span>(mName, mPhaseOffset,</span><br><span class="line">                                                   <span class="built_in">static_cast</span>&lt;DispSync::Callback*&gt;(<span class="keyword">this</span>),</span><br><span class="line">                                                   mLastCallbackTime);</span><br><span class="line">        <span class="keyword">if</span> (err != NO_ERROR) &#123;</span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;error registering vsync callback: %s (%d)&quot;</span>, <span class="built_in">strerror</span>(-err), err);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// ATRACE_INT(mVsyncOnLabel.c_str(), 1);</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="type">status_t</span> err = mDispSync-&gt;<span class="built_in">removeEventListener</span>(<span class="built_in">static_cast</span>&lt;DispSync::Callback*&gt;(<span class="keyword">this</span>),</span><br><span class="line">                                                      &amp;mLastCallbackTime);</span><br><span class="line">        <span class="keyword">if</span> (err != NO_ERROR) &#123;</span><br><span class="line">            <span class="built_in">ALOGE</span>(<span class="string">&quot;error unregistering vsync callback: %s (%d)&quot;</span>, <span class="built_in">strerror</span>(-err), err);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// ATRACE_INT(mVsyncOnLabel.c_str(), 0);</span></span><br><span class="line">    &#125;</span><br><span class="line">    mEnabled = enable;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>开启Vsync信号就是添加EventListener，关闭就是将这个listener移除</p>
+<h2 id="4-3-DispSync-addEventListener"><a href="#4-3-DispSync-addEventListener" class="headerlink" title="4.3 DispSync.addEventListener"></a>4.3 DispSync.addEventListener</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">DispSync::addEventListener</span><span class="params">(<span class="type">const</span> <span class="type">char</span>* name, <span class="type">nsecs_t</span> phase, Callback* callback)</span> </span>&#123;</span><br><span class="line">    <span class="function">Mutex::Autolock <span class="title">lock</span><span class="params">(mMutex)</span></span>;</span><br><span class="line">    <span class="keyword">return</span> mThread-&gt;<span class="built_in">addEventListener</span>(name, phase, callback);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>接下来就是到了DispSync部分了。</p>
+<p>大致流程如下：</p>
+<p><img src="/.io//1_1.png" alt="图片"></p>
+<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
+<li><a target="_blank" rel="noopener" href="https://www.jianshu.com/p/d3e4b1805c92">Android SurfaceFlinger SW Vsync模型</a></li>
+</ol>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-1-SFEventThread/" title="SurfaceFlinger(1)--SFEventThread">https://swallowjoe.github.io/2022/04/04/SurfaceFlinger-1-SFEventThread/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/Vsync/" rel="tag"># Vsync</a>
+              <a href="/tags/SurfaceFlinger/" rel="tag"># SurfaceFlinger</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-4-SF%E5%88%87%E6%8D%A2%E5%B8%A7%E7%8E%87/" rel="prev" title="App申请帧率(4)--SF切换帧率">
+      <i class="fa fa-chevron-left"></i> App申请帧率(4)--SF切换帧率
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/04/04/SurfaceFlinger-2-DispSync/" rel="next" title="SurfaceFlinger(2)--DispSync">
+      SurfaceFlinger(2)--DispSync <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-SFEventThread"><span class="nav-text">一. SFEventThread</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-BitTube"><span class="nav-text">1.1 BitTube</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-EventThread%E5%90%AF%E5%8A%A8"><span class="nav-text">二. EventThread启动</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-SurfaceFlinger-init"><span class="nav-text">2.1 SurfaceFlinger.init</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-EventThread%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-text">2.2 EventThread初始化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-EventThread-threadMain"><span class="nav-text">2.3 EventThread.threadMain</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-EventThread-waitForEventLocked"><span class="nav-text">2.4 EventThread.waitForEventLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-EventThread-Connection-postEvent"><span class="nav-text">2.5 EventThread.Connection.postEvent</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-SF-EventThread-%E6%B7%BB%E5%8A%A0Connection"><span class="nav-text">三. SF EventThread 添加Connection</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-SurfaceFlinger-init"><span class="nav-text">3.1 SurfaceFlinger.init</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-MessageQueue-setEventThread"><span class="nav-text">3.2 MessageQueue.setEventThread</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-EventThread-createEventConnection"><span class="nav-text">3.3 EventThread.createEventConnection</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-1-EventThread-Connection-onFirstRef"><span class="nav-text">3.3.1 EventThread.Connection.onFirstRef</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-2-EventThread-registerDisplayEventConnection"><span class="nav-text">3.3.2 EventThread.registerDisplayEventConnection</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-EventThread-Connection-stealReceiveChannel"><span class="nav-text">3.4  EventThread.Connection.stealReceiveChannel</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-5-SF-EventThread-connection%E5%BC%80%E5%A7%8B%E7%9B%91%E5%90%ACVsync%E4%BF%A1%E5%8F%B7"><span class="nav-text">3.5 SF EventThread connection开始监听Vsync信号</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-6-MessageQueue-cb-eventReceiver-%E5%A4%84%E7%90%86Vsync%E4%BF%A1%E5%8F%B7"><span class="nav-text">3.6 MessageQueue.cb_eventReceiver 处理Vsync信号</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-6-1-MessageQueue-Handler-dispatchInvalidate"><span class="nav-text">3.6.1 MessageQueue.Handler.dispatchInvalidate</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%9B%9B-%E5%BC%80%E5%90%AF%E7%A1%AC%E4%BB%B6Vsync"><span class="nav-text">四. 开启硬件Vsync</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#4-1-EventThread-enableVSyncLocked"><span class="nav-text">4.1 EventThread.enableVSyncLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-2-DispSyncSource-setVSyncEnabled"><span class="nav-text">4.2 DispSyncSource.setVSyncEnabled</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-3-DispSync-addEventListener"><span class="nav-text">4.3 DispSync.addEventListener</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">25</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
