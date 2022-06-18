@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="---  以下分析基于Android S. 简述前面几篇文章中，我们弄清楚了WMS中比较核心的几个类的作用以及初始化等流程。现在我们看看Activity启动时的启动窗口动画过程，以此为锲子剖析WMS相关流程。 启动窗口，如其名，最合理的地方应该是在Activity启动的时候播放其动画的，回到startActivityInner，开始看:">
+<meta property="og:type" content="article">
+<meta property="og:title" content="WMS(5)-启动窗口">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="---  以下分析基于Android S. 简述前面几篇文章中，我们弄清楚了WMS中比较核心的几个类的作用以及初始化等流程。现在我们看看Activity启动时的启动窗口动画过程，以此为锲子剖析WMS相关流程。 启动窗口，如其名，最合理的地方应该是在Activity启动的时候播放其动画的，回到startActivityInner，开始看:">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/5_1.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/5_2.png">
+<meta property="article:published_time" content="2022-05-04T17:35:34.000Z">
+<meta property="article:modified_time" content="2022-06-18T09:50:34.781Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="WMS">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/5_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>WMS(5)-启动窗口 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          WMS(5)-启动窗口
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-05 01:35:34" itemprop="dateCreated datePublished" datetime="2022-05-05T01:35:34+08:00">2022-05-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-18 17:50:34" itemprop="dateModified" datetime="2022-06-18T17:50:34+08:00">2022-06-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/WMS/" itemprop="url" rel="index"><span itemprop="name">WMS</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/" class="post-meta-item leancloud_visitors" data-flag-title="WMS(5)-启动窗口" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+---
+
+<p><strong>以下分析基于Android S.</strong></p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>前面几篇文章中，我们弄清楚了WMS中比较核心的几个类的作用以及初始化等流程。现在我们看看Activity启动时的启动窗口动画过程，以此为锲子剖析WMS相关流程。</p>
+<p>启动窗口，如其名，最合理的地方应该是在Activity启动的时候播放其动画的，回到startActivityInner，开始看:</p>
+<p><img src="/images/WMS%E7%B3%BB%E5%88%97/5_1.png" alt="5-1"></p>
+<span id="more"></span>
+
+<h1 id="一-启动窗口的初始化"><a href="#一-启动窗口的初始化" class="headerlink" title="一. 启动窗口的初始化"></a>一. 启动窗口的初始化</h1><h2 id="1-1-ActivityStarter-startActivityInner"><a href="#1-1-ActivityStarter-startActivityInner" class="headerlink" title="1.1 ActivityStarter.startActivityInner"></a>1.1 ActivityStarter.startActivityInner</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">startActivityInner</span><span class="params">(<span class="keyword">final</span> ActivityRecord r, ActivityRecord sourceRecord,</span></span><br><span class="line"><span class="params">        IVoiceInteractionSession voiceSession, IVoiceInteractor voiceInteractor,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> startFlags, <span class="type">boolean</span> doResume, ActivityOptions options, Task inTask,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> restrictedBgActivity, NeededUriGrants intentGrants)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 交给对应Task启动Activity</span></span><br><span class="line">    mTargetRootTask.startActivityLocked(mStartActivity,</span><br><span class="line">            topRootTask != <span class="literal">null</span> ? topRootTask.getTopNonFinishingActivity() : <span class="literal">null</span>, newTask,</span><br><span class="line">            mKeepCurTransition, mOptions, startFromSamePackage);</span><br><span class="line">    ......</span><br></pre></td></tr></table></figure>
+
+<p>在Activity启动过程中，在创建新的Task并将该ActivityRecord保存其中，之后就是将启动Activity的流程转交给Task继续执行.</p>
+<h2 id="1-2-Task-startActivityLocked"><a href="#1-2-Task-startActivityLocked" class="headerlink" title="1.2 Task.startActivityLocked"></a>1.2 Task.startActivityLocked</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">startActivityLocked</span><span class="params">(ActivityRecord r, <span class="meta">@Nullable</span> ActivityRecord focusedTopActivity,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> newTask, <span class="type">boolean</span> keepCurTransition, ActivityOptions options,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> samePackage)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">if</span> ((!isHomeOrRecentsRootTask() || hasActivity()) &amp;&amp; allowMoveToFront) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="type">boolean</span> <span class="variable">doShow</span> <span class="operator">=</span> <span class="literal">true</span>;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// ActivityRecord.mLaunchTaskBehind 是用于表明启动该Activity时不需要动画</span></span><br><span class="line">        <span class="comment">// 与options:&quot;android:activity.animType&quot;有关(调用了makeTaskLaunchBehind)</span></span><br><span class="line">        <span class="comment">// 使用了这个标记说明正在启动的Activity将不会显示给用户，而是只能通过最近的任务列表使用</span></span><br><span class="line">        <span class="keyword">if</span> (r.mLaunchTaskBehind) &#123;</span><br><span class="line">            ......</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (SHOW_APP_STARTING_PREVIEW &amp;&amp; doShow) &#123;</span><br><span class="line">            <span class="comment">// 显示启动窗口</span></span><br><span class="line">            <span class="comment">// 这里判断上一个task是否存在启动窗口</span></span><br><span class="line">            <span class="type">Task</span> <span class="variable">prevTask</span> <span class="operator">=</span> r.getTask();</span><br><span class="line">            <span class="comment">// 获取当前Task中的上一个具有启动窗口的ActivityRecord</span></span><br><span class="line">            <span class="type">ActivityRecord</span> <span class="variable">prev</span> <span class="operator">=</span> prevTask.topActivityWithStartingWindow();</span><br><span class="line">            <span class="keyword">if</span> (prev != <span class="literal">null</span>) &#123;</span><br><span class="line">                <span class="comment">// 当前Activity和启动窗口不在同一个task时，不会重用启动窗口</span></span><br><span class="line">                <span class="keyword">if</span> (prev.getTask() != prevTask) &#123;</span><br><span class="line">                    prev = <span class="literal">null</span>;</span><br><span class="line">                &#125;</span><br><span class="line">                <span class="comment">// 当前Activity已经显示出来了，也不会重用启动窗口</span></span><br><span class="line">                <span class="keyword">else</span> <span class="keyword">if</span> (prev.nowVisible) &#123;</span><br><span class="line">                    prev = <span class="literal">null</span>;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">final</span> <span class="type">int</span> <span class="variable">splashScreenThemeResId</span> <span class="operator">=</span> options != <span class="literal">null</span></span><br><span class="line">                    ? options.getSplashScreenThemeResId() : <span class="number">0</span>;</span><br><span class="line">            <span class="comment">// [1.3] 显示启动窗口， 我们这里是第一个Activity，不存在启动窗口, 所以prev为null</span></span><br><span class="line">            r.showStartingWindow(prev, newTask, isTaskSwitch(r, focusedTopActivity),</span><br><span class="line">                    splashScreenThemeResId, samePackage);</span><br><span class="line">        &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// topFocusedActivity是当前展示的前台具有焦点的Activity对应的ActivityRecord</span></span><br><span class="line"><span class="comment">// 这里是判断是否需要切换Task, 当然需要</span></span><br><span class="line"><span class="keyword">private</span> <span class="type">boolean</span> <span class="title function_">isTaskSwitch</span><span class="params">(ActivityRecord r, ActivityRecord topFocusedActivity)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> topFocusedActivity != <span class="literal">null</span> &amp;&amp; r.getTask() != topFocusedActivity.getTask();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Task中执行Activity的启动主要是：</p>
+<ol>
+<li>将该Activity对应的ActivityRecord放在该task合适的位置</li>
+<li>顺便检查是否需要显示启动窗口，如果需要：<ol>
+<li>检查是否可以重用启动窗口：<ol>
+<li>当前Activity和启动窗口不在同一个task时，不会重用启动窗口</li>
+<li>当前Activity已经显示出来了，也不会重用启动窗口</li>
+</ol>
+</li>
+<li>显示启动窗口</li>
+</ol>
+</li>
+</ol>
+<h2 id="1-3-ActivityRecord-showStartingWindow"><a href="#1-3-ActivityRecord-showStartingWindow" class="headerlink" title="1.3 ActivityRecord.showStartingWindow"></a>1.3 ActivityRecord.showStartingWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">showStartingWindow</span><span class="params">(ActivityRecord prev, <span class="type">boolean</span> newTask, <span class="type">boolean</span> taskSwitch,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> splashScreenTheme, <span class="type">boolean</span> samePackage)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mTaskOverlay) &#123;</span><br><span class="line">        <span class="comment">// 不显示overlay activity的启动窗口, 即始终处于最上层的Activity</span></span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (mPendingOptions != <span class="literal">null</span></span><br><span class="line">            &amp;&amp; mPendingOptions.getAnimationType() == ActivityOptions.ANIM_SCENE_TRANSITION) &#123;</span><br><span class="line">        <span class="comment">// 当Activity动画类型为ANIM_SCENE_TRANSITION时，不显示启动窗口</span></span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">CompatibilityInfo</span> <span class="variable">compatInfo</span> <span class="operator">=</span></span><br><span class="line">            mAtmService.compatibilityInfoForPackageLocked(info.applicationInfo);</span><br><span class="line">    <span class="comment">// 选择合适的窗口主题</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">resolvedTheme</span> <span class="operator">=</span> evaluateStartingWindowTheme(packageName, theme,</span><br><span class="line">            splashScreenTheme);</span><br><span class="line">    <span class="comment">// [1.4] 添加启动窗口</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">shown</span> <span class="operator">=</span> addStartingWindow(packageName, resolvedTheme,</span><br><span class="line">            compatInfo, nonLocalizedLabel, labelRes, icon, logo, windowFlags,</span><br><span class="line">            prev != <span class="literal">null</span> ? prev.appToken : <span class="literal">null</span>, newTask, taskSwitch, isProcessRunning(),</span><br><span class="line">            allowTaskSnapshot(),</span><br><span class="line">            mState.ordinal() &gt;= STARTED.ordinal() &amp;&amp; mState.ordinal() &lt;= STOPPED.ordinal(),</span><br><span class="line">            samePackage);</span><br><span class="line">    <span class="comment">// 成功添加时，标记此ActivityRecord的启动窗口状态为STARTING_WINDOW_SHOWN</span></span><br><span class="line">    <span class="keyword">if</span> (shown) &#123;</span><br><span class="line">        mStartingWindowState = STARTING_WINDOW_SHOWN;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>显示启动窗口首先需要检查是否需要显示，以下两种情况不显示启动窗口：</p>
+<ol>
+<li>当此Activity为始终处于最上层时</li>
+<li>Activity动画类型为ANIM_SCENE_TRANSITION时</li>
+</ol>
+<p>然后选择合适窗口主题，添加启动窗口并在成功添加时，标记此ActivityRecord的启动窗口状态为STARTING_WINDOW_SHOWN，意为此Activity已经展示了启动窗口。</p>
+<h2 id="1-4-ActivityRecord-addStartingWindow"><a href="#1-4-ActivityRecord-addStartingWindow" class="headerlink" title="1.4 ActivityRecord.addStartingWindow"></a>1.4 ActivityRecord.addStartingWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">addStartingWindow</span><span class="params">(String pkg, <span class="type">int</span> resolvedTheme, CompatibilityInfo compatInfo,</span></span><br><span class="line"><span class="params">        CharSequence nonLocalizedLabel, <span class="type">int</span> labelRes, <span class="type">int</span> icon, <span class="type">int</span> logo, <span class="type">int</span> windowFlags,</span></span><br><span class="line"><span class="params">        IBinder transferFrom, <span class="type">boolean</span> newTask, <span class="type">boolean</span> taskSwitch, <span class="type">boolean</span> processRunning,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> allowTaskSnapshot, <span class="type">boolean</span> activityCreated, <span class="type">boolean</span> samePackage)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 根据当前Activity相关参数配置启动窗口的窗口属性</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">typeParameter</span> <span class="operator">=</span> mWmService.mStartingSurfaceController</span><br><span class="line">            .makeStartingWindowTypeParameter(newTask, taskSwitch, processRunning,</span><br><span class="line">                    allowTaskSnapshot, activityCreated, samePackage);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 创建启动窗口相关数据</span></span><br><span class="line">    mStartingData = <span class="keyword">new</span> <span class="title class_">SplashScreenStartingData</span>(mWmService, pkg,</span><br><span class="line">            resolvedTheme, compatInfo, nonLocalizedLabel, labelRes, icon, logo, windowFlags,</span><br><span class="line">            getMergedOverrideConfiguration(), typeParameter);</span><br><span class="line">    <span class="comment">// 转交给WMS的动画处理线程执行启动窗口的动画</span></span><br><span class="line">    scheduleAddStartingWindow();</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">scheduleAddStartingWindow</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// DEBUG_ENABLE_SHELL_DRAWER是&quot;persist.debug.shell_starting_surface&quot;</span></span><br><span class="line">    <span class="comment">// 该属性默认为true</span></span><br><span class="line">    <span class="keyword">if</span> (StartingSurfaceController.DEBUG_ENABLE_SHELL_DRAWER) &#123;</span><br><span class="line">        <span class="comment">// 执行启动窗口动画</span></span><br><span class="line">        mAddStartingWindow.run();</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 如果是使用postAtFrontOfQueue，会将该动画放在执行队列最前面执行</span></span><br><span class="line">        <span class="keyword">if</span> (!mWmService.mAnimationHandler.hasCallbacks(mAddStartingWindow)) &#123;</span><br><span class="line">            ProtoLog.v(WM_DEBUG_STARTING_WINDOW, <span class="string">&quot;Enqueueing ADD_STARTING&quot;</span>);</span><br><span class="line">            mWmService.mAnimationHandler.postAtFrontOfQueue(mAddStartingWindow);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>添加启动窗口的动作有很多，忽略细节，主要是封装该启动窗口的相关数据保存在SplashScreenStartingData中，然后执行启动窗口动画。</p>
+<p>如果是转交给WMS的动画处理线程执行启动窗口的动画，而且是将该动画放在执行队列最前面执行。</p>
+<p>至于WMS的mAnimationHandler是在类创建时初始化的：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// WMS.java</span></span><br><span class="line"><span class="keyword">final</span> <span class="type">Handler</span> <span class="variable">mAnimationHandler</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Handler</span>(AnimationThread.getHandler().getLooper());</span><br><span class="line"></span><br><span class="line"><span class="comment">// AnimationThread.java</span></span><br><span class="line"><span class="keyword">private</span> <span class="title function_">AnimationThread</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="built_in">super</span>(<span class="string">&quot;android.anim&quot;</span>, THREAD_PRIORITY_DISPLAY, <span class="literal">false</span> <span class="comment">/*allowIo*/</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>所以mAnimationHandler执行所在的线程就是”android.anim”线程。</p>
+<p>该ActivityRecord中的mAddStartingWindow也是类初始化时创建的：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ActivityRecord.java</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> <span class="type">AddStartingWindow</span> <span class="variable">mAddStartingWindow</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">AddStartingWindow</span>();</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">class</span> <span class="title class_">AddStartingWindow</span> <span class="keyword">implements</span> <span class="title class_">Runnable</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="二-启动窗口的动画"><a href="#二-启动窗口的动画" class="headerlink" title="二. 启动窗口的动画"></a>二. 启动窗口的动画</h1><h2 id="2-1-AddStartingWindow-run"><a href="#2-1-AddStartingWindow-run" class="headerlink" title="2.1 AddStartingWindow.run"></a>2.1 AddStartingWindow.run</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">run</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> StartingData startingData;</span><br><span class="line">    <span class="keyword">synchronized</span> (mWmService.mGlobalLock) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="keyword">if</span> (mStartingData == <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="comment">// 该对象被置null说明启动窗口动画被取消了...</span></span><br><span class="line">            ProtoLog.v(WM_DEBUG_STARTING_WINDOW,</span><br><span class="line">                    <span class="string">&quot;startingData was nulled out before handling&quot;</span></span><br><span class="line">                            + <span class="string">&quot; mAddStartingWindow: %s&quot;</span>, ActivityRecord.<span class="built_in">this</span>);</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        startingData = mStartingData;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ProtoLog.v(WM_DEBUG_STARTING_WINDOW, <span class="string">&quot;Add starting %s: startingData=%s&quot;</span>,</span><br><span class="line">            <span class="built_in">this</span>, startingData);</span><br><span class="line"></span><br><span class="line">    WindowManagerPolicy.<span class="type">StartingSurface</span> <span class="variable">surface</span> <span class="operator">=</span> <span class="literal">null</span>;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="comment">// [2.2] 创建启动窗口Surface</span></span><br><span class="line">        surface = startingData.createStartingSurface(ActivityRecord.<span class="built_in">this</span>);</span><br><span class="line">    &#125; <span class="keyword">catch</span> (Exception e) &#123;</span><br><span class="line">        Slog.w(TAG, <span class="string">&quot;Exception when adding starting window&quot;</span>, e);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (surface != <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="type">boolean</span> <span class="variable">abort</span> <span class="operator">=</span> <span class="literal">false</span>;</span><br><span class="line">        <span class="keyword">synchronized</span> (mWmService.mGlobalLock) &#123;</span><br><span class="line">            <span class="comment">// 如果mStartingData现在被置null了，说明窗口成功创建并被添加了</span></span><br><span class="line">            <span class="keyword">if</span> (mStartingData == <span class="literal">null</span>) &#123;</span><br><span class="line">                ProtoLog.v(WM_DEBUG_STARTING_WINDOW, <span class="string">&quot;Aborted starting %s: startingData=%s&quot;</span>,</span><br><span class="line">                        ActivityRecord.<span class="built_in">this</span>, mStartingData);</span><br><span class="line"></span><br><span class="line">                mStartingWindow = <span class="literal">null</span>;</span><br><span class="line">                mStartingData = <span class="literal">null</span>;</span><br><span class="line">                abort = <span class="literal">true</span>;</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="comment">// 将创建的启动窗口surface赋值给mStartingSurface</span></span><br><span class="line">                mStartingSurface = surface;</span><br><span class="line">            &#125;</span><br><span class="line">            ......</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (abort) &#123;</span><br><span class="line">            <span class="comment">// 如果启动窗口动画中止，则移除该Surface</span></span><br><span class="line">            surface.remove(<span class="literal">false</span> <span class="comment">/* prepareAnimation */</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>AddStartingWindow就是一个runnable, 执行的时候先判断当前启动窗口是否仍需要，如果需要就创建启动窗口的Surface，如果启动窗口被中止，则移除创建的Surface.</p>
+<h2 id="2-2-StartingData-createStartingSurface"><a href="#2-2-StartingData-createStartingSurface" class="headerlink" title="2.2 StartingData.createStartingSurface"></a>2.2 StartingData.createStartingSurface</h2><p>ActivityRecord中的mStartingData就是SplashScreenStartingData类型的对象。SplashScreenStartingData是StartingData的子类。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line">StartingSurface <span class="title function_">createStartingSurface</span><span class="params">(ActivityRecord activity)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> mService.mStartingSurfaceController.createSplashScreenStartingSurface(</span><br><span class="line">            activity, mPkg, mTheme, mCompatInfo, mNonLocalizedLabel, mLabelRes, mIcon,</span><br><span class="line">            mLogo, mWindowFlags, mMergedOverrideConfiguration,</span><br><span class="line">            activity.getDisplayContent().getDisplayId());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>通过WMS中的mStartingSurfaceController来创建StartingSurface, mStartingSurfaceController是在WMS初始化的时候创建，用来管理创建和释放启动窗口Surface。</p>
+<h2 id="2-3-StartingSurfaceController-createSplashScreenStartingSurface"><a href="#2-3-StartingSurfaceController-createSplashScreenStartingSurface" class="headerlink" title="2.3 StartingSurfaceController.createSplashScreenStartingSurface"></a>2.3 StartingSurfaceController.createSplashScreenStartingSurface</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">StartingSurface <span class="title function_">createSplashScreenStartingSurface</span><span class="params">(ActivityRecord activity, String packageName,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> theme, CompatibilityInfo compatInfo, CharSequence nonLocalizedLabel, <span class="type">int</span> labelRes,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> icon, <span class="type">int</span> logo, <span class="type">int</span> windowFlags, Configuration overrideConfig, <span class="type">int</span> displayId)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    <span class="keyword">synchronized</span> (mService.mGlobalLock) &#123;</span><br><span class="line">        <span class="comment">// 这里的task是ActivityRecord中新创建的task</span></span><br><span class="line">        <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">task</span> <span class="operator">=</span> activity.getTask();</span><br><span class="line">        <span class="comment">// 注意activity.token其实就是ActivityRecord.Token， 在ActivityRecord初始化时有分析，作为该ActivityRecord本身</span></span><br><span class="line">        <span class="comment">// [2.4] mTaskOrganizerController.addStartingWindow</span></span><br><span class="line">        <span class="keyword">if</span> (task != <span class="literal">null</span> &amp;&amp; mService.mAtmService.mTaskOrganizerController.addStartingWindow(</span><br><span class="line">                task, activity.token, theme, <span class="literal">null</span> <span class="comment">/* taskSnapshot */</span>)) &#123;</span><br><span class="line">            <span class="comment">// 最终创建的Surface是ShellStartingSurface.</span></span><br><span class="line">            <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">ShellStartingSurface</span>(task);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最终创建的Surface是ShellStartingSurface.</p>
+<h2 id="2-4-TaskOrganizerController-addStartingWindow"><a href="#2-4-TaskOrganizerController-addStartingWindow" class="headerlink" title="2.4 TaskOrganizerController.addStartingWindow"></a>2.4 TaskOrganizerController.addStartingWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">addStartingWindow</span><span class="params">(Task task, IBinder appToken, <span class="type">int</span> launchTheme,</span></span><br><span class="line"><span class="params">        TaskSnapshot taskSnapshot)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">rootTask</span> <span class="operator">=</span> task.getRootTask();</span><br><span class="line">    <span class="keyword">if</span> (rootTask == <span class="literal">null</span> || rootTask.mTaskOrganizer == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">TaskOrganizerState</span> <span class="variable">state</span> <span class="operator">=</span></span><br><span class="line">            mTaskOrganizerStates.get(rootTask.mTaskOrganizer.asBinder());</span><br><span class="line">    <span class="comment">// 通过TaskOrganizerState执行添加动作</span></span><br><span class="line">    state.addStartingWindow(task, appToken, launchTheme, taskSnapshot);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// TaskOrganizerState</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> TaskOrganizerCallbacks mOrganizer;</span><br><span class="line"><span class="keyword">void</span> <span class="title function_">addStartingWindow</span><span class="params">(Task t, IBinder appToken, <span class="type">int</span> launchTheme,</span></span><br><span class="line"><span class="params">        TaskSnapshot taskSnapshot)</span> &#123;</span><br><span class="line">    mOrganizer.addStartingWindow(t, appToken, launchTheme, taskSnapshot);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// TaskOrganizerCallbacks</span></span><br><span class="line"><span class="keyword">final</span> ITaskOrganizer mTaskOrganizer;</span><br><span class="line"><span class="keyword">void</span> <span class="title function_">addStartingWindow</span><span class="params">(Task task, IBinder appToken, <span class="type">int</span> launchTheme,</span></span><br><span class="line"><span class="params">        TaskSnapshot taskSnapshot)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">StartingWindowInfo</span> <span class="variable">info</span> <span class="operator">=</span> task.getStartingWindowInfo();</span><br><span class="line">    <span class="keyword">if</span> (launchTheme != <span class="number">0</span>) &#123;</span><br><span class="line">        info.splashScreenThemeResId = launchTheme;</span><br><span class="line">    &#125;</span><br><span class="line">    info.mTaskSnapshot = taskSnapshot;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="comment">// 交给ITaskOrganizer执行，appToken就是ActivityRecord.token, 即ActivityRecord.Token类的对象</span></span><br><span class="line">        mTaskOrganizer.addStartingWindow(info, appToken);</span><br><span class="line">    &#125; <span class="keyword">catch</span> (RemoteException e) &#123;</span><br><span class="line">        Slog.e(TAG, <span class="string">&quot;Exception sending onTaskStart callback&quot;</span>, e);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里有点绕，我们看看mTaskOrganizer是什么,看看TaskOrganizerCallbacks和TaskOrganizerState的初始化可以知道：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">TaskOrganizerCallbacks(ITaskOrganizer taskOrg,</span><br><span class="line">        Consumer&lt;Runnable&gt; deferTaskOrgCallbacksConsumer) &#123;</span><br><span class="line">    mDeferTaskOrgCallbacksConsumer = deferTaskOrgCallbacksConsumer;</span><br><span class="line">    <span class="comment">// mTaskOrganizer是该类对象初始化时传入的ITaskOrganizer</span></span><br><span class="line">    mTaskOrganizer = taskOrg;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">TaskOrganizerState(ITaskOrganizer organizer, <span class="type">int</span> uid) &#123;</span><br><span class="line">    <span class="keyword">final</span> Consumer&lt;Runnable&gt; deferTaskOrgCallbacksConsumer =</span><br><span class="line">            mDeferTaskOrgCallbacksConsumer != <span class="literal">null</span></span><br><span class="line">                    ? mDeferTaskOrgCallbacksConsumer</span><br><span class="line">                    : mService.mWindowManager.mAnimator::addAfterPrepareSurfacesRunnable;</span><br><span class="line">    mOrganizer = <span class="keyword">new</span> <span class="title class_">TaskOrganizerCallbacks</span>(organizer, deferTaskOrgCallbacksConsumer);</span><br><span class="line">    mDeathRecipient = <span class="keyword">new</span> <span class="title class_">DeathRecipient</span>(organizer);</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        organizer.asBinder().linkToDeath(mDeathRecipient, <span class="number">0</span>);</span><br><span class="line">    &#125; <span class="keyword">catch</span> (RemoteException e) &#123;</span><br><span class="line">        Slog.e(TAG, <span class="string">&quot;TaskOrganizer failed to register death recipient&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    mUid = uid;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>所以mTaskOrganizer还是TaskOrganizerState初始化时传入的。那么TaskOrganizerState是怎么初始化的：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// TaskOrganizerController.java#121</span></span><br><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> ParceledListSlice&lt;TaskAppearedInfo&gt; <span class="title function_">registerTaskOrganizer</span><span class="params">(ITaskOrganizer organizer)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="keyword">synchronized</span> (mGlobalLock) &#123;</span><br><span class="line">            ......</span><br><span class="line">            <span class="keyword">if</span> (!mTaskOrganizerStates.containsKey(organizer.asBinder())) &#123;</span><br><span class="line">                mTaskOrganizers.add(organizer);</span><br><span class="line">                mTaskOrganizerStates.put(organizer.asBinder(),</span><br><span class="line">                        <span class="keyword">new</span> <span class="title class_">TaskOrganizerState</span>(organizer, uid));</span><br><span class="line">            &#125;</span><br><span class="line">            .......</span><br><span class="line">        ......</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>所以是有其他进程调用了TaskOrganizerController的registerTaskOrganizer将该成员注册了，而这里的方法仅有TaskOrganizer.java#72调用：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@RequiresPermission(android.Manifest.permission.MANAGE_ACTIVITY_TASKS)</span></span><br><span class="line"><span class="meta">@CallSuper</span></span><br><span class="line"><span class="meta">@NonNull</span></span><br><span class="line"><span class="keyword">public</span> List&lt;TaskAppearedInfo&gt; <span class="title function_">registerOrganizer</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> mTaskOrganizerController.registerTaskOrganizer(mInterface).getList();</span><br><span class="line">    &#125; <span class="keyword">catch</span> (RemoteException e) &#123;</span><br><span class="line">        <span class="keyword">throw</span> e.rethrowFromSystemServer();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> <span class="type">ITaskOrganizer</span> <span class="variable">mInterface</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">ITaskOrganizer</span>.Stub() &#123;</span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">addStartingWindow</span><span class="params">(StartingWindowInfo windowInfo,</span></span><br><span class="line"><span class="params">            IBinder appToken)</span> &#123;</span><br><span class="line">        mExecutor.execute(() -&gt; TaskOrganizer.<span class="built_in">this</span>.addStartingWindow(windowInfo, appToken));</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">@BinderThread</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">addStartingWindow</span><span class="params">(<span class="meta">@NonNull</span> StartingWindowInfo info,</span></span><br><span class="line"><span class="params">        <span class="meta">@NonNull</span> IBinder appToken)</span> &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>所以这个是将启动窗口的信息通过binder调用，添加到实现TaskOrganizer的addStartingWindow方法的其他进程了，并非是系统进程管控。</p>
+<p>总的来说AddStartingWindow.run这个就是做了两件事：</p>
+<ol>
+<li>创建启动窗口Surface， 即ShellStartingSurface</li>
+<li>将启动窗口信息通过binder调用传递给实现TaskOrganizer的进程</li>
+</ol>
+<p>这里的流程和R的差异有点大，推测是Google希望启动窗口可以交给Launcher或者SystemUI实现，而不是由framework的system_server进程来管控。</p>
+<p>搜索SystemUI源码可以发现，继承TaskOrganizer的类有一个：ShellTaskOrganizer!</p>
+<h2 id="2-5-ShellTaskOrganizer-addStartingWindow"><a href="#2-5-ShellTaskOrganizer-addStartingWindow" class="headerlink" title="2.5 ShellTaskOrganizer.addStartingWindow"></a>2.5 ShellTaskOrganizer.addStartingWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">addStartingWindow</span><span class="params">(StartingWindowInfo info, IBinder appToken)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mStartingWindow != <span class="literal">null</span>) &#123;</span><br><span class="line">        mStartingWindow.addStartingWindow(info, appToken);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>看来Google还真是将启动窗口交给SystemUI模块了。</p>
+<h1 id="三-SystemUI负责的启动窗口"><a href="#三-SystemUI负责的启动窗口" class="headerlink" title="三. SystemUI负责的启动窗口"></a>三. SystemUI负责的启动窗口</h1><p>上面我们知道一个Activity启动后，从App进程交给SystemServer处理，在创建该Activity的ActivityRecord, 并将其保存在对应的Task之后，会在需要的时候开始启动窗口的播放。</p>
+<p>启动窗口在Android S上是交给SystemUI进程负责了，在以前是交给SystemServer的“android.anim”线程处理。</p>
+<p>关于R上SystemUI的ShellTaskOrganizer这一块涉及到<a target="_blank" rel="noopener" href="https://github.com/google/dagger">Dagger2, 是一款基于 Java 注解来实现的在编译阶段完成依赖注入的开源库</a>的使用，这里先不展开讲了，感兴趣的可以自行研究。</p>
+<p>ShellTaskOrganizer中的mStartingWindow是StartingWindowController类对象。</p>
+<h2 id="3-1-StartingWindowController-addStartingWindow"><a href="#3-1-StartingWindowController-addStartingWindow" class="headerlink" title="3.1 StartingWindowController.addStartingWindow"></a>3.1 StartingWindowController.addStartingWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">addStartingWindow</span><span class="params">(StartingWindowInfo windowInfo, IBinder appToken)</span> &#123;</span><br><span class="line">    mSplashScreenExecutor.execute(() -&gt; &#123;</span><br><span class="line">        Trace.traceBegin(TRACE_TAG_WINDOW_MANAGER, <span class="string">&quot;addStartingWindow&quot;</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">final</span> <span class="type">int</span> <span class="variable">suggestionType</span> <span class="operator">=</span> mStartingWindowTypeAlgorithm.getSuggestedWindowType(</span><br><span class="line">                windowInfo);</span><br><span class="line">        <span class="keyword">final</span> <span class="type">RunningTaskInfo</span> <span class="variable">runningTaskInfo</span> <span class="operator">=</span> windowInfo.taskInfo;</span><br><span class="line">        <span class="keyword">if</span> (mTaskLaunchingCallback != <span class="literal">null</span> &amp;&amp; shouldSendToListener(suggestionType)) &#123;</span><br><span class="line">            mTaskLaunchingCallback.accept(runningTaskInfo.taskId, suggestionType);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (suggestionType == STARTING_WINDOW_TYPE_SPLASH_SCREEN) &#123;</span><br><span class="line">            mStartingSurfaceDrawer.addSplashScreenStartingWindow(windowInfo, appToken,</span><br><span class="line">                    <span class="literal">false</span> <span class="comment">/* emptyView */</span>);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (suggestionType == STARTING_WINDOW_TYPE_EMPTY_SPLASH_SCREEN) &#123;</span><br><span class="line">            mStartingSurfaceDrawer.addSplashScreenStartingWindow(windowInfo, appToken,</span><br><span class="line">                    <span class="literal">true</span> <span class="comment">/* emptyView */</span>);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (suggestionType == STARTING_WINDOW_TYPE_SNAPSHOT) &#123;</span><br><span class="line">            <span class="keyword">final</span> <span class="type">TaskSnapshot</span> <span class="variable">snapshot</span> <span class="operator">=</span> windowInfo.mTaskSnapshot;</span><br><span class="line">            mStartingSurfaceDrawer.makeTaskSnapshotWindow(windowInfo, appToken,</span><br><span class="line">                    snapshot);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="comment">/* suggestionType == STARTING_WINDOW_TYPE_NONE */</span> &#123;</span><br><span class="line">            <span class="comment">// Don&#x27;t add a staring window.</span></span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        Trace.traceEnd(TRACE_TAG_WINDOW_MANAGER);</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>根据启动窗口类型选择不同的启动窗口，这里我们假设是STARTING_WINDOW_TYPE_SPLASH_SCREEN类型。</p>
+<h2 id="3-2-StartingSurfaceDrawer-addSplashScreenStartingWindow"><a href="#3-2-StartingSurfaceDrawer-addSplashScreenStartingWindow" class="headerlink" title="3.2 StartingSurfaceDrawer.addSplashScreenStartingWindow"></a>3.2 StartingSurfaceDrawer.addSplashScreenStartingWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">addSplashScreenStartingWindow</span><span class="params">(StartingWindowInfo windowInfo, IBinder appToken,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> emptyView)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">RunningTaskInfo</span> <span class="variable">taskInfo</span> <span class="operator">=</span> windowInfo.taskInfo;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">ActivityInfo</span> <span class="variable">activityInfo</span> <span class="operator">=</span> taskInfo.topActivityInfo;</span><br><span class="line">    ......</span><br><span class="line">    <span class="type">Context</span> <span class="variable">context</span> <span class="operator">=</span> mContext;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 获取启动窗口显示view的资源id</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span>[] splashscreenContentResId = <span class="keyword">new</span> <span class="title class_">int</span>[<span class="number">1</span>];</span><br><span class="line">    <span class="comment">// 这里的R是 &quot;import com.android.internal.R;&quot; 说明是framework/res中的资源</span></span><br><span class="line">    getWindowResFromContext(context, a -&gt; &#123;</span><br><span class="line">        splashscreenContentResId[<span class="number">0</span>] =</span><br><span class="line">                a.getResourceId(R.styleable.Window_windowSplashscreenContent, <span class="number">0</span>);</span><br><span class="line">        showWallpaper[<span class="number">0</span>] = a.getBoolean(R.styleable.Window_windowShowWallpaper, <span class="literal">false</span>);</span><br><span class="line">    &#125;);</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">final</span> <span class="type">PhoneWindow</span> <span class="variable">win</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">PhoneWindow</span>(context);</span><br><span class="line">    win.setIsStartingWindow(<span class="literal">true</span>);</span><br><span class="line">    ......</span><br><span class="line">    win.setType(WindowManager.LayoutParams.TYPE_APPLICATION_STARTING);</span><br><span class="line">    ......</span><br><span class="line">    win.setLayout(WindowManager.LayoutParams.MATCH_PARENT,</span><br><span class="line">            WindowManager.LayoutParams.MATCH_PARENT);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> WindowManager.<span class="type">LayoutParams</span> <span class="variable">params</span> <span class="operator">=</span> win.getAttributes();</span><br><span class="line">    <span class="comment">// 这里的appToken就是一路传递过来的待启动的activity的appToken,即ActivityRecord.Token类的对象</span></span><br><span class="line">    params.token = appToken;</span><br><span class="line">    params.packageName = activityInfo.packageName;</span><br><span class="line">    ......</span><br><span class="line">    params.setTitle(<span class="string">&quot;Splash Screen &quot;</span> + activityInfo.packageName);</span><br><span class="line">    <span class="keyword">final</span> <span class="type">SplashScreenViewSupplier</span> <span class="variable">viewSupplier</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">SplashScreenViewSupplier</span>();</span><br><span class="line">    <span class="keyword">final</span> <span class="type">Runnable</span> <span class="variable">setViewSynchronized</span> <span class="operator">=</span> () -&gt; &#123;</span><br><span class="line">        <span class="comment">// 获取启动窗口的ContentView</span></span><br><span class="line">        <span class="comment">// SplashScreenViewSupplier.get必须要等待其被调用setView之后才会返回，否则会阻塞等待</span></span><br><span class="line">        <span class="type">SplashScreenView</span> <span class="variable">contentView</span> <span class="operator">=</span> viewSupplier.get();</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 设置启动窗口View内容</span></span><br><span class="line">        win.setContentView(contentView);</span><br><span class="line">        contentView.cacheRootWindow(win);</span><br><span class="line">        ......</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// [3.3] 创建启动窗口对应的View</span></span><br><span class="line">    mSplashscreenContentDrawer.createContentView(context, emptyView,</span><br><span class="line">            splashscreenContentResId[<span class="number">0</span>], activityInfo, taskId, viewSupplier::setView);</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">final</span> <span class="type">View</span> <span class="variable">view</span> <span class="operator">=</span> win.getDecorView();</span><br><span class="line">    <span class="keyword">final</span> <span class="type">WindowManager</span> <span class="variable">wm</span> <span class="operator">=</span> mContext.getSystemService(WindowManager.class);</span><br><span class="line">    <span class="comment">// 将启动窗口的View添加进WMS,创建对应的WindowState</span></span><br><span class="line">    postAddWindow(taskId, appToken, view, wm, params);</span><br><span class="line">    <span class="comment">// 请求Vsync,下一帧时调用setViewSynchronized，设置启动窗口View内容</span></span><br><span class="line">    mChoreographer.postCallback(CALLBACK_INSETS_ANIMATION, setViewSynchronized, <span class="literal">null</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">protected</span> <span class="keyword">void</span> <span class="title function_">postAddWindow</span><span class="params">(<span class="type">int</span> taskId, IBinder appToken, View view, WindowManager wm,</span></span><br><span class="line"><span class="params">        WindowManager.LayoutParams params)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// WMS用来创建启动窗口对应的WindowState</span></span><br><span class="line">    <span class="comment">// 注意LayoutParams中的token是待启动的activity的appToken,即ActivityRecord.Token类的对象</span></span><br><span class="line">    wm.addView(view, params);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里创建启动窗口对应的PhoneWindow以及设置相关的参数，并将启动窗口的DecorView和窗口属性通过binder传给WMS用来创建对应的WindowState，最后通过Choreographer请求vsync，在下一帧的时候设置该启动窗口的内容。</p>
+<h2 id="3-3-SplashscreenContentDrawer-createContentView"><a href="#3-3-SplashscreenContentDrawer-createContentView" class="headerlink" title="3.3 SplashscreenContentDrawer.createContentView"></a>3.3 SplashscreenContentDrawer.createContentView</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">createContentView</span><span class="params">(Context context, <span class="type">boolean</span> emptyView, <span class="type">int</span> splashScreenResId,</span></span><br><span class="line"><span class="params">        ActivityInfo info, <span class="type">int</span> taskId, Consumer&lt;SplashScreenView&gt; consumer)</span> &#123;</span><br><span class="line">    mSplashscreenWorkerHandler.post(() -&gt; &#123;</span><br><span class="line">        SplashScreenView contentView;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="comment">// [3.3.1] 制作启动窗口显示的view</span></span><br><span class="line">            contentView = SplashscreenContentDrawer.makeSplashscreenContent(</span><br><span class="line">                    context, splashScreenResId);</span><br><span class="line">            <span class="comment">// Android S之后这个一般都是null的</span></span><br><span class="line">            <span class="keyword">if</span> (contentView == <span class="literal">null</span>) &#123;</span><br><span class="line">                Trace.traceBegin(TRACE_TAG_WINDOW_MANAGER, <span class="string">&quot;makeSplashScreenContentView&quot;</span>);</span><br><span class="line">                <span class="comment">// emptyView是false的</span></span><br><span class="line">                <span class="keyword">if</span> (emptyView) &#123;</span><br><span class="line">                    contentView = makeEmptySplashScreenContentView(context);</span><br><span class="line">                &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                    <span class="comment">// [3.3.2] 最后启动窗口的contentView是在这里创建的</span></span><br><span class="line">                    contentView = makeSplashScreenContentView(context, info);</span><br><span class="line">                &#125;</span><br><span class="line">                Trace.traceEnd(TRACE_TAG_WINDOW_MANAGER);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">catch</span> (RuntimeException e) &#123;</span><br><span class="line">            Slog.w(TAG, <span class="string">&quot;failed creating starting window content at taskId: &quot;</span></span><br><span class="line">                    + taskId, e);</span><br><span class="line">            contentView = <span class="literal">null</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// [3.4] consumer是传入的viewSupplier::setView</span></span><br><span class="line">        consumer.accept(contentView);</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里是创建启动窗口显示的内容，首先通过SplashscreenContentDrawer创建SplashScreenView.</p>
+<h3 id="3-3-1-SplashscreenContentDrawer-makeSplashscreenContent"><a href="#3-3-1-SplashscreenContentDrawer-makeSplashscreenContent" class="headerlink" title="3.3.1 SplashscreenContentDrawer.makeSplashscreenContent"></a>3.3.1 SplashscreenContentDrawer.makeSplashscreenContent</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> SplashScreenView <span class="title function_">makeSplashscreenContent</span><span class="params">(Context ctx,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> splashscreenContentResId)</span> &#123;</span><br><span class="line">    <span class="comment">// 获取当前systemui的sdk版本</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">targetSdkVersion</span> <span class="operator">=</span> ctx.getApplicationInfo().targetSdkVersion;</span><br><span class="line">    <span class="comment">// Andriod S之后不支持Window_SplashscreenContent了</span></span><br><span class="line">    <span class="keyword">if</span> (targetSdkVersion &gt;= Build.VERSION_CODES.S) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Andriod S之后不支持Window_windowSplashscreenContent了.</p>
+<h3 id="3-3-2-SplashscreenContentDrawer-makeSplashScreenContentView"><a href="#3-3-2-SplashscreenContentDrawer-makeSplashScreenContentView" class="headerlink" title="3.3.2 SplashscreenContentDrawer.makeSplashScreenContentView"></a>3.3.2 SplashscreenContentDrawer.makeSplashScreenContentView</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> SplashScreenView <span class="title function_">makeSplashScreenContentView</span><span class="params">(Context context, ActivityInfo ai)</span> &#123;</span><br><span class="line">    <span class="comment">// 重置View相关配置</span></span><br><span class="line">    updateDensity();</span><br><span class="line">    <span class="comment">// 重置窗口相关属性至mTmpAttrs中保存</span></span><br><span class="line">    getWindowAttrs(context, mTmpAttrs);</span><br><span class="line">    <span class="keyword">final</span> <span class="type">StartingWindowViewBuilder</span> <span class="variable">builder</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">StartingWindowViewBuilder</span>();</span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> animationDuration;</span><br><span class="line">    Drawable iconDrawable;</span><br><span class="line">    <span class="comment">// mReplaceIcon默认是R.styleable.Window_windowSplashScreenAnimatedIcon</span></span><br><span class="line">    <span class="keyword">if</span> (mTmpAttrs.mReplaceIcon != <span class="literal">null</span>) &#123;</span><br><span class="line">        iconDrawable = mTmpAttrs.mReplaceIcon;</span><br><span class="line">        animationDuration = Math.max(<span class="number">0</span>,</span><br><span class="line">                Math.min(mTmpAttrs.mAnimationDuration, mMaxAnimatableIconDuration));</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        iconDrawable = mIconProvider.getIconForUI(</span><br><span class="line">                ai, getUserHandleForUid(ai.applicationInfo.uid));</span><br><span class="line">        <span class="keyword">if</span> (iconDrawable == <span class="literal">null</span>) &#123;</span><br><span class="line">            iconDrawable = context.getPackageManager().getDefaultActivityIcon();</span><br><span class="line">        &#125;</span><br><span class="line">        animationDuration = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 选择启动窗口背景颜色</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">themeBGColor</span> <span class="operator">=</span> peekWindowBGColor(context);</span><br><span class="line">    <span class="comment">// [3.3.3] 创建SplashScreenView</span></span><br><span class="line">    <span class="keyword">return</span> builder</span><br><span class="line">            .setContext(context)</span><br><span class="line">            .setWindowBGColor(themeBGColor)</span><br><span class="line">            .setIconDrawable(iconDrawable)</span><br><span class="line">            .setIconAnimationDuration(animationDuration)</span><br><span class="line">            .setBrandingDrawable(mTmpAttrs.mBrandingImage)</span><br><span class="line">            .setIconBackground(mTmpAttrs.mIconBgColor).build();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里首先重置相关配置属性，然后根据默认配置创建SplashScreenView。</p>
+<h3 id="3-3-3-StartingWindowViewBuilder-build"><a href="#3-3-3-StartingWindowViewBuilder-build" class="headerlink" title="3.3.3 StartingWindowViewBuilder.build"></a>3.3.3 StartingWindowViewBuilder.build</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">SplashScreenView <span class="title function_">build</span><span class="params">()</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// mIconDrawable必须不为空且是AdaptiveIconDrawable的实例</span></span><br><span class="line">    <span class="keyword">if</span> (!processAdaptiveIcon() &amp;&amp; mIconDrawable != <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">if</span> (DEBUG) &#123;</span><br><span class="line">            Slog.d(TAG, <span class="string">&quot;The icon is not an AdaptiveIconDrawable&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        createIconDrawable(mIconDrawable, mIconSize);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">iconSize</span> <span class="operator">=</span> mFinalIconDrawable != <span class="literal">null</span> ? (<span class="type">int</span>) (mIconSize * mScale) : <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 填充SplashScreenView内容</span></span><br><span class="line">    mCachedResult = fillViewWithIcon(mContext, iconSize, mFinalIconDrawable);</span><br><span class="line">    mBuildComplete = <span class="literal">true</span>;</span><br><span class="line">    <span class="keyword">return</span> mCachedResult;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里也仅仅是检查了下mIconDrawable是否为AdaptiveIconDrawable的实例，如果不是则重新创建一个。然后使用fillViewWithIcon填充内容，创建SplashScreenView.</p>
+<h3 id="3-3-4-StartingWindowViewBuilder-fillViewWithIcon"><a href="#3-3-4-StartingWindowViewBuilder-fillViewWithIcon" class="headerlink" title="3.3.4 StartingWindowViewBuilder.fillViewWithIcon"></a>3.3.4 StartingWindowViewBuilder.fillViewWithIcon</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> SplashScreenView <span class="title function_">fillViewWithIcon</span><span class="params">(Context context,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> iconSize, Drawable iconDrawable)</span> &#123;</span><br><span class="line">    Trace.traceBegin(TRACE_TAG_WINDOW_MANAGER, <span class="string">&quot;fillViewWithIcon&quot;</span>);</span><br><span class="line">    <span class="keyword">final</span> SplashScreenView.<span class="type">Builder</span> <span class="variable">builder</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">SplashScreenView</span>.Builder(context);</span><br><span class="line">    builder.setIconSize(iconSize).setBackgroundColor(mThemeColor)</span><br><span class="line">            .setIconBackground(mIconBackground);</span><br><span class="line">    <span class="keyword">if</span> (iconDrawable != <span class="literal">null</span>) &#123;</span><br><span class="line">        builder.setCenterViewDrawable(iconDrawable);</span><br><span class="line">    &#125;</span><br><span class="line">    builder.setAnimationDurationMillis(mIconAnimationDuration);</span><br><span class="line">    <span class="keyword">if</span> (mBrandingDrawable != <span class="literal">null</span>) &#123;</span><br><span class="line">        builder.setBrandingDrawable(mBrandingDrawable, mBrandingImageWidth,</span><br><span class="line">                mBrandingImageHeight);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 3.3.5 实例化SplashScreenView</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">SplashScreenView</span> <span class="variable">splashScreenView</span> <span class="operator">=</span> builder.build();</span><br><span class="line">    <span class="keyword">if</span> (DEBUG) &#123;</span><br><span class="line">        Slog.d(TAG, <span class="string">&quot;fillViewWithIcon surfaceWindowView &quot;</span> + splashScreenView);</span><br><span class="line">    &#125;</span><br><span class="line">    splashScreenView.makeSystemUIColorsTransparent();</span><br><span class="line">    Trace.traceEnd(TRACE_TAG_WINDOW_MANAGER);</span><br><span class="line">    <span class="keyword">return</span> splashScreenView;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>设置待创建的SplashScreenView相关的内容，如主题颜色、图标背景色、图标动画时长、三方应用的图标等等，然后通过build构建SplashScreenView.</p>
+<h3 id="3-3-5-SplashScreenView-Builder-build"><a href="#3-3-5-SplashScreenView-Builder-build" class="headerlink" title="3.3.5 SplashScreenView.Builder.build"></a>3.3.5 SplashScreenView.Builder.build</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> SplashScreenView <span class="title function_">build</span><span class="params">()</span> &#123;</span><br><span class="line">    Trace.traceBegin(TRACE_TAG_WINDOW_MANAGER, <span class="string">&quot;SplashScreenView#build&quot;</span>);</span><br><span class="line">    <span class="keyword">final</span> <span class="type">LayoutInflater</span> <span class="variable">layoutInflater</span> <span class="operator">=</span> LayoutInflater.from(mContext);</span><br><span class="line">    <span class="keyword">final</span> <span class="type">SplashScreenView</span> <span class="variable">view</span> <span class="operator">=</span> (SplashScreenView)</span><br><span class="line">            layoutInflater.inflate(R.layout.splash_screen_view, <span class="literal">null</span>, <span class="literal">false</span>);</span><br><span class="line">    ......</span><br><span class="line">    view.mIconView = view.findViewById(R.id.splashscreen_icon_view);</span><br><span class="line">    view.mBrandingImageView = view.findViewById(R.id.splashscreen_branding_view);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 设置icon图像</span></span><br><span class="line">    <span class="keyword">if</span> (mIconDrawable != <span class="literal">null</span>) &#123;</span><br><span class="line">        view.mIconView.setBackground(mIconDrawable);</span><br><span class="line">        view.initIconAnimation(mIconDrawable,</span><br><span class="line">                mIconAnimationDuration != <span class="literal">null</span> ? mIconAnimationDuration.toMillis() : <span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 设置brand图像</span></span><br><span class="line">    <span class="keyword">if</span> (mBrandingImageHeight &gt; <span class="number">0</span> &amp;&amp; mBrandingImageWidth &gt; <span class="number">0</span> &amp;&amp; mBrandingDrawable != <span class="literal">null</span>) &#123;</span><br><span class="line">        ......</span><br><span class="line">        view.mBrandingImageView.setBackground(mBrandingDrawable);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    Trace.traceEnd(TRACE_TAG_WINDOW_MANAGER);</span><br><span class="line">    <span class="keyword">return</span> view;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>SplashScreenView是继承FrameLayout的，通过LayoutInflater实例化splash_screen_view作为其内容布局:</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">android.window.SplashScreenView</span></span></span><br><span class="line"><span class="tag">    <span class="attr">xmlns:android</span>=<span class="string">&quot;http://schemas.android.com/apk/res/android&quot;</span></span></span><br><span class="line"><span class="tag">    <span class="attr">android:layout_height</span>=<span class="string">&quot;match_parent&quot;</span></span></span><br><span class="line"><span class="tag">    <span class="attr">android:layout_width</span>=<span class="string">&quot;match_parent&quot;</span></span></span><br><span class="line"><span class="tag">    <span class="attr">android:orientation</span>=<span class="string">&quot;vertical&quot;</span>&gt;</span></span><br><span class="line"></span><br><span class="line">    <span class="tag">&lt;<span class="name">View</span> <span class="attr">android:id</span>=<span class="string">&quot;@+id/splashscreen_icon_view&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:layout_height</span>=<span class="string">&quot;wrap_content&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:layout_width</span>=<span class="string">&quot;wrap_content&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:layout_gravity</span>=<span class="string">&quot;center&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:contentDescription</span>=<span class="string">&quot;@string/splash_screen_view_icon_description&quot;</span>/&gt;</span></span><br><span class="line"></span><br><span class="line">    <span class="tag">&lt;<span class="name">View</span> <span class="attr">android:id</span>=<span class="string">&quot;@+id/splashscreen_branding_view&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:layout_height</span>=<span class="string">&quot;wrap_content&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:layout_width</span>=<span class="string">&quot;wrap_content&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:layout_gravity</span>=<span class="string">&quot;center_horizontal|bottom&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:layout_marginBottom</span>=<span class="string">&quot;60dp&quot;</span></span></span><br><span class="line"><span class="tag">          <span class="attr">android:contentDescription</span>=<span class="string">&quot;@string/splash_screen_view_branding_description&quot;</span>/&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;/<span class="name">android.window.SplashScreenView</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<p>这个非常简单，就是两个View, 所以说启动窗口的显示内容就是两个图标（如果有图标对应的image不为null,则会显示）。</p>
+<h2 id="3-4-SplashScreenViewSupplier-setView"><a href="#3-4-SplashScreenViewSupplier-setView" class="headerlink" title="3.4 SplashScreenViewSupplier.setView"></a>3.4 SplashScreenViewSupplier.setView</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">class</span> <span class="title class_">SplashScreenViewSupplier</span> <span class="keyword">implements</span> <span class="title class_">Supplier</span>&lt;SplashScreenView&gt; &#123;</span><br><span class="line">    <span class="keyword">private</span> SplashScreenView mView;</span><br><span class="line">    <span class="keyword">private</span> <span class="type">boolean</span> mIsViewSet;</span><br><span class="line">    <span class="keyword">void</span> <span class="title function_">setView</span><span class="params">(SplashScreenView view)</span> &#123;</span><br><span class="line">        <span class="keyword">synchronized</span> (<span class="built_in">this</span>) &#123;</span><br><span class="line">            <span class="comment">// 保存SplashScreenView并通知其他线程继续执行get</span></span><br><span class="line">            mView = view;</span><br><span class="line">            mIsViewSet = <span class="literal">true</span>;</span><br><span class="line">            notify();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="keyword">public</span> <span class="meta">@Nullable</span> SplashScreenView <span class="title function_">get</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="keyword">synchronized</span> (<span class="built_in">this</span>) &#123;</span><br><span class="line">            <span class="keyword">while</span> (!mIsViewSet) &#123;</span><br><span class="line">                <span class="keyword">try</span> &#123;</span><br><span class="line">                    wait();</span><br><span class="line">                &#125; <span class="keyword">catch</span> (InterruptedException ignored) &#123;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">return</span> mView;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这个类的主要作用就是将SplashScreenView的创建交给与使用线程不同的线程。</p>
+<h1 id="四-小结"><a href="#四-小结" class="headerlink" title="四.小结"></a>四.小结</h1><p>来一张流程图回顾下启动窗口被添加的过程:</p>
+<p><img src="/images/WMS%E7%B3%BB%E5%88%97/5_2.png" alt="5-2"></p>
+<p>虽然启动窗口对应的View和内容是通过SystemUI创建的，但是其还是被WMS归属为待启动的Activity的Task中的一员。究其原因还是其窗口属性中的token是该Activity对应的ActivityRecord.Token。SystemUI创建启动窗口的内容后，会在下一帧来时将该View添加到WMS中，然后WMS就会在addWindow里创建对应的WindowState。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/" title="WMS(5)-启动窗口">https://swallowjoe.github.io/2022/05/05/WMS(5)-启动窗口/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/WMS/" rel="tag"># WMS</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/05/04/WMS(4)-WindowState%E5%88%9B%E5%BB%BA%E5%8F%8A%E7%A7%BB%E9%99%A4/" rel="prev" title="WMS(4)-WindowState创建及移除">
+      <i class="fa fa-chevron-left"></i> WMS(4)-WindowState创建及移除
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/" rel="next" title="WMS(6)-焦点窗口的更新">
+      WMS(6)-焦点窗口的更新 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-text">一. 启动窗口的初始化</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-ActivityStarter-startActivityInner"><span class="nav-text">1.1 ActivityStarter.startActivityInner</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-Task-startActivityLocked"><span class="nav-text">1.2 Task.startActivityLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-ActivityRecord-showStartingWindow"><span class="nav-text">1.3 ActivityRecord.showStartingWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-ActivityRecord-addStartingWindow"><span class="nav-text">1.4 ActivityRecord.addStartingWindow</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3%E7%9A%84%E5%8A%A8%E7%94%BB"><span class="nav-text">二. 启动窗口的动画</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-AddStartingWindow-run"><span class="nav-text">2.1 AddStartingWindow.run</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-StartingData-createStartingSurface"><span class="nav-text">2.2 StartingData.createStartingSurface</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-StartingSurfaceController-createSplashScreenStartingSurface"><span class="nav-text">2.3 StartingSurfaceController.createSplashScreenStartingSurface</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-TaskOrganizerController-addStartingWindow"><span class="nav-text">2.4 TaskOrganizerController.addStartingWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-ShellTaskOrganizer-addStartingWindow"><span class="nav-text">2.5 ShellTaskOrganizer.addStartingWindow</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-SystemUI%E8%B4%9F%E8%B4%A3%E7%9A%84%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3"><span class="nav-text">三. SystemUI负责的启动窗口</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-StartingWindowController-addStartingWindow"><span class="nav-text">3.1 StartingWindowController.addStartingWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-StartingSurfaceDrawer-addSplashScreenStartingWindow"><span class="nav-text">3.2 StartingSurfaceDrawer.addSplashScreenStartingWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-SplashscreenContentDrawer-createContentView"><span class="nav-text">3.3 SplashscreenContentDrawer.createContentView</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-1-SplashscreenContentDrawer-makeSplashscreenContent"><span class="nav-text">3.3.1 SplashscreenContentDrawer.makeSplashscreenContent</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-2-SplashscreenContentDrawer-makeSplashScreenContentView"><span class="nav-text">3.3.2 SplashscreenContentDrawer.makeSplashScreenContentView</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-3-StartingWindowViewBuilder-build"><span class="nav-text">3.3.3 StartingWindowViewBuilder.build</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-4-StartingWindowViewBuilder-fillViewWithIcon"><span class="nav-text">3.3.4 StartingWindowViewBuilder.fillViewWithIcon</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-5-SplashScreenView-Builder-build"><span class="nav-text">3.3.5 SplashScreenView.Builder.build</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-SplashScreenViewSupplier-setView"><span class="nav-text">3.4 SplashScreenViewSupplier.setView</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%9B%9B-%E5%B0%8F%E7%BB%93"><span class="nav-text">四.小结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">39</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

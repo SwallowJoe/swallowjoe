@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="---  以下分析基于Android S. 简述上文中，我们知道了应用View和窗口与input系统交互通道InputChannel的打通过程。有了通信通道，就可以通过这个来通信，将input事件传递给应用程序。很自然的，input系统中必须要保存代表该应用窗口的对象，用于识别以及分发事件。 还记得我们初始化WindowState时，有创建过一个InputWindowHandleWrapper类">
+<meta property="og:type" content="article">
+<meta property="og:title" content="WMS(8)-窗口信息传递给Input系统">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="---  以下分析基于Android S. 简述上文中，我们知道了应用View和窗口与input系统交互通道InputChannel的打通过程。有了通信通道，就可以通过这个来通信，将input事件传递给应用程序。很自然的，input系统中必须要保存代表该应用窗口的对象，用于识别以及分发事件。 还记得我们初始化WindowState时，有创建过一个InputWindowHandleWrapper类">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/8_1.png">
+<meta property="article:published_time" content="2022-05-07T17:35:34.000Z">
+<meta property="article:modified_time" content="2022-06-18T09:50:43.054Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="WMS">
+<meta property="article:tag" content="Input">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/8_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>WMS(8)-窗口信息传递给Input系统 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          WMS(8)-窗口信息传递给Input系统
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-08 01:35:34" itemprop="dateCreated datePublished" datetime="2022-05-08T01:35:34+08:00">2022-05-08</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-18 17:50:43" itemprop="dateModified" datetime="2022-06-18T17:50:43+08:00">2022-06-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/WMS/" itemprop="url" rel="index"><span itemprop="name">WMS</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/WMS/Input/" itemprop="url" rel="index"><span itemprop="name">Input</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/" class="post-meta-item leancloud_visitors" data-flag-title="WMS(8)-窗口信息传递给Input系统" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+---
+
+<p><strong>以下分析基于Android S.</strong></p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>上文中，我们知道了应用View和窗口与input系统交互通道InputChannel的打通过程。有了通信通道，就可以通过这个来通信，将input事件传递给应用程序。很自然的，input系统中必须要保存代表该应用窗口的对象，用于识别以及分发事件。</p>
+<p>还记得我们初始化WindowState时，有创建过一个InputWindowHandleWrapper类的对象，当时我们认为是将该Window注册进input系统：</p>
+<span id="more"></span>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 创建InputApplicationHandle, 将该Window注册进Input系统，以便后续input事件传输</span></span><br><span class="line">mInputWindowHandle = <span class="keyword">new</span> <span class="title class_">InputWindowHandleWrapper</span>(<span class="keyword">new</span> <span class="title class_">InputWindowHandle</span>(</span><br><span class="line">        mActivityRecord != <span class="literal">null</span></span><br><span class="line">                ? mActivityRecord.getInputApplicationHandle(<span class="literal">false</span> <span class="comment">/* update */</span>) : <span class="literal">null</span>,</span><br><span class="line">        getDisplayId()));</span><br><span class="line"></span><br><span class="line"><span class="comment">// ActivityRecord.java</span></span><br><span class="line"><span class="meta">@NonNull</span> InputApplicationHandle <span class="title function_">getInputApplicationHandle</span><span class="params">(<span class="type">boolean</span> update)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mInputApplicationHandle == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="comment">// 创建InputApplicationHandle, 这里的appToken是IApplicationToken.Stub的子类对象，是ActivityRecord初始化时创建的</span></span><br><span class="line">        mInputApplicationHandle = <span class="keyword">new</span> <span class="title class_">InputApplicationHandle</span>(appToken, toString(),</span><br><span class="line">                mInputDispatchingTimeoutMillis);</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">return</span> mInputApplicationHandle;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们先看看这里InputWindowHandleWrapper、InputWindowHandle、InputApplicationHandle等相关类的类图：</p>
+<p><img src="/images/WMS%E7%B3%BB%E5%88%97/8_1.png" alt="8-1"></p>
+<p>可以看到这里InputWindowHandle类中包含该Window的大小和位置、可触碰区域(touchableRegion)等等信息，这些信息是什么时候更新的呢？回到我们之前研究过的焦点窗口的更新一文，在WMS.addWindow中创建WindowState的对象并且更新焦点窗口后，会更新input相关信息:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// WMS.addWindow</span></span><br><span class="line"><span class="comment">// 如果焦点窗口有更新，也需要更新input相关设置</span></span><br><span class="line"><span class="keyword">if</span> (focusChanged) &#123;</span><br><span class="line">    <span class="comment">// [1.1] 设置输入焦点窗口信息</span></span><br><span class="line">    displayContent.getInputMonitor().setInputFocusLw(displayContent.mCurrentFocus,</span><br><span class="line">            <span class="literal">false</span> <span class="comment">/*updateInputWindows*/</span>);</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// [1.2] 更新输入窗口信息</span></span><br><span class="line">displayContent.getInputMonitor().updateInputWindowsLw(<span class="literal">false</span> <span class="comment">/*force*/</span>);</span><br></pre></td></tr></table></figure>
+
+<p>这里我们加上mCurrentFocus就是此次新创建的WindowState.</p>
+<h1 id="一-更新窗口信息"><a href="#一-更新窗口信息" class="headerlink" title="一. 更新窗口信息"></a>一. 更新窗口信息</h1><h2 id="1-1-InputMonitor-setInputFocusLw"><a href="#1-1-InputMonitor-setInputFocusLw" class="headerlink" title="1.1 InputMonitor.setInputFocusLw"></a>1.1 InputMonitor.setInputFocusLw</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">setInputFocusLw</span><span class="params">(WindowState newWindow, <span class="type">boolean</span> updateInputWindows)</span> &#123;</span><br><span class="line">    ProtoLog.v(WM_DEBUG_FOCUS_LIGHT, <span class="string">&quot;Input focus has changed to %s display=%d&quot;</span>,</span><br><span class="line">            newWindow, mDisplayId);</span><br><span class="line">    <span class="keyword">final</span> <span class="type">IBinder</span> <span class="variable">focus</span> <span class="operator">=</span> newWindow != <span class="literal">null</span> ? newWindow.mInputChannelToken : <span class="literal">null</span>;</span><br><span class="line">    <span class="keyword">if</span> (focus == mInputFocus) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (newWindow != <span class="literal">null</span> &amp;&amp; newWindow.canReceiveKeys()) &#123;</span><br><span class="line">        <span class="comment">// 隐式地显示一个窗口将导致取消调度, 为了防止错误，如果有人暂停调度但忘记resume</span></span><br><span class="line">        newWindow.mToken.paused = <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 标记mUpdateInputWindowsNeeded为true</span></span><br><span class="line">    setUpdateInputWindowsNeededLw();</span><br><span class="line">    <span class="comment">// 此时传入的updateInputWindows为false, 表明不是此时更新信息的</span></span><br><span class="line">    <span class="keyword">if</span> (updateInputWindows) &#123;</span><br><span class="line">        updateInputWindowsLw(<span class="literal">false</span> <span class="comment">/*force*/</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">setUpdateInputWindowsNeededLw</span><span class="params">()</span> &#123;</span><br><span class="line">    mUpdateInputWindowsNeeded = <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里是判断新的窗口是否与当前输入焦点窗口一致，如果不一致，则标记mUpdateInputWindowsNeeded为true，表明需要更新输入窗口了。</p>
+<h2 id="1-2-InputMonitor-updateInputWindowsLw"><a href="#1-2-InputMonitor-updateInputWindowsLw" class="headerlink" title="1.2 InputMonitor.updateInputWindowsLw"></a>1.2 InputMonitor.updateInputWindowsLw</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">updateInputWindowsLw</span><span class="params">(<span class="type">boolean</span> force)</span> &#123;</span><br><span class="line">    <span class="comment">// mUpdateInputWindowsNeeded 在[1.1]中就被标记为true了</span></span><br><span class="line">    <span class="keyword">if</span> (!force &amp;&amp; !mUpdateInputWindowsNeeded) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    scheduleUpdateInputWindows();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">scheduleUpdateInputWindows</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// 当前input对应的Display设备被移除时，无需处理</span></span><br><span class="line">    <span class="keyword">if</span> (mDisplayRemoved) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// mUpdateInputWindowsPending默认是false</span></span><br><span class="line">    <span class="comment">// 用于标记当前是否有存在尚未执行的 mUpdateInputWindows</span></span><br><span class="line">    <span class="keyword">if</span> (!mUpdateInputWindowsPending) &#123;</span><br><span class="line">        mUpdateInputWindowsPending = <span class="literal">true</span>;</span><br><span class="line">        <span class="comment">// [1.3] 将输入窗口信息交给&quot;android.anim&quot;线程处理，mHandler=&gt;WMS.mAnimationHandler</span></span><br><span class="line">        mHandler.post(mUpdateInputWindows);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>先判断是否需要执行更新（mUpdateInputWindowsNeeded变量），如果需要则将更新操作交给”android.anim”线程处理。</p>
+<h2 id="1-3-InputMonitor-UpdateInputWindows-run"><a href="#1-3-InputMonitor-UpdateInputWindows-run" class="headerlink" title="1.3 InputMonitor.UpdateInputWindows.run"></a>1.3 InputMonitor.UpdateInputWindows.run</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">run</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">synchronized</span> (mService.mGlobalLock) &#123;</span><br><span class="line">        <span class="comment">// 执行输入窗口信息更新，将变量恢复</span></span><br><span class="line">        mUpdateInputWindowsPending = <span class="literal">false</span>;</span><br><span class="line">        mUpdateInputWindowsNeeded = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (mDisplayRemoved) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 用可能接收输入的所有窗口的信息填充输入窗口列表</span></span><br><span class="line">        <span class="comment">// 作为一个优化，可以尝试修剪窗口列表，但这是困难的，因为只有native代码知道哪个窗口当前有触摸焦点。</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果滑动过程中有拖拽，提供一个伪窗口来捕获拖拽输入，为了方便分析这里加上是非拖拽</span></span><br><span class="line">        <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">inDrag</span> <span class="operator">=</span> mService.mDragDropController.dragDropActiveLocked();</span><br><span class="line"></span><br><span class="line">        <span class="comment">// [1.4] 在默认Display中添加所有窗口</span></span><br><span class="line">        mUpdateInputForAllWindowsConsumer.updateInputWindows(inDrag);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在”android.anim”线程处理时，首先将标记变量恢复为false, 表示可以接收下一次输入窗口更新了。接下来就是在默认Display中添加所有窗口了。</p>
+<h2 id="1-4-InputMonitor-UpdateInputForAllWindowsConsumer-updateInputWindows"><a href="#1-4-InputMonitor-UpdateInputForAllWindowsConsumer-updateInputWindows" class="headerlink" title="1.4 InputMonitor.UpdateInputForAllWindowsConsumer.updateInputWindows"></a>1.4 InputMonitor.UpdateInputForAllWindowsConsumer.updateInputWindows</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">updateInputWindows</span><span class="params">(<span class="type">boolean</span> inDrag)</span> &#123;</span><br><span class="line">    Trace.traceBegin(TRACE_TAG_WINDOW_MANAGER, <span class="string">&quot;updateInputWindows&quot;</span>);</span><br><span class="line">    <span class="comment">// 获取对应的InputConsumer</span></span><br><span class="line">    mPipInputConsumer = getInputConsumer(INPUT_CONSUMER_PIP);</span><br><span class="line">    mWallpaperInputConsumer = getInputConsumer(INPUT_CONSUMER_WALLPAPER);</span><br><span class="line">    mRecentsAnimationInputConsumer = getInputConsumer(INPUT_CONSUMER_RECENTS_ANIMATION);</span><br><span class="line">    <span class="comment">// 判断对应InputConsumer是否为null</span></span><br><span class="line">    mAddPipInputConsumerHandle = mPipInputConsumer != <span class="literal">null</span>;</span><br><span class="line">    mAddWallpaperInputConsumerHandle = mWallpaperInputConsumer != <span class="literal">null</span>;</span><br><span class="line">    mAddRecentsAnimationInputConsumerHandle = mRecentsAnimationInputConsumer != <span class="literal">null</span>;</span><br><span class="line"></span><br><span class="line">    mDisableWallpaperTouchEvents = <span class="literal">false</span>;</span><br><span class="line">    mInDrag = inDrag;</span><br><span class="line">    <span class="comment">// mInputConsumers 中所有的InputConsumer都调用hide隐藏</span></span><br><span class="line">    resetInputConsumers(mInputTransaction);</span><br><span class="line">    mRecentsAnimationFocusOverride = <span class="literal">false</span>;</span><br><span class="line">    <span class="comment">// [1.5] 从上到下（Z轴大到小）遍历该DisplayContent中所有的WindowState</span></span><br><span class="line">    <span class="comment">// 依次执行UpdateInputForAllWindowsConsumer.accept</span></span><br><span class="line">    mDisplayContent.forAllWindows(<span class="built_in">this</span>, <span class="literal">true</span> <span class="comment">/* traverseTopToBottom */</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mRecentsAnimationFocusOverride) &#123;</span><br><span class="line">        requestFocus(mRecentsAnimationInputConsumer.mWindowHandle.token,</span><br><span class="line">                mRecentsAnimationInputConsumer.mName);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// [1.6] 将焦点窗口信息更新给input系统</span></span><br><span class="line">        updateInputFocusRequest();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// mUpdateInputWindowsImmediately一般为false</span></span><br><span class="line">    <span class="keyword">if</span> (!mUpdateInputWindowsImmediately) &#123;</span><br><span class="line">        mDisplayContent.getPendingTransaction().merge(mInputTransaction);</span><br><span class="line">        mDisplayContent.scheduleAnimation();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    Trace.traceEnd(TRACE_TAG_WINDOW_MANAGER);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">InputConsumerImpl <span class="title function_">getInputConsumer</span><span class="params">(String name)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> mInputConsumers.get(name);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>InputConsumer总共有四种:</p>
+<ol>
+<li>INPUT_CONSUMER_PIP: “pip_input_consumer”, 用于pip</li>
+<li>INPUT_CONSUMER_NAVIGATION: “nav_input_consumer”，用于导航栏</li>
+<li>INPUT_CONSUMER_WALLPAPER: “wallpaper_input_consumer”，用于壁纸</li>
+<li>INPUT_CONSUMER_RECENTS_ANIMATION: “recents_animation_input_consumer”，用于多任务</li>
+</ol>
+<p>更新输入窗口的步骤如下:</p>
+<ol>
+<li>重置InputConsumer，将所有consumer都调用hide</li>
+<li>从上到下（Z轴大到小）遍历该DisplayContent中所有的WindowState，依次执行UpdateInputForAllWindowsConsumer.accept<ol>
+<li>这个accept就是计算更新窗口信息，比如可触碰区域的计算</li>
+<li>通过SurfaceControl传递窗口信息给SurfaceFlinger，在native层生成对应的InputWindowHandle</li>
+</ol>
+</li>
+<li>如果有最近任务栏动画，则调用requestFocus更新多任务焦点；否则调用updateInputFocusRequest更新输入焦点请求</li>
+</ol>
+<h2 id="1-5-InputMonitor-UpdateInputForAllWindowsConsumer-accept"><a href="#1-5-InputMonitor-UpdateInputForAllWindowsConsumer-accept" class="headerlink" title="1.5 InputMonitor.UpdateInputForAllWindowsConsumer.accept"></a>1.5 InputMonitor.UpdateInputForAllWindowsConsumer.accept</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">accept</span><span class="params">(WindowState w)</span> &#123;</span><br><span class="line">    <span class="comment">// 这里假设传入的WindowState是addWindow中新创建的</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">InputWindowHandleWrapper</span> <span class="variable">inputWindowHandle</span> <span class="operator">=</span> w.mInputWindowHandle;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 注册事件拦截信息</span></span><br><span class="line">    mService.mKeyInterceptionInfoForToken.put(w.mInputChannelToken,</span><br><span class="line">            w.getKeyInterceptionInfo());</span><br><span class="line">    <span class="comment">// [1.5.1] mWinAnimator是WindowState初始化时构建的WindowStateAnimator对象</span></span><br><span class="line">    <span class="keyword">if</span> (w.mWinAnimator.hasSurface()) &#123;</span><br><span class="line">        <span class="comment">// [1.5.2] 计算更新该窗口的信息</span></span><br><span class="line">        populateInputWindowHandle(inputWindowHandle, w);</span><br><span class="line">        <span class="comment">// [1.5.3] 通知对应Surface更新窗口信息</span></span><br><span class="line">        setInputWindowInfoIfNeeded(mInputTransaction,</span><br><span class="line">                w.mWinAnimator.mSurfaceController.mSurfaceControl, inputWindowHandle);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-1-WindowStateAnimator-hasSurface"><a href="#1-5-1-WindowStateAnimator-hasSurface" class="headerlink" title="1.5.1 WindowStateAnimator.hasSurface"></a>1.5.1 WindowStateAnimator.hasSurface</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// WindowStateAnimator.java</span></span><br><span class="line"><span class="type">boolean</span> <span class="title function_">hasSurface</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// mSurfaceController是WindowSurfaceController的对象</span></span><br><span class="line">    <span class="keyword">return</span> mSurfaceController != <span class="literal">null</span> &amp;&amp; mSurfaceController.hasSurface();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// WindowSurfaceController.java</span></span><br><span class="line"><span class="type">boolean</span> <span class="title function_">hasSurface</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// SurfaceControl对象，在WindowSurfaceController初始化时构建</span></span><br><span class="line">    <span class="keyword">return</span> mSurfaceControl != <span class="literal">null</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>WindowStateAnimator中的mSurfaceController是WindowSurfaceController的对象，在其对应的Window被调用relayoutWindow时通过winAnimator.createSurfaceLocked(win.mAttrs.type)创建的。 而relayoutWindow则是三方应用进程接收到Vsync信号之后，调用对应的ViewRootImpl中的performTraversals在通过Session通知到WMS执行的。在这里我们假设”android.anim”线程更新所有输入窗口时，这个新建的WindowState已经被调用过了relayoutWindow，存在Surface。</p>
+<h3 id="1-5-2-InputMonitor-populateInputWindowHandle"><a href="#1-5-2-InputMonitor-populateInputWindowHandle" class="headerlink" title="1.5.2 InputMonitor.populateInputWindowHandle"></a>1.5.2 InputMonitor.populateInputWindowHandle</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">populateInputWindowHandle</span><span class="params">(<span class="keyword">final</span> InputWindowHandleWrapper inputWindowHandle,</span></span><br><span class="line"><span class="params">        <span class="keyword">final</span> WindowState w)</span> &#123;</span><br><span class="line">    <span class="comment">// 添加一个窗口到可输入事件的窗口列表中</span></span><br><span class="line">    <span class="comment">// 设置窗口相关信息到inputWindowHandle中</span></span><br><span class="line">    inputWindowHandle.setInputApplicationHandle(w.mActivityRecord != <span class="literal">null</span></span><br><span class="line">            ? w.mActivityRecord.getInputApplicationHandle(<span class="literal">false</span> <span class="comment">/* update */</span>) : <span class="literal">null</span>);</span><br><span class="line">    inputWindowHandle.setToken(w.mInputChannelToken);</span><br><span class="line">    <span class="comment">// 设置该窗口的input超时时长，如果该WindowState对应Activity，这个时长就是5s</span></span><br><span class="line">    inputWindowHandle.setDispatchingTimeoutMillis(w.getInputDispatchingTimeoutMillis());</span><br><span class="line">    inputWindowHandle.setTouchOcclusionMode(w.getTouchOcclusionMode());</span><br><span class="line">    inputWindowHandle.setInputFeatures(w.mAttrs.inputFeatures);</span><br><span class="line">    inputWindowHandle.setPaused(w.mActivityRecord != <span class="literal">null</span> &amp;&amp; w.mActivityRecord.paused);</span><br><span class="line">    inputWindowHandle.setVisible(w.isVisible());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 设置是否可聚焦</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">focusable</span> <span class="operator">=</span> w.canReceiveKeys()</span><br><span class="line">            &amp;&amp; (mService.mPerDisplayFocusEnabled || mDisplayContent.isOnTop());</span><br><span class="line">    inputWindowHandle.setFocusable(focusable);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 是否包含壁纸</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">hasWallpaper</span> <span class="operator">=</span> mDisplayContent.mWallpaperController.isWallpaperTarget(w)</span><br><span class="line">            &amp;&amp; !mService.mPolicy.isKeyguardShowing()</span><br><span class="line">            &amp;&amp; !mDisableWallpaperTouchEvents;</span><br><span class="line">    inputWindowHandle.setHasWallpaper(hasWallpaper);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Rect</span> <span class="variable">frame</span> <span class="operator">=</span> w.getFrame();</span><br><span class="line">    <span class="comment">// 设置该窗口的位置和大小</span></span><br><span class="line">    inputWindowHandle.setFrame(frame.left, frame.top, frame.right, frame.bottom);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Surface insets 被硬编码为在所有方向上都是相同的，所以这里仅需一个参数</span></span><br><span class="line">    inputWindowHandle.setSurfaceInset(w.mAttrs.surfaceInsets.left);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果缩放窗口，输入坐标需要反向缩放，将屏幕上的内容映射到UI中实际触摸的内容</span></span><br><span class="line">    inputWindowHandle.setScaleFactor(w.mGlobalScale != <span class="number">1f</span> ? (<span class="number">1f</span> / w.mGlobalScale) : <span class="number">1f</span>);</span><br><span class="line">    <span class="comment">// [1.5.2.1] 计算窗口可触摸区域</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">flags</span> <span class="operator">=</span> w.getSurfaceTouchableRegion(mTmpRegion, w.mAttrs.flags);</span><br><span class="line">    <span class="comment">// 将计算得到的可触摸区域保存在inputWindowHandle中</span></span><br><span class="line">    inputWindowHandle.setTouchableRegion(mTmpRegion);</span><br><span class="line">    inputWindowHandle.setLayoutParamsFlags(flags);</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="1-5-2-1-WindowState-getSurfaceTouchableRegion"><a href="#1-5-2-1-WindowState-getSurfaceTouchableRegion" class="headerlink" title="1.5.2.1 WindowState.getSurfaceTouchableRegion"></a>1.5.2.1 WindowState.getSurfaceTouchableRegion</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">getSurfaceTouchableRegion</span><span class="params">(Region region, <span class="type">int</span> flags)</span> &#123;</span><br><span class="line">    <span class="comment">// 判断该WindowState是否包含FLAG_NOT_TOUCH_MODAL和FLAG_NOT_FOCUSABLE，表明该窗口无法接收input以及无法作为焦点</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">modal</span> <span class="operator">=</span> (flags &amp; (FLAG_NOT_TOUCH_MODAL | FLAG_NOT_FOCUSABLE)) == <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (modal) &#123;</span><br><span class="line">        flags |= FLAG_NOT_TOUCH_MODAL;</span><br><span class="line">        <span class="keyword">if</span> (mActivityRecord != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="comment">// [1.5.2.2] 将外部接触限制在活动根任务区域</span></span><br><span class="line">            updateRegionForModalActivityWindow(region);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">// 首先给一个足够大的可触摸区域，因为它是触摸模态</span></span><br><span class="line">            <span class="comment">// 窗口可能会在显示器上移动，所以可触摸区域应该足够大，以确保它覆盖整个显示器，无论它移动到哪里</span></span><br><span class="line">            <span class="comment">// 比如启动窗口</span></span><br><span class="line">            getDisplayContent().getBounds(mTmpRect);</span><br><span class="line">            <span class="keyword">final</span> <span class="type">int</span> <span class="variable">dw</span> <span class="operator">=</span> mTmpRect.width();</span><br><span class="line">            <span class="keyword">final</span> <span class="type">int</span> <span class="variable">dh</span> <span class="operator">=</span> mTmpRect.height();</span><br><span class="line">            region.set(-dw, -dh, dw + dw, dh + dh);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 将计算得到的窗口可触摸区域减去其不可触碰的区域</span></span><br><span class="line">        subtractTouchExcludeRegionIfNeeded(region);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// Not modal</span></span><br><span class="line">        getTouchableRegion(region);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 转换为基于Surface的坐标, 因为Android中坐标原点在左上角，Y轴正方向向下，X轴正方向向右</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Rect</span> <span class="variable">frame</span> <span class="operator">=</span> mWindowFrames.mFrame;</span><br><span class="line">    <span class="keyword">if</span> (frame.left != <span class="number">0</span> || frame.top != <span class="number">0</span>) &#123;</span><br><span class="line">        region.translate(-frame.left, -frame.top);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> flags;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>FLAG_NOT_TOUCH_MODAL: 允许窗口外的任何指针事件被发送到它后面的窗口, 即使这个窗口是可聚焦的。否则（不带此标志），窗口将消耗所有指针事件本身，而不管它们是否在窗口内。</li>
+<li>FLAG_NOT_FOCUSABLE: 标记这个窗口永远不能接收触摸事件</li>
+</ol>
+<p>Android中坐标原点在左上角，Y轴正方向向下，X轴正方向向右，所以计算的窗口可触摸区域需要转换为基于Surface的坐标。</p>
+<h4 id="1-5-2-2-WindowState-updateRegionForModalActivityWindow"><a href="#1-5-2-2-WindowState-updateRegionForModalActivityWindow" class="headerlink" title="1.5.2.2 WindowState.updateRegionForModalActivityWindow"></a>1.5.2.2 WindowState.updateRegionForModalActivityWindow</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">updateRegionForModalActivityWindow</span><span class="params">(Region outRegion)</span> &#123;</span><br><span class="line">    <span class="comment">// 获取内部边界的letterbox可触摸区域（一般不会设置的，这个就是&lt;activity&gt;中的android:maxAspectRatio属性）</span></span><br><span class="line">    mActivityRecord.getLetterboxInnerBounds(mTmpRect);</span><br><span class="line">    <span class="comment">// 假设此时mTmpRect为empty的</span></span><br><span class="line">    <span class="keyword">if</span> (mTmpRect.isEmpty()) &#123;</span><br><span class="line">        <span class="comment">// [1.5.2.3] 获取该ActivityRecord的View边界</span></span><br><span class="line">        <span class="keyword">final</span> <span class="type">Rect</span> <span class="variable">transformedBounds</span> <span class="operator">=</span> mActivityRecord.getFixedRotationTransformDisplayBounds();</span><br><span class="line">        <span class="keyword">if</span> (transformedBounds != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="comment">// Task与显示的方向相同，所以旋转的边界应该被选择为可触摸区域。当表面层将区域转换为显示空间时，方向是一致的。</span></span><br><span class="line">            mTmpRect.set(transformedBounds);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">// 如果这是一个模态窗口，我们需要dismiss它如果它不是全屏，触摸发生在显示内容的窗口之外</span></span><br><span class="line">            <span class="comment">// 这意味着我们需要拦截窗口外的触摸。与窗口(任务或根任务)相关联的dim layer将给一个界限，因为它们将用于显示dim layer</span></span><br><span class="line">            <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">task</span> <span class="operator">=</span> getTask();</span><br><span class="line">            <span class="keyword">if</span> (task != <span class="literal">null</span>) &#123;</span><br><span class="line">                <span class="comment">// [1.5.2.4] 通过该WindowState所在Task获取该窗口的可触摸区域</span></span><br><span class="line">                task.getDimBounds(mTmpRect);</span><br><span class="line">            &#125; <span class="keyword">else</span> <span class="keyword">if</span> (getRootTask() != <span class="literal">null</span>) &#123;</span><br><span class="line">                getRootTask().getDimBounds(mTmpRect);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果当前窗口是freeform窗口模式时，调整区域大小</span></span><br><span class="line">    adjustRegionInFreefromWindowMode(mTmpRect);</span><br><span class="line">    <span class="comment">// 将计算后的可触摸区域大小复制给outRegion使用</span></span><br><span class="line">    outRegion.set(mTmpRect);</span><br><span class="line">    <span class="comment">// 根据坐标系调整RootTask边界大小</span></span><br><span class="line">    cropRegionToRootTaskBoundsIfNeeded(outRegion);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>ActivityRecord.getLetterboxInnerBounds是获取内部边界的letterbox可触摸区域;一般不会设置的，这个就是<activity>中的android:maxAspectRatio属性。</activity></p>
+<p>至于freeform模式的窗口调整区域大小以及根据坐标系调整RootTask边界，感兴趣的可以继续研究。这里仅须知道窗口的可触摸区域是怎么拿到的即可。</p>
+<h4 id="1-5-2-3-ActivityRecord-getFixedRotationTransformDisplayBounds"><a href="#1-5-2-3-ActivityRecord-getFixedRotationTransformDisplayBounds" class="headerlink" title="1.5.2.3 ActivityRecord.getFixedRotationTransformDisplayBounds"></a>1.5.2.3 ActivityRecord.getFixedRotationTransformDisplayBounds</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">Rect <span class="title function_">getFixedRotationTransformDisplayBounds</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> isFixedRotationTransforming()</span><br><span class="line">            ? mFixedRotationTransformState.mRotatedOverrideConfiguration.windowConfiguration</span><br><span class="line">                    .getBounds()</span><br><span class="line">            : <span class="literal">null</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">boolean</span> <span class="title function_">isFixedRotationTransforming</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> mFixedRotationTransformState != <span class="literal">null</span></span><br><span class="line">            &amp;&amp; mFixedRotationTransformState.mIsTransforming;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>mFixedRotationTransformState是当手机方向旋转之后就会生成的， 这里我们假设没有发生旋转。</p>
+<h4 id="1-5-2-4-Task-getDimBounds"><a href="#1-5-2-4-Task-getDimBounds" class="headerlink" title="1.5.2.4 Task.getDimBounds"></a>1.5.2.4 Task.getDimBounds</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">getDimBounds</span><span class="params">(Rect out)</span> &#123;</span><br><span class="line">    <span class="comment">// 如果当前task是RootTask, 那么直接返回其边界大小</span></span><br><span class="line">    <span class="keyword">if</span> (isRootTask()) &#123;</span><br><span class="line">        getBounds(out);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">rootTask</span> <span class="operator">=</span> getRootTask();</span><br><span class="line">    <span class="keyword">final</span> <span class="type">DisplayContent</span> <span class="variable">displayContent</span> <span class="operator">=</span> rootTask.getDisplayContent();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">dockedResizing</span> <span class="operator">=</span> displayContent != <span class="literal">null</span></span><br><span class="line">            &amp;&amp; displayContent.mDividerControllerLocked.isResizing();</span><br><span class="line">    <span class="comment">// 判断该Task的WindowMode是否是Freeform模式，如果是，则找到该Task中最大的可见的区域</span></span><br><span class="line">    <span class="keyword">if</span> (inFreeformWindowingMode()) &#123;</span><br><span class="line">        <span class="type">boolean</span>[] foundTop = &#123; <span class="literal">false</span> &#125;;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">PooledConsumer</span> <span class="variable">c</span> <span class="operator">=</span> PooledLambda.obtainConsumer(Task::getMaxVisibleBounds,</span><br><span class="line">                PooledLambda.__(ActivityRecord.class), out, foundTop);</span><br><span class="line">        forAllActivities(c);</span><br><span class="line">        c.recycle();</span><br><span class="line">        <span class="keyword">if</span> (foundTop[<span class="number">0</span>]) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 当前task和父容器边界不匹配(此状态发生在回到home最小化task时)，假设是匹配的</span></span><br><span class="line">    <span class="keyword">if</span> (!matchParentBounds()) &#123;</span><br><span class="line">        <span class="keyword">if</span> (dockedResizing) &#123;</span><br><span class="line">            rootTask.getBounds(out);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            rootTask.getBounds(mTmpRect);</span><br><span class="line">            <span class="comment">// 取两个边界的交集</span></span><br><span class="line">            mTmpRect.intersect(getBounds());</span><br><span class="line">            out.set(mTmpRect);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 边界直接用当前task边界</span></span><br><span class="line">        out.set(getBounds());</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>窗口模式有如下7种：</p>
+<table>
+<thead>
+<tr>
+<th>窗口模式</th>
+<th>值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>WINDOWING_MODE_UNDEFINED</td>
+<td>0</td>
+<td>当前窗口模式尚未定义</td>
+</tr>
+<tr>
+<td>WINDOWING_MODE_FULLSCREEN</td>
+<td>1</td>
+<td>占据屏幕或父容器的整个区域</td>
+</tr>
+<tr>
+<td>WINDOWING_MODE_PINNED</td>
+<td>2</td>
+<td>总是在顶部(总是可见, 覆盖它的父容器中的其他兄弟容器)</td>
+</tr>
+<tr>
+<td>WINDOWING_MODE_SPLIT_SCREEN_PRIMARY</td>
+<td>3</td>
+<td>驱动屏幕处于分屏模式的主容器</td>
+</tr>
+<tr>
+<td>WINDOWING_MODE_SPLIT_SCREEN_SECONDARY</td>
+<td>4</td>
+<td>在分屏模式下，紧邻WINDOWING_MODE_SPLIT_SCREEN_PRIMARY容器的容器</td>
+</tr>
+<tr>
+<td>WINDOWING_MODE_FREEFORM</td>
+<td>5</td>
+<td>可以在其父容器内自由调整大小，如悬浮窗</td>
+</tr>
+<tr>
+<td>WINDOWING_MODE_MULTI_WINDOW</td>
+<td>6</td>
+<td>窗口管理器中没有表示属性的通用多窗口</td>
+</tr>
+</tbody></table>
+<p>获取Task的边界大小的过程如下:</p>
+<ol>
+<li>如果当前Task就是RootTask, 那么直接返回该Task的边界</li>
+<li>判断该Task的WindowMode是否是Freeform模式，如果是，则找到该Task中最大的可见的区域并返回</li>
+<li>当前Task和父容器边界不匹配时<ol>
+<li>如果该Task被最小化时，直接返回该Task的RootTask的边界</li>
+<li>否则获取RootTask边界与当前Task边界的交集并返回</li>
+</ol>
+</li>
+<li>当前Task和父容器边界匹配时<ol>
+<li>直接返回该Task的边界</li>
+</ol>
+</li>
+</ol>
+<h3 id="1-5-3-InputMonitor-setInputWindowInfoIfNeeded"><a href="#1-5-3-InputMonitor-setInputWindowInfoIfNeeded" class="headerlink" title="1.5.3 InputMonitor.setInputWindowInfoIfNeeded"></a>1.5.3 InputMonitor.setInputWindowInfoIfNeeded</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">setInputWindowInfoIfNeeded</span><span class="params">(SurfaceControl.Transaction t, SurfaceControl sc,</span></span><br><span class="line"><span class="params">        InputWindowHandleWrapper inputWindowHandle)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (DEBUG_INPUT) &#123;</span><br><span class="line">        Slog.d(TAG_WM, <span class="string">&quot;Update InputWindowHandle: &quot;</span> + inputWindowHandle);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 在 [1.5.2] 有更新内容，所以isChanged必然返回true</span></span><br><span class="line">    <span class="keyword">if</span> (inputWindowHandle.isChanged()) &#123;</span><br><span class="line">        <span class="comment">// [1.5.4] 更新给Surface</span></span><br><span class="line">        inputWindowHandle.applyChangesToSurface(t, sc);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-4-InputWindowHandleWrapper-applyChangesToSurface"><a href="#1-5-4-InputWindowHandleWrapper-applyChangesToSurface" class="headerlink" title="1.5.4 InputWindowHandleWrapper.applyChangesToSurface"></a>1.5.4 InputWindowHandleWrapper.applyChangesToSurface</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">applyChangesToSurface</span><span class="params">(<span class="meta">@NonNull</span> SurfaceControl.Transaction t, <span class="meta">@NonNull</span> SurfaceControl sc)</span> &#123;</span><br><span class="line">    <span class="comment">// [1.5.5] 通过Transaction传递信息</span></span><br><span class="line">    t.setInputWindowInfo(sc, mHandle);</span><br><span class="line">    mChanged = <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-5-SurfaceControl-Transaction-setInputWindowInfo"><a href="#1-5-5-SurfaceControl-Transaction-setInputWindowInfo" class="headerlink" title="1.5.5 SurfaceControl.Transaction.setInputWindowInfo"></a>1.5.5 SurfaceControl.Transaction.setInputWindowInfo</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> Transaction <span class="title function_">setInputWindowInfo</span><span class="params">(SurfaceControl sc, InputWindowHandle handle)</span> &#123;</span><br><span class="line">    <span class="comment">// 确认该SurfaceControl没有被释放</span></span><br><span class="line">    checkPreconditions(sc);</span><br><span class="line">    <span class="comment">// [1.5.6] 通知给SurfaceFlinger</span></span><br><span class="line">    nativeSetInputWindowInfo(mNativeObject, sc.mNativeObject, handle);</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">this</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">native</span> <span class="keyword">void</span> <span class="title function_">nativeSetInputWindowInfo</span><span class="params">(<span class="type">long</span> transactionObj, <span class="type">long</span> nativeObject,</span></span><br><span class="line"><span class="params">        InputWindowHandle handle)</span>;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-6-android-view-SurfaceControl-nativeSetInputWindowInfo"><a href="#1-5-6-android-view-SurfaceControl-nativeSetInputWindowInfo" class="headerlink" title="1.5.6 android_view_SurfaceControl.nativeSetInputWindowInfo"></a>1.5.6 android_view_SurfaceControl.nativeSetInputWindowInfo</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">static</span> <span class="type">void</span> <span class="title">nativeSetInputWindowInfo</span><span class="params">(JNIEnv* env, jclass clazz, jlong transactionObj,</span></span></span><br><span class="line"><span class="params"><span class="function">        jlong nativeObject, jobject inputWindow)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> transaction = <span class="built_in">reinterpret_cast</span>&lt;SurfaceComposerClient::Transaction*&gt;(transactionObj);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// [1.5.6.1] 根据传入的InputWindowHandle获取NativeInputWindowHandle</span></span><br><span class="line">    sp&lt;NativeInputWindowHandle&gt; handle = <span class="built_in">android_view_InputWindowHandle_getHandle</span>(</span><br><span class="line">            env, inputWindow);</span><br><span class="line">    <span class="comment">// [1.5.6.2] 更新NativeInputWindowHandle信息</span></span><br><span class="line">    handle-&gt;<span class="built_in">updateInfo</span>();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> ctrl = <span class="built_in">reinterpret_cast</span>&lt;SurfaceControl *&gt;(nativeObject);</span><br><span class="line">    <span class="comment">// [1.5.6.3] 通知给SurfaceFligner</span></span><br><span class="line">    transaction-&gt;<span class="built_in">setInputWindowInfo</span>(ctrl, *handle-&gt;<span class="built_in">getInfo</span>());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="1-5-6-1-android-hardware-input-InputWindowHandle-android-view-InputWindowHandle-getHandle"><a href="#1-5-6-1-android-hardware-input-InputWindowHandle-android-view-InputWindowHandle-getHandle" class="headerlink" title="1.5.6.1 android_hardware_input_InputWindowHandle.android_view_InputWindowHandle_getHandle"></a>1.5.6.1 android_hardware_input_InputWindowHandle.android_view_InputWindowHandle_getHandle</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;NativeInputWindowHandle&gt; <span class="title">android_view_InputWindowHandle_getHandle</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        JNIEnv* env, jobject inputWindowHandleObj)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (!inputWindowHandleObj) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    AutoMutex _l(gHandleMutex);</span><br><span class="line">    <span class="comment">// 获取inputWindowHandle中对应的ptr, 该ptr就对应NativeInputWindowHandle</span></span><br><span class="line">    jlong ptr = env-&gt;<span class="built_in">GetLongField</span>(inputWindowHandleObj, gInputWindowHandleClassInfo.ptr);</span><br><span class="line">    NativeInputWindowHandle* handle;</span><br><span class="line">    <span class="keyword">if</span> (ptr) &#123;</span><br><span class="line">        handle = <span class="built_in">reinterpret_cast</span>&lt;NativeInputWindowHandle*&gt;(ptr);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 如果该ptr为0，那就创建一个NativeInputWindowHandle并赋值给java层的ptr中</span></span><br><span class="line">        jweak objWeak = env-&gt;<span class="built_in">NewWeakGlobalRef</span>(inputWindowHandleObj);</span><br><span class="line">        handle = <span class="keyword">new</span> <span class="built_in">NativeInputWindowHandle</span>(objWeak);</span><br><span class="line">        handle-&gt;<span class="built_in">incStrong</span>((<span class="type">void</span>*)android_view_InputWindowHandle_getHandle);</span><br><span class="line">        env-&gt;<span class="built_in">SetLongField</span>(inputWindowHandleObj, gInputWindowHandleClassInfo.ptr,</span><br><span class="line">                <span class="built_in">reinterpret_cast</span>&lt;jlong&gt;(handle));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> handle;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="1-5-6-2-NativeInputWindowHandle-updateInfo"><a href="#1-5-6-2-NativeInputWindowHandle-updateInfo" class="headerlink" title="1.5.6.2 NativeInputWindowHandle.updateInfo"></a>1.5.6.2 NativeInputWindowHandle.updateInfo</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">NativeInputWindowHandle::updateInfo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    mInfo.touchableRegion.<span class="built_in">clear</span>();</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 更新可触碰区域</span></span><br><span class="line">    jobject regionObj = env-&gt;<span class="built_in">GetObjectField</span>(obj,</span><br><span class="line">            gInputWindowHandleClassInfo.touchableRegion);</span><br><span class="line">    <span class="keyword">if</span> (regionObj) &#123;</span><br><span class="line">        <span class="keyword">for</span> (graphics::RegionIterator <span class="built_in">it</span>(env, regionObj); !it.<span class="built_in">isDone</span>(); it.<span class="built_in">next</span>()) &#123;</span><br><span class="line">            ARect rect = it.<span class="built_in">getRect</span>();</span><br><span class="line">            mInfo.<span class="built_in">addTouchableRegion</span>(<span class="built_in">Rect</span>(rect.left, rect.top, rect.right, rect.bottom));</span><br><span class="line">        &#125;</span><br><span class="line">        env-&gt;<span class="built_in">DeleteLocalRef</span>(regionObj);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里就是将java层InputWindowHandle里的信息同步给NativeInputWindowHandle.</p>
+<h4 id="1-5-6-3-SurfaceComposerClient-Transaction-setInputWindowInfo"><a href="#1-5-6-3-SurfaceComposerClient-Transaction-setInputWindowInfo" class="headerlink" title="1.5.6.3 SurfaceComposerClient::Transaction.setInputWindowInfo"></a>1.5.6.3 SurfaceComposerClient::Transaction.setInputWindowInfo</h4><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">SurfaceComposerClient::Transaction&amp; SurfaceComposerClient::Transaction::<span class="built_in">setInputWindowInfo</span>(</span><br><span class="line">        <span class="type">const</span> sp&lt;SurfaceControl&gt;&amp; sc,</span><br><span class="line">        <span class="type">const</span> InputWindowInfo&amp; info) &#123;</span><br><span class="line">    <span class="comment">// 根据SurfaceControl获取对应的layer状态</span></span><br><span class="line">    <span class="type">layer_state_t</span>* s = <span class="built_in">getLayerState</span>(sc);</span><br><span class="line">    <span class="keyword">if</span> (!s) &#123;</span><br><span class="line">        mStatus = BAD_INDEX;</span><br><span class="line">        <span class="keyword">return</span> *<span class="keyword">this</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 将InputWindowInfo转成InputWindowHandle存在layer中</span></span><br><span class="line">    s-&gt;inputHandle = <span class="keyword">new</span> <span class="built_in">InputWindowHandle</span>(info);</span><br><span class="line">    <span class="comment">// 标记该layer输入信息有更改</span></span><br><span class="line">    s-&gt;what |= <span class="type">layer_state_t</span>::eInputInfoChanged;</span><br><span class="line">    <span class="keyword">return</span> *<span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里是将窗口相关信息存入了SurfaceFling中，至于怎么传输的，为什么需要这些信息，我们后续研究WMS的窗口和SurfaceFlinger的关系时分析。</p>
+<h2 id="1-6-InputMonitor-updateInputFocusRequest"><a href="#1-6-InputMonitor-updateInputFocusRequest" class="headerlink" title="1.6 InputMonitor.updateInputFocusRequest"></a>1.6 InputMonitor.updateInputFocusRequest</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">updateInputFocusRequest</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">WindowState</span> <span class="variable">focus</span> <span class="operator">=</span> mDisplayContent.mCurrentFocus;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">IBinder</span> <span class="variable">focusToken</span> <span class="operator">=</span> focus != <span class="literal">null</span> ? focus.mInputChannelToken : <span class="literal">null</span>;</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    requestFocus(focusToken, focus.getName());</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">requestFocus</span><span class="params">(IBinder focusToken, String windowName)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    mInputFocus = focusToken;</span><br><span class="line">    <span class="comment">// 通过Transaction更新input系统中的焦点窗口</span></span><br><span class="line">    mInputTransaction.setFocusedWindow(mInputFocus, windowName, mDisplayId);</span><br><span class="line">    EventLog.writeEvent(LOGTAG_INPUT_FOCUS, <span class="string">&quot;Focus request &quot;</span> + windowName,</span><br><span class="line">            <span class="string">&quot;reason=UpdateInputWindows&quot;</span>);</span><br><span class="line">    ProtoLog.v(WM_DEBUG_FOCUS_LIGHT, <span class="string">&quot;Focus requested for window=%s&quot;</span>, windowName);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>注意mInputTransaction其实还是SurfaceControl.Transaction类， 在InputMonitor初始化时创建的:</p>
+<blockquote>
+<p>mInputTransaction &#x3D; mService.mTransactionFactory.get();</p>
+</blockquote>
+<h2 id="1-6-1-SurfaceControl-setFocusedWindow"><a href="#1-6-1-SurfaceControl-setFocusedWindow" class="headerlink" title="1.6.1 SurfaceControl.setFocusedWindow"></a>1.6.1 SurfaceControl.setFocusedWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> Transaction <span class="title function_">setFocusedWindow</span><span class="params">(<span class="meta">@NonNull</span> IBinder token, String windowName,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> displayId)</span> &#123;</span><br><span class="line">    nativeSetFocusedWindow(mNativeObject, token,  windowName,</span><br><span class="line">            <span class="literal">null</span> <span class="comment">/* focusedToken */</span>, <span class="literal">null</span> <span class="comment">/* focusedWindowName */</span>, displayId);</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">this</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">native</span> <span class="keyword">void</span> <span class="title function_">nativeSetFocusedWindow</span><span class="params">(<span class="type">long</span> transactionObj, IBinder toToken,</span></span><br><span class="line"><span class="params">        String windowName, IBinder focusedToken, String focusedWindowName, <span class="type">int</span> displayId)</span>;</span><br></pre></td></tr></table></figure>
+
+<p>通过JNI调用到native层：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// android_view_SurfaceControl.cpp</span></span><br><span class="line"><span class="function"><span class="type">static</span> <span class="type">void</span> <span class="title">nativeSetFocusedWindow</span><span class="params">(JNIEnv* env, jclass clazz, jlong transactionObj,</span></span></span><br><span class="line"><span class="params"><span class="function">                                   jobject toTokenObj, jstring windowNameJstr,</span></span></span><br><span class="line"><span class="params"><span class="function">                                   jobject focusedTokenObj, jstring focusedWindowNameJstr,</span></span></span><br><span class="line"><span class="params"><span class="function">                                   jint displayId)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> transaction = <span class="built_in">reinterpret_cast</span>&lt;SurfaceComposerClient::Transaction*&gt;(transactionObj);</span><br><span class="line">    <span class="keyword">if</span> (toTokenObj == <span class="literal">NULL</span>) <span class="keyword">return</span>;</span><br><span class="line">    <span class="comment">// toTokenObj就是mInputChannelToken</span></span><br><span class="line">    <span class="function">sp&lt;IBinder&gt; <span class="title">toToken</span><span class="params">(ibinderForJavaObject(env, toTokenObj))</span></span>;</span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    FocusRequest request;</span><br><span class="line">    request.token = toToken;</span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    transaction-&gt;<span class="built_in">setFocusedWindow</span>(request);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// SurfaceComposerClient.cpp</span></span><br><span class="line">SurfaceComposerClient::Transaction&amp; SurfaceComposerClient::Transaction::<span class="built_in">setFocusedWindow</span>(</span><br><span class="line">        <span class="type">const</span> FocusRequest&amp; request) &#123;</span><br><span class="line">    mInputWindowCommands.focusRequests.<span class="built_in">push_back</span>(request);</span><br><span class="line">    <span class="keyword">return</span> *<span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将传入的焦点窗口的mInputChannelToken和其他信息打包封装在FocusRequest中，存入SurfaceComposerClient的mInputWindowCommands.focusRequests集合中。</p>
+<p>那么这个mInputWindowCommands.focusRequests是什么时候使用的呢，当调用SurfaceControl.Transaction.apply()函数时，会通过binder将该Transaction的所有信息传递给SurfaceFlinger进程（sf-&gt;setTransactionState接口），SurfaceFlinger接收到该Transaction后将其保存在mTransactionQueue队列中。然后在下一次Vsync信号来临时，即onMessageInvalidate函数中，将Transaction从mTransactionQeue中提取出来存入mPendingTransactionQueues队列中，于此同时调用addInputWindowCommands将该Transaction中的inputWindowHandles保存在SurfaceFlinger的mInputWindowCommands中，之后就调用updateInputFlinger()将mInputWindowCommands中的focusRequests更新到InputFlinger中。</p>
+<h3 id="1-6-2-SurfaceFlinger-updateInputFlinger"><a href="#1-6-2-SurfaceFlinger-updateInputFlinger" class="headerlink" title="1.6.2 SurfaceFlinger.updateInputFlinger"></a>1.6.2 SurfaceFlinger.updateInputFlinger</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::updateInputFlinger</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">ATRACE_CALL</span>();</span><br><span class="line">    <span class="keyword">if</span> (!mInputFlinger) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 可视区域有更新或者输入信息更改需要通知InputFlinger</span></span><br><span class="line">    <span class="keyword">if</span> (mVisibleRegionsDirty || mInputInfoChanged) &#123;</span><br><span class="line">        mInputInfoChanged = <span class="literal">false</span>;</span><br><span class="line">        <span class="comment">// [2.1] 更新窗口输入信息至InputFlinger</span></span><br><span class="line">        <span class="built_in">updateInputWindowInfo</span>();</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (mInputWindowCommands.syncInputWindows) &#123;</span><br><span class="line">        <span class="comment">// If the caller requested to sync input windows, but there are no</span></span><br><span class="line">        <span class="comment">// changes to input windows, notify immediately.</span></span><br><span class="line">        <span class="built_in">setInputWindowsFinished</span>();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 遍历所有focusRequests，依次通知给InputFlinger更新焦点窗口</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; focusRequest : mInputWindowCommands.focusRequests) &#123;</span><br><span class="line">        <span class="comment">// [3.1] 将焦点窗口同步更新给InputFlinger</span></span><br><span class="line">        mInputFlinger-&gt;<span class="built_in">setFocusedWindow</span>(focusRequest);</span><br><span class="line">    &#125;</span><br><span class="line">    mInputWindowCommands.<span class="built_in">clear</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="二-Window信息更新至InputFlinger"><a href="#二-Window信息更新至InputFlinger" class="headerlink" title="二. Window信息更新至InputFlinger"></a>二. Window信息更新至InputFlinger</h1><p>上面我们分析了窗口的信息的收集过程，重点是可触碰区域的计算，现在我们分析一下窗口信息传递给InputFlinger的过程。</p>
+<h2 id="2-1-SurfaceFlinger-updateInputWindowInfo"><a href="#2-1-SurfaceFlinger-updateInputWindowInfo" class="headerlink" title="2.1 SurfaceFlinger.updateInputWindowInfo"></a>2.1 SurfaceFlinger.updateInputWindowInfo</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">SurfaceFlinger::updateInputWindowInfo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    std::vector&lt;InputWindowInfo&gt; inputInfos;</span><br><span class="line">    <span class="comment">// mDrawingState我们之前有过分析，这里存储了所有需要更新的图层集</span></span><br><span class="line">    <span class="comment">// 遍历所有的图层，依次计算该layer的输入窗口信息</span></span><br><span class="line">    mDrawingState.<span class="built_in">traverseInReverseZOrder</span>([&amp;](Layer* layer) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 2.2 在计算屏幕边界时，忽略透明区域， 因为它可能导致不必要的偏移量</span></span><br><span class="line">        <span class="comment">// 将计算结果保存在inputInfos中, 每次都是添加到队列尾部</span></span><br><span class="line">        inputInfos.<span class="built_in">push_back</span>(layer-&gt;<span class="built_in">fillInputInfo</span>(display));</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 2.3 将计算结果传递给InputFlinger</span></span><br><span class="line">    mInputFlinger-&gt;<span class="built_in">setInputWindows</span>(inputInfos,</span><br><span class="line">                               mInputWindowCommands.syncInputWindows ? mSetInputWindowsListener</span><br><span class="line">                                                                     : <span class="literal">nullptr</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里是遍历所有的需要更新的Layer, 依次计算该Layer对应的窗口可触摸区域，将结果保存在InputWindowInfo的Vector中，然后通过Binder传给InputFlinger进程。</p>
+<p>注意这里对layer的遍历是沿着Z轴反方向的，也就是从上到下的遍历顺序。layer在上面，存入inputInfos队列前面。</p>
+<h2 id="2-2-Layer-fillInputInfo"><a href="#2-2-Layer-fillInputInfo" class="headerlink" title="2.2 Layer.fillInputInfo"></a>2.2 Layer.fillInputInfo</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">InputWindowInfo <span class="title">Layer::fillInputInfo</span><span class="params">(<span class="type">const</span> sp&lt;DisplayDevice&gt;&amp; display)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    InputWindowInfo info = mDrawingState.inputInfo;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// [2.2.1] 再次计算可触摸区域</span></span><br><span class="line">    <span class="built_in">fillInputFrameInfo</span>(info, toPhysicalDisplay);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 判断该窗口是否可见</span></span><br><span class="line">    info.visible = <span class="built_in">hasInputInfo</span>() ? <span class="built_in">canReceiveInput</span>() : <span class="built_in">isVisible</span>();</span><br><span class="line">    info.alpha = <span class="built_in">getAlpha</span>();</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> info;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>根据显示屏再次计算可触摸区域以及其他相关信息。</p>
+<h3 id="2-2-1-Layer-fillInputFrameInfo"><a href="#2-2-1-Layer-fillInputFrameInfo" class="headerlink" title="2.2.1 Layer.fillInputFrameInfo"></a>2.2.1 Layer.fillInputFrameInfo</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">Layer::fillInputFrameInfo</span><span class="params">(InputWindowInfo&amp; info, <span class="type">const</span> ui::Transform&amp; toPhysicalDisplay)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 变换图层大小到屏幕空间</span></span><br><span class="line">    Rect layerBounds = info.portalToDisplayId == ADISPLAY_ID_NONE</span><br><span class="line">            ? <span class="built_in">getInputBounds</span>()</span><br><span class="line">            : info.touchableRegion.<span class="built_in">getBounds</span>();</span><br><span class="line">    ......</span><br><span class="line">    ui::Transform layerToDisplay = <span class="built_in">getInputTransform</span>();</span><br><span class="line">    <span class="comment">// 将窗口坐标转换为非旋转显示坐标的转换</span></span><br><span class="line">    ui::Transform t = toPhysicalDisplay * layerToDisplay;</span><br><span class="line">    ......</span><br><span class="line">    ui::Transform inverseTransform = t.<span class="built_in">inverse</span>();</span><br><span class="line">    Rect nonTransformedBounds = inverseTransform.<span class="built_in">transform</span>(transformedLayerBounds);</span><br><span class="line">    vec2 translation = t.<span class="built_in">transform</span>(nonTransformedBounds.left, nonTransformedBounds.top);</span><br><span class="line">    <span class="function">ui::Transform <span class="title">inputTransform</span><span class="params">(t)</span></span>;</span><br><span class="line">    inputTransform.<span class="built_in">set</span>(translation.x, translation.y);</span><br><span class="line">    info.transform = inputTransform.<span class="built_in">inverse</span>();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 需要将裁剪的图层边界发送到屏幕边界，因为图层可以被裁剪</span></span><br><span class="line">    <span class="comment">// frame应该是用户在屏幕上看到的区域，被用于遮挡检测</span></span><br><span class="line">    transformedLayerBounds.<span class="built_in">intersect</span>(screenBounds, &amp;transformedLayerBounds);</span><br><span class="line">    info.frameLeft = transformedLayerBounds.left;</span><br><span class="line">    info.frameTop = transformedLayerBounds.top;</span><br><span class="line">    info.frameRight = transformedLayerBounds.right;</span><br><span class="line">    info.frameBottom = transformedLayerBounds.bottom;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 相对于框架屏幕位置定位可触摸区域，并将其限制在框架边界</span></span><br><span class="line">    info.touchableRegion = inputTransform.<span class="built_in">transform</span>(info.touchableRegion);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>虽然我们在WMS中有计算过可触摸区域，但通过SurfaceFlinger还是需要更加Display实际大小等加工一下，确定最终窗口的可触摸区域。</p>
+<p>这里的计算过程就不展开分析了，感兴趣的可以自行研究。</p>
+<h2 id="2-3-InputFlinger-setInputWindows"><a href="#2-3-InputFlinger-setInputWindows" class="headerlink" title="2.3 InputFlinger.setInputWindows"></a>2.3 InputFlinger.setInputWindows</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">binder::Status <span class="title">InputManager::setInputWindows</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::vector&lt;InputWindowInfo&gt;&amp; infos,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> sp&lt;ISetInputWindowsListener&gt;&amp; setInputWindowsListener)</span> </span>&#123;</span><br><span class="line">    std::unordered_map&lt;<span class="type">int32_t</span>, std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;&gt; handlesPerDisplay;</span><br><span class="line"></span><br><span class="line">    std::vector&lt;sp&lt;InputWindowHandle&gt;&gt; handles;</span><br><span class="line">    <span class="comment">// 将从SF传过来的InputWindowInfo信息打包成BinderWindowHandle</span></span><br><span class="line">    <span class="comment">// 存入对应DisplayId的InputWindowHandle集合中</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; info : infos) &#123;</span><br><span class="line">        <span class="comment">// 注意这里是emplace，每次都是插入队列头部，相当于将infos中元素反向排列了</span></span><br><span class="line">        handlesPerDisplay.<span class="built_in">emplace</span>(info.displayId, std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;());</span><br><span class="line">        handlesPerDisplay[info.displayId].<span class="built_in">push_back</span>(<span class="keyword">new</span> <span class="built_in">BinderWindowHandle</span>(info));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 2.4 交给InputDispatcher处理</span></span><br><span class="line">    mDispatcher-&gt;<span class="built_in">setInputWindows</span>(handlesPerDisplay);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (setInputWindowsListener) &#123;</span><br><span class="line">        setInputWindowsListener-&gt;<span class="built_in">onSetInputWindowsFinished</span>();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> binder::Status::<span class="built_in">ok</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>BinderWindowHandle就是个包装类，继承了InputWindowHandle，并且重写了updateInfo, 内部只有一个InputWindowHandle的成员变量。这是为了避免后续不小心更新窗口信息。</p>
+<p>这里将从SF传过来的InputWindowInfo信息打包成BinderWindowHandle，存入对应DisplayId的InputWindowHandle集合中，然后交给InputDispatcher处理。</p>
+<h2 id="2-4-InputDispatcher-setInputWindows"><a href="#2-4-InputDispatcher-setInputWindows" class="headerlink" title="2.4 InputDispatcher.setInputWindows"></a>2.4 InputDispatcher.setInputWindows</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::setInputWindows</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::unordered_map&lt;<span class="type">int32_t</span>, std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;&gt;&amp; handlesPerDisplay)</span> </span>&#123;</span><br><span class="line">    &#123; <span class="comment">// acquire lock</span></span><br><span class="line">        std::scoped_lock _l(mLock);</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [displayId, handles] : handlesPerDisplay) &#123;</span><br><span class="line">            <span class="built_in">setInputWindowsLocked</span>(handles, displayId);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 唤醒轮询循环，可能需要做出新的输入分派选择</span></span><br><span class="line">    mLooper-&gt;<span class="built_in">wake</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>针对所有的Display依次更新输入窗口信息, 然后唤醒轮询循环，做出新的输入分派选择。</p>
+<h2 id="2-5-InputDispatcher-setInputWindowsLocked"><a href="#2-5-InputDispatcher-setInputWindowsLocked" class="headerlink" title="2.5 InputDispatcher.setInputWindowsLocked"></a>2.5 InputDispatcher.setInputWindowsLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::setInputWindowsLocked</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;&amp; inputWindowHandles, <span class="type">int32_t</span> displayId)</span> </span>&#123;</span><br><span class="line">    </span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 获取当前所有的输入窗口handle用于relase</span></span><br><span class="line">    <span class="type">const</span> std::vector&lt;sp&lt;InputWindowHandle&gt;&gt; oldWindowHandles = <span class="built_in">getWindowHandlesLocked</span>(displayId);</span><br><span class="line">    <span class="comment">// 更新输入窗口信息列表，就是将新窗口输入信息保存在mWindowHandlesByDisplay中</span></span><br><span class="line">    <span class="built_in">updateWindowHandlesForDisplayLocked</span>(inputWindowHandles, displayId);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 确认windowHandles列表中包含焦点窗口，如果不存在找上一次的焦点窗口作为当前焦点</span></span><br><span class="line">    std::optional&lt;FocusResolver::FocusChanges&gt; changes =</span><br><span class="line">            mFocusResolver.<span class="built_in">setInputWindows</span>(displayId, windowHandles);</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> sp&lt;InputWindowHandle&gt;&amp; oldWindowHandle : oldWindowHandles) &#123;</span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">getWindowHandleLocked</span>(oldWindowHandle) == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            ......</span><br><span class="line">            <span class="comment">// 将不在展示的窗口信息释放掉，节省资源</span></span><br><span class="line">            oldWindowHandle-&gt;<span class="built_in">releaseChannel</span>();</span><br><span class="line">            ......</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::updateWindowHandlesForDisplayLocked</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;&amp; inputWindowHandles, <span class="type">int32_t</span> displayId)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    std::vector&lt;sp&lt;InputWindowHandle&gt;&gt; newHandles;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> sp&lt;InputWindowHandle&gt;&amp; handle : inputWindowHandles) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="keyword">if</span> ((oldHandlesById.<span class="built_in">find</span>(handle-&gt;<span class="built_in">getId</span>()) != oldHandlesById.<span class="built_in">end</span>()) &amp;&amp;</span><br><span class="line">                (oldHandlesById.<span class="built_in">at</span>(handle-&gt;<span class="built_in">getId</span>())-&gt;<span class="built_in">getToken</span>() == handle-&gt;<span class="built_in">getToken</span>())) &#123;</span><br><span class="line">            <span class="type">const</span> sp&lt;InputWindowHandle&gt;&amp; oldHandle = oldHandlesById.<span class="built_in">at</span>(handle-&gt;<span class="built_in">getId</span>());</span><br><span class="line">            oldHandle-&gt;<span class="built_in">updateFrom</span>(handle);</span><br><span class="line">            newHandles.<span class="built_in">push_back</span>(oldHandle);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">// push_back是向队列尾部添加元素</span></span><br><span class="line">            newHandles.<span class="built_in">push_back</span>(handle);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 保存新的窗口输入信息至mWindowHandlesByDisplay中.</span></span><br><span class="line">    mWindowHandlesByDisplay[displayId] = newHandles;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里是更新窗口输入信息至mWindowHandlesByDisplay，将不在展示的窗口信息释放掉，节省资源。</p>
+<h1 id="三-更新InputFlinger的焦点窗口"><a href="#三-更新InputFlinger的焦点窗口" class="headerlink" title="三. 更新InputFlinger的焦点窗口"></a>三. 更新InputFlinger的焦点窗口</h1><p>SurfaceFlinger通过binder将焦点窗口同步更新给InputFlinger。</p>
+<h2 id="3-1-InputFlinger-setFocusedWindow"><a href="#3-1-InputFlinger-setFocusedWindow" class="headerlink" title="3.1 InputFlinger.setFocusedWindow"></a>3.1 InputFlinger.setFocusedWindow</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">binder::Status <span class="title">InputManager::setFocusedWindow</span><span class="params">(<span class="type">const</span> FocusRequest&amp; request)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// [3.2] 交给InputDispatcher更新焦点窗口</span></span><br><span class="line">    mDispatcher-&gt;<span class="built_in">setFocusedWindow</span>(request);</span><br><span class="line">    <span class="keyword">return</span> binder::Status::<span class="built_in">ok</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-2-InputDispatcher-setFocusedWindow"><a href="#3-2-InputDispatcher-setFocusedWindow" class="headerlink" title="3.2 InputDispatcher.setFocusedWindow"></a>3.2 InputDispatcher.setFocusedWindow</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::setFocusedWindow</span><span class="params">(<span class="type">const</span> FocusRequest&amp; request)</span> </span>&#123;</span><br><span class="line">    &#123; <span class="comment">// acquire lock</span></span><br><span class="line">        std::scoped_lock _l(mLock);</span><br><span class="line">        <span class="comment">// [3.3] 获取当前display中所有的窗口输入信息，交给FocusResolver更新焦点窗口</span></span><br><span class="line">        std::optional&lt;FocusResolver::FocusChanges&gt; changes =</span><br><span class="line">                mFocusResolver.<span class="built_in">setFocusedWindow</span>(request, <span class="built_in">getWindowHandlesLocked</span>(request.displayId));</span><br><span class="line">        <span class="keyword">if</span> (changes) &#123;</span><br><span class="line">            <span class="comment">// 响应焦点窗口更新</span></span><br><span class="line">            <span class="built_in">onFocusChangedLocked</span>(*changes);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="comment">// release lock</span></span><br><span class="line">    <span class="comment">// Wake up poll loop since it may need to make new input dispatching choices.</span></span><br><span class="line">    mLooper-&gt;<span class="built_in">wake</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-3-FocusResolver-setFocusedWindow"><a href="#3-3-FocusResolver-setFocusedWindow" class="headerlink" title="3.3 FocusResolver.setFocusedWindow"></a>3.3 FocusResolver.setFocusedWindow</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">std::optional&lt;FocusResolver::FocusChanges&gt; <span class="title">FocusResolver::setFocusedWindow</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> FocusRequest&amp; request, <span class="type">const</span> std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;&amp; windows)</span> </span>&#123;</span><br><span class="line">    <span class="type">const</span> <span class="type">int32_t</span> displayId = request.displayId;</span><br><span class="line">    <span class="comment">// 如果当前焦点窗口就是需要设置的窗口，直接返回</span></span><br><span class="line">    <span class="type">const</span> sp&lt;IBinder&gt; currentFocus = <span class="built_in">getFocusedWindowToken</span>(displayId);</span><br><span class="line">    <span class="keyword">if</span> (currentFocus == request.token) &#123;</span><br><span class="line">        <span class="built_in">ALOGD_IF</span>(DEBUG_FOCUS,</span><br><span class="line">                 <span class="string">&quot;setFocusedWindow %s on display %&quot;</span> PRId32 <span class="string">&quot; ignored, reason: already focused&quot;</span>,</span><br><span class="line">                 request.windowName.<span class="built_in">c_str</span>(), displayId);</span><br><span class="line">        <span class="keyword">return</span> std::<span class="literal">nullopt</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 处理焦点请求，即具有焦点令牌的请求。这些请求不是持久的。如果窗口不再可聚焦，焦点返回到先前聚焦的窗口</span></span><br><span class="line">    <span class="comment">// 在[1.6.1] SurfaceControl.setFocusedWindow实际传入的focusedToken是null的，这里我们也假设为null好了</span></span><br><span class="line">    <span class="keyword">if</span> (request.focusedToken) &#123;</span><br><span class="line">        .......</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 检查传入的待聚焦的窗口是否可聚焦且在windows列表中</span></span><br><span class="line">    Focusability result = <span class="built_in">isTokenFocusable</span>(request.token, windows);</span><br><span class="line">    <span class="comment">// 响应焦点请求</span></span><br><span class="line">    mFocusRequestByDisplay[displayId] = request;</span><br><span class="line">    mLastFocusResultByDisplay[displayId] = result;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (result == Focusability::OK) &#123;</span><br><span class="line">        <span class="comment">// [3.4] 更新焦点窗口</span></span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">updateFocusedWindow</span>(displayId, <span class="string">&quot;setFocusedWindow&quot;</span>, request.token,</span><br><span class="line">                                   request.windowName);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//请求的窗口当前不能聚焦。等待窗口变成可聚焦的，但从当前窗口移除焦点，以便输入事件可以进入挂起队列，并在窗口变成聚焦时发送到窗口。</span></span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">updateFocusedWindow</span>(displayId, <span class="string">&quot;Waiting for window because &quot;</span> + NamedEnum::<span class="built_in">string</span>(result),</span><br><span class="line">                               <span class="literal">nullptr</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果当前焦点窗口就是需要设置的窗口，直接返回。然后检查传入的待聚焦的窗口是否可聚焦且在windows列表中， 更新mFocusRequestByDisplay和mLastFocusResultByDisplay，最后无论待更新的焦点窗口是否可聚焦，都更新焦点窗口，即将焦点窗口token（对应InputChannel的token）保存在mFocusedWindowTokenByDisplay中。</p>
+<h2 id="3-4-FocusResolver-updateFocusedWindow"><a href="#3-4-FocusResolver-updateFocusedWindow" class="headerlink" title="3.4 FocusResolver.updateFocusedWindow"></a>3.4 FocusResolver.updateFocusedWindow</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">std::optional&lt;FocusResolver::FocusChanges&gt; <span class="title">FocusResolver::updateFocusedWindow</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">int32_t</span> displayId, <span class="type">const</span> std::string&amp; reason, <span class="type">const</span> sp&lt;IBinder&gt;&amp; newFocus,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> std::string&amp; tokenName)</span> </span>&#123;</span><br><span class="line">    sp&lt;IBinder&gt; oldFocus = <span class="built_in">getFocusedWindowToken</span>(displayId);</span><br><span class="line">    <span class="keyword">if</span> (newFocus == oldFocus) &#123;</span><br><span class="line">        <span class="keyword">return</span> std::<span class="literal">nullopt</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (newFocus) &#123;</span><br><span class="line">        mFocusedWindowTokenByDisplay[displayId] = &#123;tokenName, newFocus&#125;;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        mFocusedWindowTokenByDisplay.<span class="built_in">erase</span>(displayId);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> &#123;&#123;oldFocus, newFocus, displayId, reason&#125;&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将焦点窗口token（对应InputChannel的token，即InputChannel初始化时创建的BBinder）保存在mFocusedWindowTokenByDisplay中。</p>
+<h1 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h1><p>总的来说，WMS上层创建WindowState之后，如果该窗口可以接收input事件就需要更新焦点窗口，其后更新输入窗口信息给Input系统。注意这里涉及了三个模块：System_server(WMS)，InputFlinger和SurfaceFlinger。之所以需要SurfaceFlinger，一是需要借助SurfaceControl通道通信，更重要的是，需要通过SurfaceFlinger进一步去计算窗口的信息，如可触摸区域、可见区域等等。在SurfaceFlinger计算完毕后，通过Binder调用将窗口信息封装成InputWindowInfo传给InputFlinger，InputFlinger将传过来的InputWindowInfo信息打包成BinderWindowHandle存入mWindowHandlesByDisplay中。</p>
+<p>接下来我们看看一次触摸事件分发给窗口的流程作为Input事件和Window的结束语。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/" title="WMS(8)-窗口信息传递给Input系统">https://swallowjoe.github.io/2022/05/08/WMS(8)-窗口信息传递给Input系统/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/WMS/" rel="tag"># WMS</a>
+              <a href="/tags/Input/" rel="tag"># Input</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/05/07/WMS(7)-%E7%AA%97%E5%8F%A3%E5%92%8CInputChannel%E7%9A%84%E8%81%94%E7%B3%BB/" rel="prev" title="WMS(7)-窗口和InputChannel的联系">
+      <i class="fa fa-chevron-left"></i> WMS(7)-窗口和InputChannel的联系
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/" rel="next" title="WMS(9)-Input事件分发给窗口的过程">
+      WMS(9)-Input事件分发给窗口的过程 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-%E6%9B%B4%E6%96%B0%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF"><span class="nav-text">一. 更新窗口信息</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-InputMonitor-setInputFocusLw"><span class="nav-text">1.1 InputMonitor.setInputFocusLw</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-InputMonitor-updateInputWindowsLw"><span class="nav-text">1.2 InputMonitor.updateInputWindowsLw</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-InputMonitor-UpdateInputWindows-run"><span class="nav-text">1.3 InputMonitor.UpdateInputWindows.run</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-InputMonitor-UpdateInputForAllWindowsConsumer-updateInputWindows"><span class="nav-text">1.4 InputMonitor.UpdateInputForAllWindowsConsumer.updateInputWindows</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-InputMonitor-UpdateInputForAllWindowsConsumer-accept"><span class="nav-text">1.5 InputMonitor.UpdateInputForAllWindowsConsumer.accept</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-1-WindowStateAnimator-hasSurface"><span class="nav-text">1.5.1 WindowStateAnimator.hasSurface</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-2-InputMonitor-populateInputWindowHandle"><span class="nav-text">1.5.2 InputMonitor.populateInputWindowHandle</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-2-1-WindowState-getSurfaceTouchableRegion"><span class="nav-text">1.5.2.1 WindowState.getSurfaceTouchableRegion</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-2-2-WindowState-updateRegionForModalActivityWindow"><span class="nav-text">1.5.2.2 WindowState.updateRegionForModalActivityWindow</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-2-3-ActivityRecord-getFixedRotationTransformDisplayBounds"><span class="nav-text">1.5.2.3 ActivityRecord.getFixedRotationTransformDisplayBounds</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-2-4-Task-getDimBounds"><span class="nav-text">1.5.2.4 Task.getDimBounds</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-3-InputMonitor-setInputWindowInfoIfNeeded"><span class="nav-text">1.5.3 InputMonitor.setInputWindowInfoIfNeeded</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-4-InputWindowHandleWrapper-applyChangesToSurface"><span class="nav-text">1.5.4 InputWindowHandleWrapper.applyChangesToSurface</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-5-SurfaceControl-Transaction-setInputWindowInfo"><span class="nav-text">1.5.5 SurfaceControl.Transaction.setInputWindowInfo</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-6-android-view-SurfaceControl-nativeSetInputWindowInfo"><span class="nav-text">1.5.6 android_view_SurfaceControl.nativeSetInputWindowInfo</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-6-1-android-hardware-input-InputWindowHandle-android-view-InputWindowHandle-getHandle"><span class="nav-text">1.5.6.1 android_hardware_input_InputWindowHandle.android_view_InputWindowHandle_getHandle</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-6-2-NativeInputWindowHandle-updateInfo"><span class="nav-text">1.5.6.2 NativeInputWindowHandle.updateInfo</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-6-3-SurfaceComposerClient-Transaction-setInputWindowInfo"><span class="nav-text">1.5.6.3 SurfaceComposerClient::Transaction.setInputWindowInfo</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-6-InputMonitor-updateInputFocusRequest"><span class="nav-text">1.6 InputMonitor.updateInputFocusRequest</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-6-1-SurfaceControl-setFocusedWindow"><span class="nav-text">1.6.1 SurfaceControl.setFocusedWindow</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-6-2-SurfaceFlinger-updateInputFlinger"><span class="nav-text">1.6.2 SurfaceFlinger.updateInputFlinger</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-Window%E4%BF%A1%E6%81%AF%E6%9B%B4%E6%96%B0%E8%87%B3InputFlinger"><span class="nav-text">二. Window信息更新至InputFlinger</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-SurfaceFlinger-updateInputWindowInfo"><span class="nav-text">2.1 SurfaceFlinger.updateInputWindowInfo</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-Layer-fillInputInfo"><span class="nav-text">2.2 Layer.fillInputInfo</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-1-Layer-fillInputFrameInfo"><span class="nav-text">2.2.1 Layer.fillInputFrameInfo</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-InputFlinger-setInputWindows"><span class="nav-text">2.3 InputFlinger.setInputWindows</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-InputDispatcher-setInputWindows"><span class="nav-text">2.4 InputDispatcher.setInputWindows</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-InputDispatcher-setInputWindowsLocked"><span class="nav-text">2.5 InputDispatcher.setInputWindowsLocked</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-%E6%9B%B4%E6%96%B0InputFlinger%E7%9A%84%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3"><span class="nav-text">三. 更新InputFlinger的焦点窗口</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-InputFlinger-setFocusedWindow"><span class="nav-text">3.1 InputFlinger.setFocusedWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-InputDispatcher-setFocusedWindow"><span class="nav-text">3.2 InputDispatcher.setFocusedWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-FocusResolver-setFocusedWindow"><span class="nav-text">3.3 FocusResolver.setFocusedWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-FocusResolver-updateFocusedWindow"><span class="nav-text">3.4 FocusResolver.updateFocusedWindow</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%B0%8F%E7%BB%93"><span class="nav-text">小结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">39</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

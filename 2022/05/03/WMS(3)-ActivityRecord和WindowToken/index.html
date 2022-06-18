@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="---  以下分析基于Android S. 简述上文中我们知道Activity的Window被添加至WMS其实就是该Activity的ViewRootImpl中的W作为IWindow、存储该Activity窗口属性信息的LayoutParams以及InputChannel被传入WMS，然后生成WindowToken, 当然之后WindowToken自然是保存在DisplayContent.mTo">
+<meta property="og:type" content="article">
+<meta property="og:title" content="WMS(3)-ActivityRecord和WindowToken.md">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/05/03/WMS(3)-ActivityRecord%E5%92%8CWindowToken/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="---  以下分析基于Android S. 简述上文中我们知道Activity的Window被添加至WMS其实就是该Activity的ViewRootImpl中的W作为IWindow、存储该Activity窗口属性信息的LayoutParams以及InputChannel被传入WMS，然后生成WindowToken, 当然之后WindowToken自然是保存在DisplayContent.mTo">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/3_1.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/3_2.png">
+<meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/3_3.png">
+<meta property="article:published_time" content="2022-05-02T17:35:34.000Z">
+<meta property="article:modified_time" content="2022-06-18T09:50:28.811Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="WMS">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/3_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/05/03/WMS(3)-ActivityRecord%E5%92%8CWindowToken/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>WMS(3)-ActivityRecord和WindowToken.md | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/05/03/WMS(3)-ActivityRecord%E5%92%8CWindowToken/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          WMS(3)-ActivityRecord和WindowToken.md
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-03 01:35:34" itemprop="dateCreated datePublished" datetime="2022-05-03T01:35:34+08:00">2022-05-03</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-18 17:50:28" itemprop="dateModified" datetime="2022-06-18T17:50:28+08:00">2022-06-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/WMS/" itemprop="url" rel="index"><span itemprop="name">WMS</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/05/03/WMS(3)-ActivityRecord%E5%92%8CWindowToken/" class="post-meta-item leancloud_visitors" data-flag-title="WMS(3)-ActivityRecord和WindowToken.md" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/03/WMS(3)-ActivityRecord%E5%92%8CWindowToken/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/03/WMS(3)-ActivityRecord%E5%92%8CWindowToken/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+---
+
+<p><strong>以下分析基于Android S.</strong></p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>上文中我们知道Activity的Window被添加至WMS其实就是该Activity的ViewRootImpl中的W作为IWindow、存储该Activity窗口属性信息的LayoutParams以及InputChannel被传入WMS，然后生成WindowToken, 当然之后WindowToken自然是保存在DisplayContent.mTokenMap中，该map的key即对应Activity中的mToken(LocalActivityRecord)。</p>
+<p>在Activity的Window被添加至WMS中，我们仅仅分析了一半，然后重点区分析了DisplayContent的构建，了解了其层次结构器的创建过程以及layer的个数和Window类型对应的layer。现在我们接着看WindowToken的创建，上文中留有一个疑问：</p>
+<span id="more"></span>
+
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">DisplayArea.Tokens <span class="title function_">findAreaForToken</span><span class="params">(<span class="type">int</span> windowType, <span class="type">boolean</span> ownerCanManageAppTokens,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> roundedCornerOverlay)</span> &#123;</span><br><span class="line">    <span class="comment">// 获取window类型对应的layer，getWindowLayerFromTypeLw看[Window类型转Layer](#222-windowmanagerpolicygetwindowlayerfromtypelw)。</span></span><br><span class="line">    <span class="comment">// 一般应用的window类型是 TYPE_BASE_APPLICATION （值为1，handleResumeActivity中赋值的）</span></span><br><span class="line">    <span class="comment">// 所以windowLayerFromType就是APPLICATION_LAYER！</span></span><br><span class="line">    <span class="type">int</span> <span class="variable">windowLayerFromType</span> <span class="operator">=</span> mWmService.mPolicy.getWindowLayerFromTypeLw(windowType,</span><br><span class="line">            ownerCanManageAppTokens, roundedCornerOverlay);</span><br><span class="line">    <span class="comment">// 所以这里就会抛出异常？？？</span></span><br><span class="line">    <span class="keyword">if</span> (windowLayerFromType == APPLICATION_LAYER) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(</span><br><span class="line">                <span class="string">&quot;There shouldn&#x27;t be WindowToken on APPLICATION_LAYER&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> mAreaForLayer[windowLayerFromType];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>因为Activity对应的windowType是TYPE_BASE_APPLICATION，所以拿到的windowLayerFromType就是APPLICATION_LAYER，那么这里必然会抛出异常！</p>
+<p>当然按照正常理解来说，必然不会发生异常才对，所以是我们流程分析哪里有问题？ 是也不是，这里就要留意到应用启动过程了，回到Activity的启动过程，我们先看ActivityRecord的创建过程。</p>
+<h1 id="一-ActivityRecord的创建"><a href="#一-ActivityRecord的创建" class="headerlink" title="一. ActivityRecord的创建"></a>一. ActivityRecord的创建</h1><p>ActivityRecord类是WindowToken子类：</p>
+<p><img src="/images/WMS%E7%B3%BB%E5%88%97/3_1.png" alt="3-1"></p>
+<p>而且从名字中也可以看出，这个类应该是和Activity一一对应的，那么应该在Activity启动流程中哪个步骤创建其对象呢？不难理解，肯定是在startActivity的过程中。</p>
+<p>Activity的启动流程这里就不展开了，直接看关键代码.</p>
+<h2 id="1-1-ActivityTaskManagerService-startActivity"><a href="#1-1-ActivityTaskManagerService-startActivity" class="headerlink" title="1.1 ActivityTaskManagerService.startActivity"></a>1.1 ActivityTaskManagerService.startActivity</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="type">int</span> <span class="title function_">startActivityAsUser</span><span class="params">(IApplicationThread caller, String callingPackage,</span></span><br><span class="line"><span class="params">        <span class="meta">@Nullable</span> String callingFeatureId, Intent intent, String resolvedType,</span></span><br><span class="line"><span class="params">        IBinder resultTo, String resultWho, <span class="type">int</span> requestCode, <span class="type">int</span> startFlags,</span></span><br><span class="line"><span class="params">        ProfilerInfo profilerInfo, Bundle bOptions, <span class="type">int</span> userId, <span class="type">boolean</span> validateIncomingUser)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// obtainStarter其实就是通过ActivityStarter.DefaultFactory获取ActivityStarter</span></span><br><span class="line">    <span class="keyword">return</span> getActivityStartController().obtainStarter(intent, <span class="string">&quot;startActivityAsUser&quot;</span>)</span><br><span class="line">            .setCaller(caller)</span><br><span class="line">            .setCallingPackage(callingPackage)</span><br><span class="line">            .setCallingFeatureId(callingFeatureId)</span><br><span class="line">            .setResolvedType(resolvedType)</span><br><span class="line">            .setResultTo(resultTo)</span><br><span class="line">            .setResultWho(resultWho)</span><br><span class="line">            .setRequestCode(requestCode)</span><br><span class="line">            .setStartFlags(startFlags)</span><br><span class="line">            .setProfilerInfo(profilerInfo)</span><br><span class="line">            .setActivityOptions(bOptions)</span><br><span class="line">            .setUserId(userId)</span><br><span class="line">            .execute(); <span class="comment">// 执行Activity的启动</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将Activity的启动委托给ActivityStarter执行。</p>
+<h2 id="1-2-ActivityStarter-execute"><a href="#1-2-ActivityStarter-execute" class="headerlink" title="1.2 ActivityStarter.execute"></a>1.2 ActivityStarter.execute</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">execute</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="keyword">synchronized</span> (mService.mGlobalLock) &#123;</span><br><span class="line">            ......</span><br><span class="line">            res = executeRequest(mRequest);</span><br><span class="line">            ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span> <span class="title function_">executeRequest</span><span class="params">(Request request)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 注意这里的inTask是null的，因为ActivityStarter构建时没有设置inTask.</span></span><br><span class="line">    <span class="type">Task</span> <span class="variable">inTask</span> <span class="operator">=</span> request.inTask;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// [1.2.1] 针对此次启动的Activity创建对应的ActivityRecord</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">ActivityRecord</span> <span class="variable">r</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">ActivityRecord</span>.Builder(mService)</span><br><span class="line">            .setCaller(callerApp)</span><br><span class="line">            .setLaunchedFromPid(callingPid)</span><br><span class="line">            .setLaunchedFromUid(callingUid)</span><br><span class="line">            .setLaunchedFromPackage(callingPackage)</span><br><span class="line">            .setLaunchedFromFeature(callingFeatureId)</span><br><span class="line">            .setIntent(intent)</span><br><span class="line">            .setResolvedType(resolvedType)</span><br><span class="line">            .setActivityInfo(aInfo)</span><br><span class="line">            .setConfiguration(mService.getGlobalConfiguration())</span><br><span class="line">            .setResultTo(resultRecord)</span><br><span class="line">            .setResultWho(resultWho)</span><br><span class="line">            .setRequestCode(requestCode)</span><br><span class="line">            .setComponentSpecified(request.componentSpecified)</span><br><span class="line">            .setRootVoiceInteraction(voiceSession != <span class="literal">null</span>)</span><br><span class="line">            .setActivityOptions(checkedOptions)</span><br><span class="line">            .setSourceRecord(sourceRecord)</span><br><span class="line">            .build();</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// [1.3] 启动Activity</span></span><br><span class="line">    mLastStartActivityResult = startActivityUnchecked(r, sourceRecord, voiceSession,</span><br><span class="line">            request.voiceInteractor, startFlags, <span class="literal">true</span> <span class="comment">/* doResume */</span>, checkedOptions, inTask,</span><br><span class="line">            restrictedBgActivity, intentGrants);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>ActivityRecord的初始化是采用了Build模式.</p>
+<h3 id="1-2-1-ActivityRecord的初始化"><a href="#1-2-1-ActivityRecord的初始化" class="headerlink" title="1.2.1 ActivityRecord的初始化"></a>1.2.1 ActivityRecord的初始化</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="title function_">ActivityRecord</span><span class="params">(ActivityTaskManagerService _service, WindowProcessController _caller,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> _launchedFromPid, <span class="type">int</span> _launchedFromUid, String _launchedFromPackage,</span></span><br><span class="line"><span class="params">        <span class="meta">@Nullable</span> String _launchedFromFeature, Intent _intent, String _resolvedType,</span></span><br><span class="line"><span class="params">        ActivityInfo aInfo, Configuration _configuration, ActivityRecord _resultTo,</span></span><br><span class="line"><span class="params">        String _resultWho, <span class="type">int</span> _reqCode, <span class="type">boolean</span> _componentSpecified,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> _rootVoiceInteraction, ActivityTaskSupervisor supervisor,</span></span><br><span class="line"><span class="params">        ActivityOptions options, ActivityRecord sourceRecord, PersistableBundle persistentState,</span></span><br><span class="line"><span class="params">        TaskDescription _taskDescription, <span class="type">long</span> _createTime)</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这里创建的Token是IApplicationToken.Stub的子类, 保存在ActivityRecord父类WindowToken的成员变量token中</span></span><br><span class="line">    <span class="built_in">super</span>(_service.mWindowManager, <span class="keyword">new</span> <span class="title class_">Token</span>(_intent).asBinder(), TYPE_APPLICATION, <span class="literal">true</span>,</span><br><span class="line">            <span class="literal">null</span> <span class="comment">/* displayContent */</span>, <span class="literal">false</span> <span class="comment">/* ownerCanManageAppTokens */</span>);</span><br><span class="line"></span><br><span class="line">    mAtmService = _service;</span><br><span class="line">    appToken = (Token) token;</span><br><span class="line">    info = aInfo;</span><br><span class="line">    ......</span><br><span class="line">    appToken.attach(<span class="built_in">this</span>);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">class</span> <span class="title class_">Token</span> <span class="keyword">extends</span> <span class="title class_">IApplicationToken</span>.Stub &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">attach</span><span class="params">(ActivityRecord activity)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (weakActivity != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalStateException</span>(<span class="string">&quot;Already attached...&quot;</span> + <span class="built_in">this</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 将传入的ActivityRecord用弱引用方式保存起来</span></span><br><span class="line">        weakActivity = <span class="keyword">new</span> <span class="title class_">WeakReference</span>&lt;&gt;(activity);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br></pre></td></tr></table></figure>
+
+<p>所以ActivityRecord里的appToken其实是ActivityRecord初始化时创建的Token(为IApplicationToken.Stub的子类)，里面保存了该Activity的Intent信息。</p>
+<h2 id="1-3-ActivityStarter-startActivityUnchecked"><a href="#1-3-ActivityStarter-startActivityUnchecked" class="headerlink" title="1.3 ActivityStarter.startActivityUnchecked"></a>1.3 ActivityStarter.startActivityUnchecked</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="type">int</span> <span class="title function_">startActivityUnchecked</span><span class="params">(<span class="keyword">final</span> ActivityRecord r, ActivityRecord sourceRecord,</span></span><br><span class="line"><span class="params">        IVoiceInteractionSession voiceSession, IVoiceInteractor voiceInteractor,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> startFlags, <span class="type">boolean</span> doResume, ActivityOptions options, Task inTask,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> restrictedBgActivity, NeededUriGrants intentGrants)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">        result = startActivityInner(r, sourceRecord, voiceSession, voiceInteractor,</span><br><span class="line">                startFlags, doResume, options, inTask, restrictedBgActivity, intentGrants);</span><br><span class="line">        ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="title function_">startActivityInner</span><span class="params">(<span class="keyword">final</span> ActivityRecord r, ActivityRecord sourceRecord,</span></span><br><span class="line"><span class="params">        IVoiceInteractionSession voiceSession, IVoiceInteractor voiceInteractor,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> startFlags, <span class="type">boolean</span> doResume, ActivityOptions options, Task inTask,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> restrictedBgActivity, NeededUriGrants intentGrants)</span> &#123;</span><br><span class="line">    <span class="comment">// 1.3.1 设置初始化状态</span></span><br><span class="line">    setInitialState(r, options, inTask, doResume, startFlags, sourceRecord, voiceSession,</span><br><span class="line">                voiceInteractor, restrictedBgActivity);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 获取可重用的task</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">reusedTask</span> <span class="operator">=</span> getReusableTask();</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 计算目标task</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">targetTask</span> <span class="operator">=</span> reusedTask != <span class="literal">null</span> ? reusedTask : computeTargetTask();</span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">newTask</span> <span class="operator">=</span> targetTask == <span class="literal">null</span>;</span><br><span class="line">    mTargetTask = targetTask;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 因为当前Activity是应用启动的第一个Activity，所以newTask为true,targetTaskTop就是null的了</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">ActivityRecord</span> <span class="variable">targetTaskTop</span> <span class="operator">=</span> newTask</span><br><span class="line">            ? <span class="literal">null</span> : targetTask.getTopNonFinishingActivity();</span><br><span class="line">    <span class="keyword">if</span> (targetTaskTop != <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="comment">// 为此次Activity的启动回收task</span></span><br><span class="line">        startResult = recycleTask(targetTask, targetTaskTop, reusedTask, intentGrants);</span><br><span class="line">        <span class="keyword">if</span> (startResult != START_SUCCESS) &#123;</span><br><span class="line">            <span class="keyword">return</span> startResult;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        mAddingToTask = <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 获取当前焦点（前台）Task</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">topRootTask</span> <span class="operator">=</span> mPreferredTaskDisplayArea.getFocusedRootTask();</span><br><span class="line">    <span class="keyword">if</span> (topRootTask != <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="comment">// 判断待启动的Activity是否与前台Activity一致</span></span><br><span class="line">        startResult = deliverToCurrentTopIfNeeded(topRootTask, intentGrants);</span><br><span class="line">        <span class="keyword">if</span> (startResult != START_SUCCESS) &#123;</span><br><span class="line">            <span class="keyword">return</span> startResult;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (mTargetRootTask == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="comment">// 获取root task.</span></span><br><span class="line">        mTargetRootTask = getLaunchRootTask(mStartActivity, mLaunchFlags, targetTask, mOptions);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 需要创建新的task</span></span><br><span class="line">    <span class="keyword">if</span> (newTask) &#123;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">taskToAffiliate</span> <span class="operator">=</span> (mLaunchTaskBehind &amp;&amp; mSourceRecord != <span class="literal">null</span>)</span><br><span class="line">                ? mSourceRecord.getTask() : <span class="literal">null</span>;</span><br><span class="line">        <span class="comment">// 设置新的Task</span></span><br><span class="line">        setNewTask(taskToAffiliate);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (mAddingToTask) &#123;</span><br><span class="line">        addOrReparentStartingActivity(targetTask, <span class="string">&quot;adding to task&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 交给对应Task启动Activity</span></span><br><span class="line">    mTargetRootTask.startActivityLocked(mStartActivity,</span><br><span class="line">            topRootTask != <span class="literal">null</span> ? topRootTask.getTopNonFinishingActivity() : <span class="literal">null</span>, newTask,</span><br><span class="line">            mKeepCurTransition, mOptions, startFromSamePackage);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">setNewTask</span><span class="params">(Task taskToAffiliate)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">toTop</span> <span class="operator">=</span> !mLaunchTaskBehind &amp;&amp; !mAvoidMoveToFront;</span><br><span class="line">    <span class="comment">// 创建新的Task，关于Task的创建我们后续分析</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">task</span> <span class="operator">=</span> mTargetRootTask.reuseOrCreateTask(</span><br><span class="line">            mNewTaskInfo != <span class="literal">null</span> ? mNewTaskInfo : mStartActivity.info,</span><br><span class="line">            mNewTaskIntent != <span class="literal">null</span> ? mNewTaskIntent : mIntent, mVoiceSession,</span><br><span class="line">            mVoiceInteractor, toTop, mStartActivity, mSourceRecord, mOptions);</span><br><span class="line">    mService.getTransitionController().collectExistenceChange(task);</span><br><span class="line">    <span class="comment">// [1.4] 保存Activity至task！</span></span><br><span class="line">    addOrReparentStartingActivity(task, <span class="string">&quot;setTaskFromReuseOrCreateNewTask - mReuseTask&quot;</span>);</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里我们假设启动的Activity是应用的首个Activity，而且也没有设置affinity，这样在启动该Activity时，会创建新的Task, 并在该Task中保存ActivityRecord！</p>
+<h3 id="1-3-1-ActivityStarter-setInitialState-设置初始化状态"><a href="#1-3-1-ActivityStarter-setInitialState-设置初始化状态" class="headerlink" title="1.3.1 ActivityStarter.setInitialState - 设置初始化状态"></a>1.3.1 ActivityStarter.setInitialState - 设置初始化状态</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">setInitialState</span><span class="params">(ActivityRecord r, ActivityOptions options, Task inTask,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> doResume, <span class="type">int</span> startFlags, ActivityRecord sourceRecord,</span></span><br><span class="line"><span class="params">        IVoiceInteractionSession voiceSession, IVoiceInteractor voiceInteractor,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> restrictedBgActivity)</span> &#123;</span><br><span class="line">    reset(<span class="literal">false</span> <span class="comment">/* clearRequest */</span>);</span><br><span class="line"></span><br><span class="line">    mStartActivity = r;</span><br><span class="line">    ......</span><br><span class="line">    mLaunchParams.reset();</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 因为mLaunchParams被重置了，所以mPreferredTaskDisplayArea获取的就是mRootWindowContainer.getDefaultTaskDisplayArea</span></span><br><span class="line">    <span class="comment">// 即上文中RootDisplayArea创建的Result中的mDefaultTaskDisplayArea</span></span><br><span class="line">    mPreferredTaskDisplayArea = mLaunchParams.hasPreferredTaskDisplayArea()</span><br><span class="line">            ? mLaunchParams.mPreferredTaskDisplayArea</span><br><span class="line">            : mRootWindowContainer.getDefaultTaskDisplayArea();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里首先先清理ActivityStarter内部成员，然后依次赋值。</p>
+<h2 id="1-4-ActivityStarter-addOrReparentStartingActivity"><a href="#1-4-ActivityStarter-addOrReparentStartingActivity" class="headerlink" title="1.4 ActivityStarter.addOrReparentStartingActivity"></a>1.4 ActivityStarter.addOrReparentStartingActivity</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">addOrReparentStartingActivity</span><span class="params">(Task parent, String reason)</span> &#123;</span><br><span class="line">    <span class="comment">// mStartActivity是该Activity启动时创建的ActivityRecord.</span></span><br><span class="line">    <span class="comment">// ActivityRecord.getTask就是获取其task成员，该成员目前是没有被赋值的</span></span><br><span class="line">    <span class="keyword">if</span> (mStartActivity.getTask() == <span class="literal">null</span> || mStartActivity.getTask() == parent) &#123;</span><br><span class="line">        <span class="comment">// [1.5] 将该ActivityRecord添加至task中</span></span><br><span class="line">        parent.addChild(mStartActivity);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        mStartActivity.reparent(parent, parent.getChildCount() <span class="comment">/* top */</span>, reason);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-5-Task-addChild"><a href="#1-5-Task-addChild" class="headerlink" title="1.5 Task.addChild"></a>1.5 Task.addChild</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">addChild</span><span class="params">(ActivityRecord r)</span> &#123;</span><br><span class="line">    <span class="comment">// 默认添加到该Task的最上层</span></span><br><span class="line">    addChild(r, Integer.MAX_VALUE <span class="comment">/* add on top */</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">addChild</span><span class="params">(WindowContainer child, <span class="type">int</span> index)</span> &#123;</span><br><span class="line">    <span class="comment">// 判断mChildren集合中是否存在元素</span></span><br><span class="line">    <span class="type">boolean</span> <span class="variable">hadChild</span> <span class="operator">=</span> hasChild();</span><br><span class="line">    <span class="comment">// [1.5.1] 获取当前Task最上层的WindowContainer对应的Activity类型</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">activityType</span> <span class="operator">=</span> getActivityType();</span><br><span class="line">    <span class="comment">// [1.5.2] 调整被添加的ActivityRecord在task中的位置</span></span><br><span class="line">    index = getAdjustedChildPosition(child, index);</span><br><span class="line">    <span class="comment">// [1.6] 将WindowContainer添加至mChildren中index位置</span></span><br><span class="line">    <span class="built_in">super</span>.addChild(child, index);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-5-1-Task-getActivityType"><a href="#1-5-1-Task-getActivityType" class="headerlink" title="1.5.1 Task.getActivityType"></a>1.5.1 Task.getActivityType</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">getActivityType</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// Task的父类是WindowContainer, WindowContainer的父类是ConfigurationContainer</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">applicationType</span> <span class="operator">=</span> <span class="built_in">super</span>.getActivityType();</span><br><span class="line">    <span class="keyword">if</span> (applicationType != ACTIVITY_TYPE_UNDEFINED || !hasChild()) &#123;</span><br><span class="line">        <span class="keyword">return</span> applicationType;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> getTopChild().getActivityType();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// frameworks/base/core/java/android/content/res/Configuration.java</span></span><br><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">getActivityType</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// mFullConfiguration就是Configuration.java类</span></span><br><span class="line">    <span class="keyword">return</span> mFullConfiguration.windowConfiguration.getActivityType();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// frameworks/base/core/java/android/app/WindowConfiguration.java</span></span><br><span class="line"><span class="meta">@ActivityType</span></span><br><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">getActivityType</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> mActivityType;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>ActivityType有如下取值:</p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ACTIVITY_TYPE_UNDEFINED</td>
+<td>0</td>
+<td>Activity类型尚未定义</td>
+</tr>
+<tr>
+<td>ACTIVITY_TYPE_STANDARD</td>
+<td>1</td>
+<td>标准Activity类型</td>
+</tr>
+<tr>
+<td>ACTIVITY_TYPE_HOME</td>
+<td>2</td>
+<td>Home或Launcher的Activity类型</td>
+</tr>
+<tr>
+<td>ACTIVITY_TYPE_RECENTS</td>
+<td>3</td>
+<td>Recents或者Overview的Activity类型，系统中只有一个具有此类型的Activity</td>
+</tr>
+<tr>
+<td>ACTIVITY_TYPE_ASSISTANT</td>
+<td>4</td>
+<td>Assistant Activity类型</td>
+</tr>
+<tr>
+<td>ACTIVITY_TYPE_DREAM</td>
+<td>5</td>
+<td>Dream Activity类型</td>
+</tr>
+</tbody></table>
+<p>一般情况都是ACTIVITY_TYPE_STANDARD或者ACTIVITY_TYPE_HOME类型。当前Task获取的值应该是初始化的默认值：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ConfigurationContainer.java:mFullConfiguration</span></span><br><span class="line"><span class="keyword">private</span> <span class="type">Configuration</span> <span class="variable">mFullConfiguration</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Configuration</span>();</span><br><span class="line"></span><br><span class="line"><span class="comment">// Configuration.java:windowConfiguration</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="type">WindowConfiguration</span> <span class="variable">windowConfiguration</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">WindowConfiguration</span>();</span><br><span class="line"></span><br><span class="line"><span class="comment">// WindowConfiguration.java</span></span><br><span class="line"><span class="keyword">public</span> <span class="title function_">WindowConfiguration</span><span class="params">()</span> &#123;</span><br><span class="line">    unset();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">unset</span><span class="params">()</span> &#123;</span><br><span class="line">    setToDefaults();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/** <span class="doctag">@hide</span> */</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">setToDefaults</span><span class="params">()</span> &#123;</span><br><span class="line">    setAppBounds(<span class="literal">null</span>);</span><br><span class="line">    setBounds(<span class="literal">null</span>);</span><br><span class="line">    setMaxBounds(<span class="literal">null</span>);</span><br><span class="line">    setWindowingMode(WINDOWING_MODE_UNDEFINED);</span><br><span class="line">    setActivityType(ACTIVITY_TYPE_UNDEFINED);</span><br><span class="line">    setAlwaysOnTop(ALWAYS_ON_TOP_UNDEFINED);</span><br><span class="line">    setRotation(ROTATION_UNDEFINED);</span><br><span class="line">    setDisplayWindowingMode(WINDOWING_MODE_UNDEFINED);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，ActivityType是被设置成：ACTIVITY_TYPE_UNDEFINED，也即未定义类型！</p>
+<h3 id="1-5-2-Task-getAdjustedChildPosition"><a href="#1-5-2-Task-getAdjustedChildPosition" class="headerlink" title="1.5.2 Task.getAdjustedChildPosition"></a>1.5.2 Task.getAdjustedChildPosition</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="type">int</span> <span class="title function_">getAdjustedChildPosition</span><span class="params">(WindowContainer wc, <span class="type">int</span> suggestedPosition)</span> &#123;</span><br><span class="line">    <span class="comment">// wc就是创建的ActivityRecord, 这里就是检查Activity是否带有FLAG_SHOW_FOR_ALL_USERS标志</span></span><br><span class="line">    <span class="comment">// 或者该Activity所属的userId是否是当前userId，即非当前用户的Activity不可见</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">canShowChild</span> <span class="operator">=</span> wc.showToCurrentUser();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">size</span> <span class="operator">=</span> mChildren.size();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 根据WindowContainer是否可见，决定该WC应该被插入Task的位置</span></span><br><span class="line">    <span class="type">int</span> <span class="variable">minPosition</span> <span class="operator">=</span> (canShowChild) ? computeMinUserPosition(<span class="number">0</span>, size) : <span class="number">0</span>;</span><br><span class="line">    <span class="type">int</span> <span class="variable">maxPosition</span> <span class="operator">=</span> (canShowChild) ? size : computeMaxUserPosition(size - <span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// [1.5.2.1] 检查该WindowContainer是否是永远处于Task最上层</span></span><br><span class="line">    <span class="keyword">if</span> (!wc.isAlwaysOnTop()) &#123;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 将所有应该永远处于最上层的WC放在Task的最上层</span></span><br><span class="line">        <span class="keyword">while</span> (maxPosition &gt; minPosition) &#123;</span><br><span class="line">            <span class="keyword">if</span> (!mChildren.get(maxPosition - <span class="number">1</span>).isAlwaysOnTop()) <span class="keyword">break</span>;</span><br><span class="line">            --maxPosition;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 当该WC可以处于POSITION_BOTTOM且minPosition也是0时，返回POSITION_BOTTOM</span></span><br><span class="line">    <span class="comment">// 或者可以处于POSITION_TOP且maxPosition超过目前children数量时，返回POSITION_TOP</span></span><br><span class="line">    <span class="keyword">if</span> (suggestedPosition == POSITION_BOTTOM &amp;&amp; minPosition == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> POSITION_BOTTOM;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (suggestedPosition == POSITION_TOP &amp;&amp; maxPosition &gt;= (size - <span class="number">1</span>)) &#123;</span><br><span class="line">        <span class="keyword">return</span> POSITION_TOP;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 挑选一个合适的位置</span></span><br><span class="line">    <span class="keyword">return</span> Math.min(Math.max(suggestedPosition, minPosition), maxPosition);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里是通过检查WindowContainer是否可见的属性以及是否应该永远处于最上层来调整该WC应该被插入Task的哪个位置。</p>
+<p>当我们ActivityRecord被添加入一个新建的Task时，毫无疑问应该是处于最上层即返回POSITION_TOP。</p>
+<h4 id="1-5-2-1-WindowContainer-isAlwaysOnTop"><a href="#1-5-2-1-WindowContainer-isAlwaysOnTop" class="headerlink" title="1.5.2.1 WindowContainer.isAlwaysOnTop"></a>1.5.2.1 WindowContainer.isAlwaysOnTop</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">isAlwaysOnTop</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mWindowingMode == WINDOWING_MODE_PINNED) <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">    <span class="keyword">if</span> (mActivityType == ACTIVITY_TYPE_DREAM) <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">    <span class="keyword">if</span> (mAlwaysOnTop != ALWAYS_ON_TOP_ON) <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    <span class="type">return</span> <span class="variable">mWindowingMode</span> <span class="operator">=</span>= WINDOWING_MODE_FREEFORM</span><br><span class="line">                || mWindowingMode == WINDOWING_MODE_MULTI_WINDOW;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>说明如下情况，该WindowContainer应该始终处于所在Task的最上层:</p>
+<ol>
+<li>window模式为WINDOWING_MODE_PINNED</li>
+<li>Activity类型是ACTIVITY_TYPE_DREAM</li>
+<li>当mAlwaysOnTop为ALWAYS_ON_TOP_ON，window模式为WINDOWING_MODE_FREEFORM或WINDOWING_MODE_MULTI_WINDOW</li>
+</ol>
+<h2 id="1-6-WindowContainer-addChild"><a href="#1-6-WindowContainer-addChild" class="headerlink" title="1.6 WindowContainer.addChild"></a>1.6 WindowContainer.addChild</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@CallSuper</span></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">addChild</span><span class="params">(E child, <span class="type">int</span> index)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 最后调整index</span></span><br><span class="line">    <span class="keyword">if</span> (index == POSITION_TOP) &#123;</span><br><span class="line">        index = mChildren.size();</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (index == POSITION_BOTTOM) &#123;</span><br><span class="line">        index = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 将child保存在mChildren中的特定位置</span></span><br><span class="line">    mChildren.add(index, child);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// [1.7] 让child保存该WC（即Task）</span></span><br><span class="line">    child.setParent(<span class="built_in">this</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>@CallSuper: 是Android中特有的注解，如果子类覆盖了同名方法而没有显示调用父类的该方法时就会报错!</p>
+</blockquote>
+<p>这个也挺简单的，首先最后调整一下index：</p>
+<ol>
+<li>如果传入的index为POSITION_TOP，则将index设置为当前mChildren的size值，意为将待存入的child保存在mChildren中最后一位（上面）</li>
+<li>如果传入的index为POSITION_BOTTOM， 则将index设置为0，意为将待存入的child保存在mChildren中第一位（下面）</li>
+</ol>
+<p>然后让child(ActivityRecord)保存该WC（即Task）。</p>
+<h2 id="1-7-WindowContainer-setParent"><a href="#1-7-WindowContainer-setParent" class="headerlink" title="1.7 WindowContainer.setParent"></a>1.7 WindowContainer.setParent</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">final</span> <span class="keyword">protected</span> <span class="keyword">void</span> <span class="title function_">setParent</span><span class="params">(WindowContainer&lt;WindowContainer&gt; parent)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">WindowContainer</span> <span class="variable">oldParent</span> <span class="operator">=</span> mParent;</span><br><span class="line">    mParent = parent;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mParent != <span class="literal">null</span>) &#123;</span><br><span class="line">        mParent.onChildAdded(<span class="built_in">this</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// ActivityRecord创建时，该值默认为false,只有被调用reparent重设父集时才会被短暂更改为true</span></span><br><span class="line">    <span class="keyword">if</span> (!mReparenting) &#123;</span><br><span class="line">        onSyncReparent(oldParent, mParent);</span><br><span class="line">        <span class="comment">// mDisplayContent此时还是null的，而Task.mDisplayContent就是defaultDisplayContent</span></span><br><span class="line">        <span class="keyword">if</span> (mParent != <span class="literal">null</span> &amp;&amp; mParent.mDisplayContent != <span class="literal">null</span></span><br><span class="line">                &amp;&amp; mDisplayContent != mParent.mDisplayContent) &#123;</span><br><span class="line">            <span class="comment">// [1.8] 更改当前WC(ActivityRecord)的DisplayContent</span></span><br><span class="line">            onDisplayChanged(mParent.mDisplayContent);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// [1.7.1] 当前ActivityRecord的parent有更改</span></span><br><span class="line">        onParentChanged(mParent, oldParent);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>设置WC(ActivityRecord)的父集（mParent, 即保存该WC的Task）, 如有必要同步Task中DisplayContent至该WC中。</p>
+<h3 id="1-7-1-ActivityRecord-onParentChanged"><a href="#1-7-1-ActivityRecord-onParentChanged" class="headerlink" title="1.7.1 ActivityRecord.onParentChanged"></a>1.7.1 ActivityRecord.onParentChanged</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">onParentChanged</span><span class="params">(ConfigurationContainer newParent, ConfigurationContainer oldParent)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">oldTask</span> <span class="operator">=</span> oldParent != <span class="literal">null</span> ? (Task) oldParent : <span class="literal">null</span>;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">newTask</span> <span class="operator">=</span> newParent != <span class="literal">null</span> ? (Task) newParent : <span class="literal">null</span>;</span><br><span class="line">    <span class="comment">// 存入ActivityRecord.task中</span></span><br><span class="line">    <span class="built_in">this</span>.task = newTask;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将传入的ConfigurationContainer作为Task，存入ActivityRecord.task中，其余部分暂时先不研究。</p>
+<h2 id="1-8-ActivityRecord-onDisplayChanged"><a href="#1-8-ActivityRecord-onDisplayChanged" class="headerlink" title="1.8 ActivityRecord.onDisplayChanged"></a>1.8 ActivityRecord.onDisplayChanged</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">onDisplayChanged</span><span class="params">(DisplayContent dc)</span> &#123;</span><br><span class="line">    <span class="type">DisplayContent</span> <span class="variable">prevDc</span> <span class="operator">=</span> mDisplayContent;</span><br><span class="line">    <span class="comment">// WindowToken.onDisplayChanged</span></span><br><span class="line">    <span class="built_in">super</span>.onDisplayChanged(dc);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// WindowToken.java:onDisplayChanged</span></span><br><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">onDisplayChanged</span><span class="params">(DisplayContent dc)</span> &#123;</span><br><span class="line">    <span class="comment">// [1.9] 将WindowToken（ActivityRecord）保存至DisplayContent中</span></span><br><span class="line">    dc.reParentWindowToken(<span class="built_in">this</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// WindowContainer.onDisplayChanged</span></span><br><span class="line">    <span class="built_in">super</span>.onDisplayChanged(dc);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// WindowContainer.java:onDisplayChanged</span></span><br><span class="line"><span class="keyword">void</span> <span class="title function_">onDisplayChanged</span><span class="params">(DisplayContent dc)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mDisplayContent != <span class="literal">null</span> &amp;&amp; mDisplayContent.mChangingContainers.remove(<span class="built_in">this</span>)) &#123;</span><br><span class="line">        <span class="comment">// Cancel any change transition queued-up for this container on the old display.</span></span><br><span class="line">        mSurfaceFreezer.unfreeze(getPendingTransaction());</span><br><span class="line">    &#125;</span><br><span class="line">    mDisplayContent = dc;</span><br><span class="line">    <span class="keyword">if</span> (dc != <span class="literal">null</span> &amp;&amp; dc != <span class="built_in">this</span>) &#123;</span><br><span class="line">        dc.getPendingTransaction().merge(mPendingTransaction);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 将mChildren中的每个WC的DisplayContent也同步更改</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> mChildren.size() - <span class="number">1</span>; i &gt;= <span class="number">0</span>; --i) &#123;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">WindowContainer</span> <span class="variable">child</span> <span class="operator">=</span> mChildren.get(i);</span><br><span class="line">        child.onDisplayChanged(dc);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> mListeners.size() - <span class="number">1</span>; i &gt;= <span class="number">0</span>; --i) &#123;</span><br><span class="line">        mListeners.get(i).onDisplayChanged(dc);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里最主要的是理清ActivityRecord、WindowToken、Task和WindowContainer之间的继承关系：</p>
+<p><img src="/images/WMS%E7%B3%BB%E5%88%97/3_2.png" alt="3-2"></p>
+<h2 id="1-9-DisplayContent-reParentWindowToken"><a href="#1-9-DisplayContent-reParentWindowToken" class="headerlink" title="1.9 DisplayContent.reParentWindowToken"></a>1.9 DisplayContent.reParentWindowToken</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">reParentWindowToken</span><span class="params">(WindowToken token)</span> &#123;</span><br><span class="line">    <span class="comment">// prevDc目前还是null的</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">DisplayContent</span> <span class="variable">prevDc</span> <span class="operator">=</span> token.getDisplayContent();</span><br><span class="line">    <span class="keyword">if</span> (prevDc == <span class="built_in">this</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (prevDc != <span class="literal">null</span>) &#123;</span><br><span class="line">        ......</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 将ActivityRecord添加到该DC中,key为WindowToken的.token值</span></span><br><span class="line">    addWindowToken(token.token, token);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>由于此时还处于ActivityRecord刚被创建，正在第一次被设置DisplayContent时，所以其DisplayContent此时还是null的。那么就直接将该WindowToken(即ActivityRecord)保存在此DisplayContent中，注意token.token其实是WindowToken.token, 这个值我们之前分析过，是attrs.token,也就是从App进程传入的LocalActivityRecord.</p>
+<h2 id="1-10-DisplayContent-addWindowToken"><a href="#1-10-DisplayContent-addWindowToken" class="headerlink" title="1.10 DisplayContent.addWindowToken"></a>1.10 DisplayContent.addWindowToken</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">addWindowToken</span><span class="params">(IBinder binder, WindowToken token)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">DisplayContent</span> <span class="variable">dc</span> <span class="operator">=</span> mWmService.mRoot.getWindowTokenDisplay(token);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 将ActivityRecord保存在DisplayContent中，key为WindowToken的token变量，即app传入的LayoutParam中的token</span></span><br><span class="line">    mTokenMap.put(binder, token);</span><br><span class="line">    <span class="comment">// WindowToken（其实是ActivityRecord）的asActivityRecord函数返回值不为null</span></span><br><span class="line">    <span class="keyword">if</span> (token.asActivityRecord() == <span class="literal">null</span>) &#123;</span><br><span class="line">        ......</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>好了，我们终于明白了一个ActivityRecord是如何被添加进DisplayContent中了，看到这里是不是似曾相识呢？Bingo, 之前我们的windowToken创建时会抛出一个异常，就是因为这个WindowToken.asActivityRecord返回值为null, 导致DisplayContent中添加该WindowToken时找不到合适layer！</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="variable">windowLayerFromType</span> <span class="operator">=</span> mWmService.mPolicy.getWindowLayerFromTypeLw(windowType,</span><br><span class="line">        ownerCanManageAppTokens, roundedCornerOverlay);</span><br><span class="line"><span class="comment">// 所以这里就会抛出异常？？？</span></span><br><span class="line"><span class="keyword">if</span> (windowLayerFromType == APPLICATION_LAYER) &#123;</span><br><span class="line">    <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(</span><br><span class="line">            <span class="string">&quot;There shouldn&#x27;t be WindowToken on APPLICATION_LAYER&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>现在我们知道了，在app的Activity被resume时，早就已经有了其WindowToken（ActivityRecord）被保存在DisplayContent的mTokenMap中。所以回过头我们看WMS.addWindow方法:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">addWindow</span><span class="params">(Session session, IWindow client, LayoutParams attrs, <span class="type">int</span> viewVisibility,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> displayId, <span class="type">int</span> requestUserId, InsetsState requestedVisibility,</span></span><br><span class="line"><span class="params">        InputChannel outInputChannel, InsetsState outInsetsState,</span></span><br><span class="line"><span class="params">        InsetsSourceControl[] outActiveControls)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 窗口类型保存在LayoutParams中</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">type</span> <span class="operator">=</span> attrs.type;</span><br><span class="line">    <span class="keyword">synchronized</span> (mGlobalLock) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 这里DisplayContent中至少包含该App的一个WindowToke，也就是Activity被start时创建的ActivityRecord!</span></span><br><span class="line">        <span class="type">WindowToken</span> <span class="variable">token</span> <span class="operator">=</span> displayContent.getWindowToken(</span><br><span class="line">                hasParent ? parentWindow.mAttrs.token : attrs.token);</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 所以这里就不会进入了，疑问解除！</span></span><br><span class="line">        <span class="keyword">if</span> (token == <span class="literal">null</span>) &#123;</span><br><span class="line">            .....</span><br><span class="line">        &#125;</span><br><span class="line">        ...</span><br><span class="line">        <span class="comment">// 初始化WindowState</span></span><br><span class="line">        <span class="keyword">final</span> <span class="type">WindowState</span> <span class="variable">win</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">WindowState</span>(<span class="built_in">this</span>, session, client, token, parentWindow,</span><br><span class="line">                appOp[<span class="number">0</span>], attrs, viewVisibility, session.mUid, userId,</span><br><span class="line">                session.mCanAddInternalSystemWindow);</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 创建SurfaceSession, 用来和SurfaceFlinger通信</span></span><br><span class="line">        win.attach();</span><br><span class="line">        <span class="comment">// 保存WindowState</span></span><br><span class="line">        mWindowMap.put(client.asBinder(), win);</span><br><span class="line">        ......</span><br><span class="line">        win.mToken.addWindow(win);</span><br><span class="line">        ......</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>啊哈，异常解除，因为Activity需要resume必须先start, 而start过程中就会创建其对应ActivityRecord并保存在对应DisplayContent的mTokenMap中！</p>
+<p>最后附上一张时序图以备忘：</p>
+<p><img src="/images/WMS%E7%B3%BB%E5%88%97/3_3.png" alt="3-3"></p>
+<p>接下来，我们继续看WMS.addWindow的流程：WindowState的创建及其管理。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/05/03/WMS(3)-ActivityRecord%E5%92%8CWindowToken/" title="WMS(3)-ActivityRecord和WindowToken.md">https://swallowjoe.github.io/2022/05/03/WMS(3)-ActivityRecord和WindowToken/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/WMS/" rel="tag"># WMS</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/05/02/WMS(2)-WMS%E4%B8%ADRootDisplayArea%E7%9A%84%E5%88%9B%E5%BB%BA/" rel="prev" title="WMS(2)-WMS中RootDisplayArea的创建">
+      <i class="fa fa-chevron-left"></i> WMS(2)-WMS中RootDisplayArea的创建
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/05/04/WMS(4)-WindowState%E5%88%9B%E5%BB%BA%E5%8F%8A%E7%A7%BB%E9%99%A4/" rel="next" title="WMS(4)-WindowState创建及移除">
+      WMS(4)-WindowState创建及移除 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-ActivityRecord%E7%9A%84%E5%88%9B%E5%BB%BA"><span class="nav-text">一. ActivityRecord的创建</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-ActivityTaskManagerService-startActivity"><span class="nav-text">1.1 ActivityTaskManagerService.startActivity</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-ActivityStarter-execute"><span class="nav-text">1.2 ActivityStarter.execute</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-1-ActivityRecord%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-text">1.2.1 ActivityRecord的初始化</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-ActivityStarter-startActivityUnchecked"><span class="nav-text">1.3 ActivityStarter.startActivityUnchecked</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-1-ActivityStarter-setInitialState-%E8%AE%BE%E7%BD%AE%E5%88%9D%E5%A7%8B%E5%8C%96%E7%8A%B6%E6%80%81"><span class="nav-text">1.3.1 ActivityStarter.setInitialState - 设置初始化状态</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-ActivityStarter-addOrReparentStartingActivity"><span class="nav-text">1.4 ActivityStarter.addOrReparentStartingActivity</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-Task-addChild"><span class="nav-text">1.5 Task.addChild</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-1-Task-getActivityType"><span class="nav-text">1.5.1 Task.getActivityType</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-2-Task-getAdjustedChildPosition"><span class="nav-text">1.5.2 Task.getAdjustedChildPosition</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-5-2-1-WindowContainer-isAlwaysOnTop"><span class="nav-text">1.5.2.1 WindowContainer.isAlwaysOnTop</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-6-WindowContainer-addChild"><span class="nav-text">1.6 WindowContainer.addChild</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-7-WindowContainer-setParent"><span class="nav-text">1.7 WindowContainer.setParent</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-7-1-ActivityRecord-onParentChanged"><span class="nav-text">1.7.1 ActivityRecord.onParentChanged</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-8-ActivityRecord-onDisplayChanged"><span class="nav-text">1.8 ActivityRecord.onDisplayChanged</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-9-DisplayContent-reParentWindowToken"><span class="nav-text">1.9 DisplayContent.reParentWindowToken</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-10-DisplayContent-addWindowToken"><span class="nav-text">1.10 DisplayContent.addWindowToken</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">39</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

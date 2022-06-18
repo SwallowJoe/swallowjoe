@@ -189,6 +189,921 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" class="post-title-link" itemprop="url">App申请帧率(3)--SF计算最佳帧率</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:53:53 / 修改时间：04:00:06" itemprop="dateCreated datePublished" datetime="2022-02-27T03:53:53+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Vsync/" itemprop="url" rel="index"><span itemprop="name">Vsync</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" class="post-meta-item leancloud_visitors" data-flag-title="App申请帧率(3)--SF计算最佳帧率" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>以下分析基于Android R.</p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>上一章我们分析了App是如何通过更改一个小小的WindowManager的LayoutParam的属性，来影响Framework决策帧率变化的。</p>
+<p>接来下我们详细看看SurfaceFlinger是如何根据Framework传入的帧率参数选择合适帧率的。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-3-SF%E8%AE%A1%E7%AE%97%E6%9C%80%E4%BD%B3%E5%B8%A7%E7%8E%87/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/" class="post-title-link" itemprop="url">App申请帧率(2)--Framework选择最近帧率范围</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:53:41 / 修改时间：03:58:50" itemprop="dateCreated datePublished" datetime="2022-02-27T03:53:41+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Vsync/" itemprop="url" rel="index"><span itemprop="name">Vsync</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/" class="post-meta-item leancloud_visitors" data-flag-title="App申请帧率(2)--Framework选择最近帧率范围" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>以下分析基于Android Q.</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-2-Framework%E9%80%89%E6%8B%A9%E6%9C%80%E8%BF%91%E5%B8%A7%E7%8E%87%E8%8C%83%E5%9B%B4/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/" class="post-title-link" itemprop="url">App申请帧率(1)--简述</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:53:29 / 修改时间：03:58:12" itemprop="dateCreated datePublished" datetime="2022-02-27T03:53:29+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Vsync/" itemprop="url" rel="index"><span itemprop="name">Vsync</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/" class="post-meta-item leancloud_visitors" data-flag-title="App申请帧率(1)--简述" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <!-- TOC -->
+
+<ul>
+<li><a href="#%E8%83%8C%E6%99%AF">背景</a></li>
+<li><a href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99">参考资料</a><ul>
+<li><a href="#%E6%9F%A5%E7%9C%8B%E8%AE%BE%E5%A4%87%E5%8F%AF%E6%94%AF%E6%8C%81%E7%9A%84%E5%88%B7%E6%96%B0%E7%8E%87%E5%92%8C%E5%88%86%E8%BE%A8%E7%8E%87">查看设备可支持的刷新率和分辨率</a></li>
+<li><a href="#app%E8%AE%BE%E7%BD%AE%E8%AE%BE%E5%A4%87%E5%B8%A7%E7%8E%87">App设置设备帧率</a><ul>
+<li><a href="#android-q%E5%8F%8A%E4%BB%A5%E4%B8%8B%E7%89%88%E6%9C%AC">Android Q及以下版本</a></li>
+<li><a href="#android-r">Android R</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<!-- /TOC -->
+
+<h1 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h1><p>随着手机屏幕硬件能力的提升，越来越多的厂商提供支持多档次刷新率的Android设备。<br>而在Android Q上也是支持App指定当前屏幕帧率的，也有一套帧率分辨率切换的逻辑。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/App%E7%94%B3%E8%AF%B7%E5%B8%A7%E7%8E%87-1-%E7%AE%80%E8%BF%B0/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" class="post-title-link" itemprop="url">Looper-Android中的消息机制</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:48:26 / 修改时间：03:57:34" itemprop="dateCreated datePublished" datetime="2022-02-27T03:48:26+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/Looper/" itemprop="url" rel="index"><span itemprop="name">Looper</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" class="post-meta-item leancloud_visitors" data-flag-title="Looper-Android中的消息机制" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <div style="page-break-after: always;"></div>
+
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>本文详细分析android的消息机制Looper的底层原理。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/Looper-Android%E4%B8%AD%E7%9A%84%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" class="post-title-link" itemprop="url">Vulkan入门(15)-图像视图和采样器</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:35:34 / 修改时间：03:44:47" itemprop="dateCreated datePublished" datetime="2022-02-27T03:35:34+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(15)-图像视图和采样器" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>回顾上一篇章中的读取图像的步骤:</p>
+<ol>
+<li>首先利用stb-image库读取图片，将其内容存储在临时缓存区VkBuffer中，注意需要开辟GPU可见内存</li>
+<li>通过VkImageCreateInfo结构指明图像格式并通过vkCreateImage创建VkImage对象</li>
+<li>用VkBuffer图像文件中的像素填充创建的VkImage图像对象<ol>
+<li>填充图像对象需要使用VkImageMemoryBarrier</li>
+<li>使用vkCmdPipelineBarrier使得图像填充Barrier生效</li>
+<li>通过vkCmdCopyBufferToImage完成图像像素从VkBuffer到VkImage的拷贝(填充)</li>
+<li>再通过VkImageMemoryBarrier指定图像是能够从着色器中的纹理图像开始采样</li>
+</ol>
+</li>
+<li>创建图像视图和图像采样器</li>
+<li>添加一个组合的图像采样器描述符来从纹理中采样颜色</li>
+</ol>
+<p>在图像采样器创建之前，我们首先看看纹理图像视图，这个是在我们创建交换链的时候见过:</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-15-%E5%9B%BE%E5%83%8F%E8%A7%86%E5%9B%BE%E5%92%8C%E9%87%87%E6%A0%B7%E5%99%A8/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/" class="post-title-link" itemprop="url">Vulkan入门(14)-VkImage图像的创建</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:35:18 / 修改时间：03:44:04" itemprop="dateCreated datePublished" datetime="2022-02-27T03:35:18+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(14)-VkImage图像的创建" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>在之前我们使用顶点着色器以及描述符来实现绘制有颜色的几何体，还实现了旋转动画。接下来我们学习一下纹理贴图，这个将是我们实现加载绘制基本3D模型的基础。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-14-VkImage%E5%9B%BE%E5%83%8F%E7%9A%84%E5%88%9B%E5%BB%BA/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/" class="post-title-link" itemprop="url">Vulkan入门(13)-描述符布局及缓存</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:34:54 / 修改时间：03:43:22" itemprop="dateCreated datePublished" datetime="2022-02-27T03:34:54+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(13)-描述符布局及缓存" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>我们现在可以为每个顶点传递任意属性到顶点着色器，但是全局变量呢？我们将从本章开始讨论三维图形，这需要一个模型视图投影矩阵。我们可以将其作为顶点数据包含，但这是对内存的浪费，而且每当变换发生变化时，都需要我们更新顶点缓冲区。然而这种转换可能在每一帧都有。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-13-%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%B8%83%E5%B1%80%E5%8F%8A%E7%BC%93%E5%AD%98/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/" class="post-title-link" itemprop="url">Vulkan入门(12)-暂存缓冲和索引缓冲</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:34:41 / 修改时间：03:42:33" itemprop="dateCreated datePublished" datetime="2022-02-27T03:34:41+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(12)-暂存缓冲和索引缓冲" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>虽然现在我们创建的顶点缓冲区工作正常，但是从CPU访问它的内存类型可能不是图形显卡本身读取的最佳内存类型，最理想的内存具有VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT位标志，并且通常不可由专用图形显卡上的CPU访问。而且我们上一篇最后实现的随鼠标移动的功能也没有考虑同步，简单一点，考虑读写分离。</p>
+<p>现在创建两个顶点缓冲区：CPU可访问内存中的一个暂存缓冲区用于从顶点数组上传数据，最终顶点缓冲区位于设备本地内存中。然后我们将使用一个缓冲区复制命令将数据从暂存缓冲区移动到实际的顶点缓冲区。简单来说就是暂存缓冲区用于cpu写入，顶点缓冲区用于GPU读取数据。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-12-%E6%9A%82%E5%AD%98%E7%BC%93%E5%86%B2%E5%92%8C%E7%B4%A2%E5%BC%95%E7%BC%93%E5%86%B2/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-11-%E9%A1%B6%E7%82%B9%E8%BE%93%E5%85%A5%E6%8F%8F%E8%BF%B0%E5%8F%8A%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2%E7%9A%84%E5%88%9B%E5%BB%BA/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-11-%E9%A1%B6%E7%82%B9%E8%BE%93%E5%85%A5%E6%8F%8F%E8%BF%B0%E5%8F%8A%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2%E7%9A%84%E5%88%9B%E5%BB%BA/" class="post-title-link" itemprop="url">Vulkan入门(11)-顶点输入描述及顶点缓冲的创建</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-02-27 03:34:26 / 修改时间：03:41:34" itemprop="dateCreated datePublished" datetime="2022-02-27T03:34:26+08:00">2022-02-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%9B%BE%E5%83%8F%E5%BC%95%E6%93%8E/" itemprop="url" rel="index"><span itemprop="name">图像引擎</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-11-%E9%A1%B6%E7%82%B9%E8%BE%93%E5%85%A5%E6%8F%8F%E8%BF%B0%E5%8F%8A%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2%E7%9A%84%E5%88%9B%E5%BB%BA/" class="post-meta-item leancloud_visitors" data-flag-title="Vulkan入门(11)-顶点输入描述及顶点缓冲的创建" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-11-%E9%A1%B6%E7%82%B9%E8%BE%93%E5%85%A5%E6%8F%8F%E8%BF%B0%E5%8F%8A%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2%E7%9A%84%E5%88%9B%E5%BB%BA/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-11-%E9%A1%B6%E7%82%B9%E8%BE%93%E5%85%A5%E6%8F%8F%E8%BF%B0%E5%8F%8A%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2%E7%9A%84%E5%88%9B%E5%BB%BA/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>接下来，我们将用内存中的顶点缓冲区替换顶点着色器中的硬编码顶点数据。我们将从创建CPU可见缓冲区的最简单方法开始，并使用memcpy将顶点数据直接复制到其中，然后我们将看到如何使用分段缓冲区将顶点数据复制到高性能内存。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-11-%E9%A1%B6%E7%82%B9%E8%BE%93%E5%85%A5%E6%8F%8F%E8%BF%B0%E5%8F%8A%E9%A1%B6%E7%82%B9%E7%BC%93%E5%86%B2%E7%9A%84%E5%88%9B%E5%BB%BA/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/02/27/Vulkan%E5%85%A5%E9%97%A8-10-%E9%87%8D%E5%BB%BA%E4%BA%A4%E6%8D%A2%E9%93%BE/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1233,20 +2148,20 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">30</span>
+          <span class="site-state-item-count">39</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-count">8</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-count">8</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>

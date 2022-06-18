@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="---  以下分析基于Android S. 简述在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。 事件要分发，首先是需要找到被分发的事件和对应的目标窗口。 一. 查找Input事件的目标窗口Input事">
+<meta property="og:type" content="article">
+<meta property="og:title" content="WMS(9)-Input事件分发给窗口的过程">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="---  以下分析基于Android S. 简述在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。 事件要分发，首先是需要找到被分发的事件和对应的目标窗口。 一. 查找Input事件的目标窗口Input事">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-05-08T17:35:34.000Z">
+<meta property="article:modified_time" content="2022-06-18T09:50:47.407Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="WMS">
+<meta property="article:tag" content="Input">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>WMS(9)-Input事件分发给窗口的过程 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          WMS(9)-Input事件分发给窗口的过程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-09 01:35:34" itemprop="dateCreated datePublished" datetime="2022-05-09T01:35:34+08:00">2022-05-09</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-18 17:50:47" itemprop="dateModified" datetime="2022-06-18T17:50:47+08:00">2022-06-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/WMS/" itemprop="url" rel="index"><span itemprop="name">WMS</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/WMS/Input/" itemprop="url" rel="index"><span itemprop="name">Input</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/" class="post-meta-item leancloud_visitors" data-flag-title="WMS(9)-Input事件分发给窗口的过程" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+---
+
+<p><strong>以下分析基于Android S.</strong></p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。</p>
+<p>事件要分发，首先是需要找到被分发的事件和对应的目标窗口。</p>
+<h1 id="一-查找Input事件的目标窗口"><a href="#一-查找Input事件的目标窗口" class="headerlink" title="一. 查找Input事件的目标窗口"></a>一. 查找Input事件的目标窗口</h1><p>Input事件是显示屏驱动收到中断后通知给InputReader，由其打包交给InputDispatcher分发的，我们直接看InputDispatcher的MotionEvent分发过程。</p>
+<h2 id="1-1-InputDispatcher-dispatchMotionLocked"><a href="#1-1-InputDispatcher-dispatchMotionLocked" class="headerlink" title="1.1 InputDispatcher.dispatchMotionLocked"></a>1.1 InputDispatcher.dispatchMotionLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">InputDispatcher::dispatchMotionLocked</span><span class="params">(<span class="type">nsecs_t</span> currentTime, std::shared_ptr&lt;MotionEntry&gt; entry,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        DropReason* dropReason, <span class="type">nsecs_t</span>* nextWakeupTime)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 通过输入源确认是否为点击触摸事件</span></span><br><span class="line">    <span class="type">bool</span> isPointerEvent = entry-&gt;source &amp; AINPUT_SOURCE_CLASS_POINTER;</span><br><span class="line">    <span class="comment">// 输入事件的目标窗口集合</span></span><br><span class="line">    std::vector&lt;InputTarget&gt; inputTargets;</span><br><span class="line">    <span class="comment">// 触摸屏事件</span></span><br><span class="line">    <span class="keyword">if</span> (isPointerEvent) &#123;</span><br><span class="line">        <span class="comment">// [1.2] 找到此次触摸事件的目标窗口    </span></span><br><span class="line">        injectionResult =</span><br><span class="line">                <span class="built_in">findTouchedWindowTargetsLocked</span>(currentTime, *entry, inputTargets, nextWakeupTime,</span><br><span class="line">                                               &amp;conflictingPointerActions);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// [2.1] Input事件的分发</span></span><br><span class="line">    <span class="built_in">dispatchEventLocked</span>(currentTime, entry, inputTargets);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Android的输入源有如下几种：</p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>AINPUT_SOURCE_CLASS_NONE</td>
+<td>0</td>
+<td>未定义，交给应用自行处理</td>
+</tr>
+<tr>
+<td>AINPUT_SOURCE_CLASS_BUTTON</td>
+<td>1</td>
+<td>按键之类的设备</td>
+</tr>
+<tr>
+<td>AINPUT_SOURCE_CLASS_POINTER</td>
+<td>2</td>
+<td>输入源是一个与显示器相关联的指向设备，如触摸屏</td>
+</tr>
+<tr>
+<td>AINPUT_SOURCE_CLASS_NAVIGATION</td>
+<td>4</td>
+<td>输入源轨迹球导航设备</td>
+</tr>
+<tr>
+<td>AINPUT_SOURCE_CLASS_POSITION</td>
+<td>8</td>
+<td>输入源是与显示器无关的绝对定位装置，如触控板</td>
+</tr>
+<tr>
+<td>AINPUT_SOURCE_CLASS_JOYSTICK</td>
+<td>16</td>
+<td>输入源是一个操纵杆，摇杆设备</td>
+</tr>
+</tbody></table>
+<p>当然，MotionEvent肯定是来自AINPUT_SOURCE_CLASS_POINTER了。</p>
+<h2 id="1-2-InputDispatcher-findTouchedWindowTargetsLocked"><a href="#1-2-InputDispatcher-findTouchedWindowTargetsLocked" class="headerlink" title="1.2 InputDispatcher.findTouchedWindowTargetsLocked"></a>1.2 InputDispatcher.findTouchedWindowTargetsLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">InputEventInjectionResult <span class="title">InputDispatcher::findTouchedWindowTargetsLocked</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">nsecs_t</span> currentTime, <span class="type">const</span> MotionEntry&amp; entry, std::vector&lt;InputTarget&gt;&amp; inputTargets,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">nsecs_t</span>* nextWakeupTime, <span class="type">bool</span>* outConflictingPointerActions)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    sp&lt;InputWindowHandle&gt; newTouchedWindowHandle;</span><br><span class="line">    ......</span><br><span class="line">    TouchState tempTouchState;</span><br><span class="line">    ......</span><br><span class="line">    <span class="type">bool</span> isDown = maskedAction == AMOTION_EVENT_ACTION_DOWN;</span><br><span class="line">    <span class="comment">// 区分是否为新的手势事件（区别与ACTION_MOVE）</span></span><br><span class="line">    <span class="type">bool</span> newGesture = (maskedAction == AMOTION_EVENT_ACTION_DOWN ||</span><br><span class="line">                    maskedAction == AMOTION_EVENT_ACTION_SCROLL || isHoverAction);</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">if</span> (newGesture || (isSplit &amp;&amp; maskedAction == AMOTION_EVENT_ACTION_POINTER_DOWN)) &#123;</span><br><span class="line">        <span class="type">int32_t</span> x;</span><br><span class="line">        <span class="type">int32_t</span> y;</span><br><span class="line">        ......</span><br><span class="line">            <span class="comment">// 获取此次触摸事件在屏幕坐标中的位置</span></span><br><span class="line">            x = <span class="built_in">int32_t</span>(entry.pointerCoords[pointerIndex].<span class="built_in">getAxisValue</span>(AMOTION_EVENT_AXIS_X));</span><br><span class="line">            y = <span class="built_in">int32_t</span>(entry.pointerCoords[pointerIndex].<span class="built_in">getAxisValue</span>(AMOTION_EVENT_AXIS_Y));</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// [1.3] 根据触摸事件的坐标找到可触摸的窗口</span></span><br><span class="line">        newTouchedWindowHandle =</span><br><span class="line">                <span class="built_in">findTouchedWindowAtLocked</span>(displayId, x, y, &amp;tempTouchState,</span><br><span class="line">                                          isDown <span class="comment">/*addOutsideTargets*/</span>, <span class="literal">true</span> <span class="comment">/*addPortalWindows*/</span>);</span><br><span class="line">        ......</span><br><span class="line">        <span class="keyword">if</span> (newTouchedWindowHandle != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            ......</span><br><span class="line">            <span class="comment">// [1.4] 将找到的目标窗口存入TouchState中</span></span><br><span class="line">            tempTouchState.<span class="built_in">addOrUpdateWindow</span>(newTouchedWindowHandle, targetFlags, pointerIds);</span><br><span class="line">        &#125;</span><br><span class="line">        .......</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 依次遍历找到的目标窗口</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> TouchedWindow&amp; touchedWindow : tempTouchState.windows) &#123;</span><br><span class="line">        <span class="comment">// [1.5] 将找到的目标窗口存入inputTargets中</span></span><br><span class="line">        <span class="built_in">addWindowTargetLocked</span>(touchedWindow.windowHandle, touchedWindow.targetFlags,</span><br><span class="line">                              touchedWindow.pointerIds, inputTargets);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-3-InputDispatcher-findTouchedWindowAtLocked"><a href="#1-3-InputDispatcher-findTouchedWindowAtLocked" class="headerlink" title="1.3 InputDispatcher.findTouchedWindowAtLocked"></a>1.3 InputDispatcher.findTouchedWindowAtLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;InputWindowHandle&gt; <span class="title">InputDispatcher::findTouchedWindowAtLocked</span><span class="params">(<span class="type">int32_t</span> displayId, <span class="type">int32_t</span> x,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                                 <span class="type">int32_t</span> y, TouchState* touchState,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                                 <span class="type">bool</span> addOutsideTargets,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                                 <span class="type">bool</span> addPortalWindows,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                                 <span class="type">bool</span> ignoreDragWindow)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// [1.3.1] 从mWindowHandlesByDisplay中拿到当前该display中所有的窗口信息</span></span><br><span class="line">    <span class="type">const</span> std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;&amp; windowHandles = <span class="built_in">getWindowHandlesLocked</span>(displayId);</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> sp&lt;InputWindowHandle&gt;&amp; windowHandle : windowHandles) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="type">const</span> InputWindowInfo* windowInfo = windowHandle-&gt;<span class="built_in">getInfo</span>();</span><br><span class="line">        <span class="keyword">if</span> (windowInfo-&gt;displayId == displayId) &#123;</span><br><span class="line">            <span class="keyword">auto</span> flags = windowInfo-&gt;flags;</span><br><span class="line">            <span class="comment">// 首先窗口必须是可见的，不可见窗口无法接收input事件</span></span><br><span class="line">            <span class="keyword">if</span> (windowInfo-&gt;visible) &#123;</span><br><span class="line">                <span class="comment">// 窗口必须不携带NOT_TOUCHABLE的flag</span></span><br><span class="line">                <span class="keyword">if</span> (!flags.<span class="built_in">test</span>(InputWindowInfo::Flag::NOT_TOUCHABLE)) &#123;</span><br><span class="line">                    <span class="type">bool</span> isTouchModal = !flags.<span class="built_in">test</span>(InputWindowInfo::Flag::NOT_FOCUSABLE) &amp;&amp;</span><br><span class="line">                            !flags.<span class="built_in">test</span>(InputWindowInfo::Flag::NOT_TOUCH_MODAL);</span><br><span class="line">                    <span class="comment">// [1.3.2] 判断坐标是否位于该窗口内或者该窗口是TOUCH_MODAL的</span></span><br><span class="line">                    <span class="keyword">if</span> (isTouchModal || windowInfo-&gt;<span class="built_in">touchableRegionContainsPoint</span>(x, y)) &#123;</span><br><span class="line">                        ......</span><br><span class="line">                        <span class="comment">// 找到的第一个窗口直接返回</span></span><br><span class="line">                        <span class="keyword">return</span> windowHandle;</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;</span><br><span class="line">                ......</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先从mWindowHandlesByDisplay中拿到当前该display中所有的窗口信息，依次遍历，判断窗口是否可见，不可见窗口无法接收input事件。如果可见，在判断窗口是否携带NOT_TOUCHABLE的flag。如果不携带，只要触摸事件的坐标位于该窗口的可触摸区域内，就返回该窗口。</p>
+<p>注意getWindowHandlesLocked拿到的窗口是有顺序的，index越小，Z轴越大。因为在<strong>SurfaceFlinger.updateInputWindowInfo时我们遍历layer的顺序是沿着Z轴反向遍历的</strong>。那么窗口在上面的会存储在mWindowHandlesByDisplay中对应队列的前面，所以这里只需要找到第一个窗口返回即可。</p>
+<h3 id="1-3-1-InputDispatcher-getWindowHandlesLocked"><a href="#1-3-1-InputDispatcher-getWindowHandlesLocked" class="headerlink" title="1.3.1 InputDispatcher.getWindowHandlesLocked"></a>1.3.1 InputDispatcher.getWindowHandlesLocked</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> std::vector&lt;sp&lt;InputWindowHandle&gt;&gt;&amp; InputDispatcher::<span class="built_in">getWindowHandlesLocked</span>(</span><br><span class="line">        <span class="type">int32_t</span> displayId) <span class="type">const</span> &#123;</span><br><span class="line">    <span class="type">static</span> <span class="type">const</span> std::vector&lt;sp&lt;InputWindowHandle&gt;&gt; EMPTY_WINDOW_HANDLES;</span><br><span class="line">    <span class="keyword">auto</span> it = mWindowHandlesByDisplay.<span class="built_in">find</span>(displayId);</span><br><span class="line">    <span class="keyword">return</span> it != mWindowHandlesByDisplay.<span class="built_in">end</span>() ? it-&gt;second : EMPTY_WINDOW_HANDLES;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>从mWindowHandlesByDisplay中拿到当前该display中所有的窗口信息（WMS中addWindow后添加的）。</p>
+<h3 id="1-3-2-InputWindowInfo-touchableRegionContainsPoint"><a href="#1-3-2-InputWindowInfo-touchableRegionContainsPoint" class="headerlink" title="1.3.2 InputWindowInfo.touchableRegionContainsPoint"></a>1.3.2 InputWindowInfo.touchableRegionContainsPoint</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">InputWindowInfo::touchableRegionContainsPoint</span><span class="params">(<span class="type">int32_t</span> x, <span class="type">int32_t</span> y)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> touchableRegion.<span class="built_in">contains</span>(x,y);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>判断该窗口的可触摸区域是否包含此坐标点。</p>
+<h2 id="1-4-TouchState-addOrUpdateWindow"><a href="#1-4-TouchState-addOrUpdateWindow" class="headerlink" title="1.4 TouchState.addOrUpdateWindow"></a>1.4 TouchState.addOrUpdateWindow</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">TouchState::addOrUpdateWindow</span><span class="params">(<span class="type">const</span> sp&lt;InputWindowHandle&gt;&amp; windowHandle, <span class="type">int32_t</span> targetFlags,</span></span></span><br><span class="line"><span class="params"><span class="function">                                   BitSet32 pointerIds)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 封装成TouchedWindow存入windows队列的末尾</span></span><br><span class="line">    TouchedWindow touchedWindow;</span><br><span class="line">    touchedWindow.windowHandle = windowHandle;</span><br><span class="line">    touchedWindow.targetFlags = targetFlags;</span><br><span class="line">    touchedWindow.pointerIds = pointerIds;</span><br><span class="line">    windows.<span class="built_in">push_back</span>(touchedWindow);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将找到的目标窗口封装成TouchedWindow存入TouchState.windows队列的末尾。</p>
+<h2 id="1-5-InputDispatcher-addWindowTargetLocked"><a href="#1-5-InputDispatcher-addWindowTargetLocked" class="headerlink" title="1.5 InputDispatcher.addWindowTargetLocked"></a>1.5 InputDispatcher.addWindowTargetLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::addWindowTargetLocked</span><span class="params">(<span class="type">const</span> sp&lt;InputWindowHandle&gt;&amp; windowHandle,</span></span></span><br><span class="line"><span class="params"><span class="function">                                            <span class="type">int32_t</span> targetFlags, BitSet32 pointerIds,</span></span></span><br><span class="line"><span class="params"><span class="function">                                            std::vector&lt;InputTarget&gt;&amp; inputTargets)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 使用find_if函数，查找inputTargets中inputChannel的token和传入的窗口token一致的InputTarget</span></span><br><span class="line">    std::vector&lt;InputTarget&gt;::iterator it =</span><br><span class="line">            std::<span class="built_in">find_if</span>(inputTargets.<span class="built_in">begin</span>(), inputTargets.<span class="built_in">end</span>(),</span><br><span class="line">                         [&amp;windowHandle](<span class="type">const</span> InputTarget&amp; inputTarget) &#123;</span><br><span class="line">                             <span class="keyword">return</span> inputTarget.inputChannel-&gt;<span class="built_in">getConnectionToken</span>() ==</span><br><span class="line">                                     windowHandle-&gt;<span class="built_in">getToken</span>();</span><br><span class="line">                         &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> InputWindowInfo* windowInfo = windowHandle-&gt;<span class="built_in">getInfo</span>();</span><br><span class="line">    <span class="comment">// 当it是指向inputTargets.end()时，说明inputTargets中不存在和传入的窗口token一致的InputTarget对象</span></span><br><span class="line">    <span class="keyword">if</span> (it == inputTargets.<span class="built_in">end</span>()) &#123;</span><br><span class="line">        <span class="comment">// 创建新的InputTarget，对应传入的窗口，放在inputTargets队列的末尾</span></span><br><span class="line">        InputTarget inputTarget;</span><br><span class="line">        std::shared_ptr&lt;InputChannel&gt; inputChannel =</span><br><span class="line">                <span class="built_in">getInputChannelLocked</span>(windowHandle-&gt;<span class="built_in">getToken</span>());</span><br><span class="line">        <span class="keyword">if</span> (inputChannel == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            <span class="built_in">ALOGW</span>(<span class="string">&quot;Window %s already unregistered input channel&quot;</span>, windowHandle-&gt;<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        inputTarget.inputChannel = inputChannel;</span><br><span class="line">        inputTarget.flags = targetFlags;</span><br><span class="line">        inputTarget.globalScaleFactor = windowInfo-&gt;globalScaleFactor;</span><br><span class="line">        inputTarget.displaySize =</span><br><span class="line">                <span class="built_in">vec2</span>(windowHandle-&gt;<span class="built_in">getInfo</span>()-&gt;displayWidth, windowHandle-&gt;<span class="built_in">getInfo</span>()-&gt;displayHeight);</span><br><span class="line">        inputTargets.<span class="built_in">push_back</span>(inputTarget);</span><br><span class="line">        it = inputTargets.<span class="built_in">end</span>() - <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">ALOG_ASSERT</span>(it-&gt;flags == targetFlags);</span><br><span class="line">    <span class="built_in">ALOG_ASSERT</span>(it-&gt;globalScaleFactor == windowInfo-&gt;globalScaleFactor);</span><br><span class="line">    <span class="comment">// 将pointerIds存入InputTarget, 顺便将transform存入pointerTransforms中，以方便做转换</span></span><br><span class="line">    it-&gt;<span class="built_in">addPointers</span>(pointerIds, windowInfo-&gt;transform);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里也是比较简单的一个函数，首先使用find_if函数，查找inputTargets中inputChannel的token和传入的窗口token一致的InputTarget，如果不存在就根据传入的窗口信息windowHandle创键新的InputTarget并存入inputTargets队列的末尾。</p>
+<h1 id="二-Input事件分发"><a href="#二-Input事件分发" class="headerlink" title="二. Input事件分发"></a>二. Input事件分发</h1><h2 id="2-1-InputDispatcher-dispatchEventLocked"><a href="#2-1-InputDispatcher-dispatchEventLocked" class="headerlink" title="2.1 InputDispatcher.dispatchEventLocked"></a>2.1 InputDispatcher.dispatchEventLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::dispatchEventLocked</span><span class="params">(<span class="type">nsecs_t</span> currentTime,</span></span></span><br><span class="line"><span class="params"><span class="function">                                          std::shared_ptr&lt;EventEntry&gt; eventEntry,</span></span></span><br><span class="line"><span class="params"><span class="function">                                          <span class="type">const</span> std::vector&lt;InputTarget&gt;&amp; inputTargets)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 这里通过JNI调用到PowerManagerService, 更新自动灭屏的时间，这样触碰屏幕后自动灭屏就重新开始计时了    </span></span><br><span class="line">    <span class="built_in">pokeUserActivityLocked</span>(*eventEntry);</span><br><span class="line">    <span class="comment">// 依次遍历所有的目标窗口</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> InputTarget&amp; inputTarget : inputTargets) &#123;</span><br><span class="line">        <span class="comment">// [2.1.1] 拿到目标窗口InputChannel对应的Connection</span></span><br><span class="line">        sp&lt;Connection&gt; connection =</span><br><span class="line">                <span class="built_in">getConnectionLocked</span>(inputTarget.inputChannel-&gt;<span class="built_in">getConnectionToken</span>());</span><br><span class="line">        <span class="keyword">if</span> (connection != <span class="literal">nullptr</span>) &#123;</span><br><span class="line">            <span class="comment">// [2.2] 准备分发</span></span><br><span class="line">            <span class="built_in">prepareDispatchCycleLocked</span>(currentTime, connection, eventEntry, inputTarget);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">if</span> (DEBUG_FOCUS) &#123;</span><br><span class="line">                <span class="built_in">ALOGD</span>(<span class="string">&quot;Dropping event delivery to target with channel &#x27;%s&#x27; because it &quot;</span></span><br><span class="line">                      <span class="string">&quot;is no longer registered with the input dispatcher.&quot;</span>,</span><br><span class="line">                      inputTarget.inputChannel-&gt;<span class="built_in">getName</span>().<span class="built_in">c_str</span>());</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-1-1-InputDispatcher-getConnectionLocked"><a href="#2-1-1-InputDispatcher-getConnectionLocked" class="headerlink" title="2.1.1 InputDispatcher.getConnectionLocked"></a>2.1.1 InputDispatcher.getConnectionLocked</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">sp&lt;Connection&gt; <span class="title">InputDispatcher::getConnectionLocked</span><span class="params">(<span class="type">const</span> sp&lt;IBinder&gt;&amp; inputConnectionToken)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (inputConnectionToken == <span class="literal">nullptr</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">const</span> <span class="keyword">auto</span>&amp; [token, connection] : mConnectionsByToken) &#123;</span><br><span class="line">        <span class="keyword">if</span> (token == inputConnectionToken) &#123;</span><br><span class="line">            <span class="keyword">return</span> connection;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>传入的token就是InputChannel初始化时创建BBinder, 而InputChannel创建完成后会生成Connection存入mConnectionsByToken，这个发生在InputDispatcher::createInputChannel中。</p>
+<h2 id="2-2-InputDispatcher-prepareDispatchCycleLocked"><a href="#2-2-InputDispatcher-prepareDispatchCycleLocked" class="headerlink" title="2.2 InputDispatcher.prepareDispatchCycleLocked"></a>2.2 InputDispatcher.prepareDispatchCycleLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::prepareDispatchCycleLocked</span><span class="params">(<span class="type">nsecs_t</span> currentTime,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                 <span class="type">const</span> sp&lt;Connection&gt;&amp; connection,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                 std::shared_ptr&lt;EventEntry&gt; eventEntry,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                 <span class="type">const</span> InputTarget&amp; inputTarget)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 将Input事件和对应分发的连接作为一次分发事件存入Input分发队列</span></span><br><span class="line">    <span class="built_in">enqueueDispatchEntriesLocked</span>(currentTime, connection, eventEntry, inputTarget);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::enqueueDispatchEntriesLocked</span><span class="params">(<span class="type">nsecs_t</span> currentTime,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                   <span class="type">const</span> sp&lt;Connection&gt;&amp; connection,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                   std::shared_ptr&lt;EventEntry&gt; eventEntry,</span></span></span><br><span class="line"><span class="params"><span class="function">                                                   <span class="type">const</span> InputTarget&amp; inputTarget)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 判断该连接是否存在input事件待分发</span></span><br><span class="line">    <span class="type">bool</span> wasEmpty = connection-&gt;outboundQueue.<span class="built_in">empty</span>();</span><br><span class="line">    ......</span><br><span class="line">    <span class="built_in">enqueueDispatchEntryLocked</span>(connection, eventEntry, inputTarget,</span><br><span class="line">                            InputTarget::FLAG_DISPATCH_AS_IS);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 如果出站队列之前为空，则启动调度周期</span></span><br><span class="line">    <span class="keyword">if</span> (wasEmpty &amp;&amp; !connection-&gt;outboundQueue.<span class="built_in">empty</span>()) &#123;</span><br><span class="line">        <span class="comment">// [2.3] 启动input事件分发</span></span><br><span class="line">        <span class="built_in">startDispatchCycleLocked</span>(currentTime, connection);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-3-InputDispatcher-startDispatchCycleLocked"><a href="#2-3-InputDispatcher-startDispatchCycleLocked" class="headerlink" title="2.3 InputDispatcher.startDispatchCycleLocked"></a>2.3 InputDispatcher.startDispatchCycleLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">InputDispatcher::startDispatchCycleLocked</span><span class="params">(<span class="type">nsecs_t</span> currentTime,</span></span></span><br><span class="line"><span class="params"><span class="function">                                               <span class="type">const</span> sp&lt;Connection&gt;&amp; connection)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// InputChannel连接正常，将待分发队列里的事件一一分发</span></span><br><span class="line">    <span class="keyword">while</span> (connection-&gt;status == Connection::STATUS_NORMAL &amp;&amp; !connection-&gt;outboundQueue.<span class="built_in">empty</span>()) &#123;</span><br><span class="line">        <span class="comment">// 每次都取第一个事件，保证先进先出</span></span><br><span class="line">        DispatchEntry* dispatchEntry = connection-&gt;outboundQueue.<span class="built_in">front</span>();</span><br><span class="line">        ......</span><br><span class="line">        <span class="type">const</span> EventEntry&amp; eventEntry = *(dispatchEntry-&gt;eventEntry);</span><br><span class="line">        <span class="keyword">switch</span> (eventEntry.type) &#123;</span><br><span class="line">            ......</span><br><span class="line">            <span class="keyword">case</span> EventEntry::Type::MOTION: &#123;</span><br><span class="line">                ......</span><br><span class="line">                <span class="comment">// [2.4] 发布input事件，将input事件所有信息都发出去</span></span><br><span class="line">                status = connection-&gt;inputPublisher</span><br><span class="line">                            .<span class="built_in">publishMotionEvent</span>(......);</span><br><span class="line">                ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>当InputChannel对应的连接正常，则将待分发队列里的事件一一分发，每次都取outboundQueue中的第一个事件，保证先进先出。</p>
+<p>Connection中的InputPublisher就是Connection初始化时创建的InputPublisher。</p>
+<h2 id="2-4-InputPublisher-publishMotionEvent"><a href="#2-4-InputPublisher-publishMotionEvent" class="headerlink" title="2.4 InputPublisher.publishMotionEvent"></a>2.4 InputPublisher.publishMotionEvent</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">InputPublisher::publishMotionEvent</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">uint32_t</span> seq, <span class="type">int32_t</span> eventId, <span class="type">int32_t</span> deviceId, <span class="type">int32_t</span> source, <span class="type">int32_t</span> displayId,</span></span></span><br><span class="line"><span class="params"><span class="function">        std::array&lt;<span class="type">uint8_t</span>, <span class="number">32</span>&gt; hmac, <span class="type">int32_t</span> action, <span class="type">int32_t</span> actionButton, <span class="type">int32_t</span> flags,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">int32_t</span> edgeFlags, <span class="type">int32_t</span> metaState, <span class="type">int32_t</span> buttonState,</span></span></span><br><span class="line"><span class="params"><span class="function">        MotionClassification classification, <span class="type">const</span> ui::Transform&amp; transform, <span class="type">float</span> xPrecision,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">float</span> yPrecision, <span class="type">float</span> xCursorPosition, <span class="type">float</span> yCursorPosition, <span class="type">int32_t</span> displayWidth,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">int32_t</span> displayHeight, <span class="type">nsecs_t</span> downTime, <span class="type">nsecs_t</span> eventTime, <span class="type">uint32_t</span> pointerCount,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">const</span> PointerProperties* pointerProperties, <span class="type">const</span> PointerCoords* pointerCoords)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 将input事件封装成InputMessage</span></span><br><span class="line">    InputMessage msg;</span><br><span class="line">    msg.header.type = InputMessage::Type::MOTION;</span><br><span class="line">    ......</span><br><span class="line">    msg.body.motion.eventTime = eventTime;</span><br><span class="line">    msg.body.motion.pointerCount = pointerCount;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 交给InputChannel将input事件通知给应用进程</span></span><br><span class="line">    <span class="keyword">return</span> mChannel-&gt;<span class="built_in">sendMessage</span>(&amp;msg);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>将input事件封装成InputMessage, 在交给InputChannel将input事件通知给应用进程.</p>
+<h2 id="2-5-InputChannel-sendMessage"><a href="#2-5-InputChannel-sendMessage" class="headerlink" title="2.5 InputChannel.sendMessage"></a>2.5 InputChannel.sendMessage</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">InputChannel::sendMessage</span><span class="params">(<span class="type">const</span> InputMessage* msg)</span> </span>&#123;</span><br><span class="line">    <span class="type">const</span> <span class="type">size_t</span> msgLength = msg-&gt;<span class="built_in">size</span>();</span><br><span class="line">    InputMessage cleanMsg;</span><br><span class="line">    msg-&gt;<span class="built_in">getSanitizedCopy</span>(&amp;cleanMsg);</span><br><span class="line">    <span class="type">ssize_t</span> nWrite;</span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="comment">// 交给Socket进行通信</span></span><br><span class="line">        nWrite = ::<span class="built_in">send</span>(<span class="built_in">getFd</span>(), &amp;cleanMsg, msgLength, MSG_DONTWAIT | MSG_NOSIGNAL);</span><br><span class="line">    &#125; <span class="keyword">while</span> (nWrite == <span class="number">-1</span> &amp;&amp; errno == EINTR);</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">return</span> OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>经过InputChannel, 此次的input事件就通知给了目标窗口所在进程。回忆一下，我们应用进程中注册该InputChannel对的Socket文件描述符是在NativeInputEventReceiver中的：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">NativeInputEventReceiver::setFdEvents</span><span class="params">(<span class="type">int</span> events)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (mFdEvents != events) &#123;</span><br><span class="line">        mFdEvents = events;</span><br><span class="line">        <span class="type">int</span> fd = mInputConsumer.<span class="built_in">getChannel</span>()-&gt;<span class="built_in">getFd</span>();</span><br><span class="line">        <span class="keyword">if</span> (events) &#123;</span><br><span class="line">            <span class="comment">// 将InputChannel中的客户端Socket的文件描述符加入的Looper中监听</span></span><br><span class="line">            mMessageQueue-&gt;<span class="built_in">getLooper</span>()-&gt;<span class="built_in">addFd</span>(fd, <span class="number">0</span>, events, <span class="keyword">this</span>, <span class="literal">nullptr</span>);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            mMessageQueue-&gt;<span class="built_in">getLooper</span>()-&gt;<span class="built_in">removeFd</span>(fd);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>所以我们应用进程收到该socket文件描述符消息时，会调用NativeInputEventReceiver::handleEvent函数了（Looper机制）。</p>
+<h1 id="三-应用进程收到Input事件"><a href="#三-应用进程收到Input事件" class="headerlink" title="三. 应用进程收到Input事件"></a>三. 应用进程收到Input事件</h1><h2 id="3-1-NativeInputEventReceiver-handleEvent"><a href="#3-1-NativeInputEventReceiver-handleEvent" class="headerlink" title="3.1 NativeInputEventReceiver.handleEvent"></a>3.1 NativeInputEventReceiver.handleEvent</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">int</span> <span class="title">NativeInputEventReceiver::handleEvent</span><span class="params">(<span class="type">int</span> receiveFd, <span class="type">int</span> events, <span class="type">void</span>* data)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">if</span> (events &amp; ALOOPER_EVENT_INPUT) &#123;</span><br><span class="line">        JNIEnv* env = AndroidRuntime::<span class="built_in">getJNIEnv</span>();</span><br><span class="line">        <span class="comment">// [3.2] 消费此次input事件</span></span><br><span class="line">        <span class="type">status_t</span> status = <span class="built_in">consumeEvents</span>(env, <span class="literal">false</span> <span class="comment">/*consumeBatches*/</span>, <span class="number">-1</span>, <span class="literal">nullptr</span>);</span><br><span class="line">        mMessageQueue-&gt;<span class="built_in">raiseAndClearException</span>(env, <span class="string">&quot;handleReceiveCallback&quot;</span>);</span><br><span class="line">        <span class="keyword">return</span> status == OK || status == NO_MEMORY ? KEEP_CALLBACK : REMOVE_CALLBACK;</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-2-NativeInputEventReceiver-consumeEvents"><a href="#3-2-NativeInputEventReceiver-consumeEvents" class="headerlink" title="3.2 NativeInputEventReceiver.consumeEvents"></a>3.2 NativeInputEventReceiver.consumeEvents</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">NativeInputEventReceiver::consumeEvents</span><span class="params">(JNIEnv* env,</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">bool</span> consumeBatches, <span class="type">nsecs_t</span> frameTime, <span class="type">bool</span>* outConsumedBatch)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">        <span class="type">uint32_t</span> seq;</span><br><span class="line">        InputEvent* inputEvent;</span><br><span class="line">        <span class="comment">// [3.3] 将接收到的数据封装成InputEvent</span></span><br><span class="line">        <span class="type">status_t</span> status = mInputConsumer.<span class="built_in">consume</span>(&amp;mInputEventFactory,</span><br><span class="line">                consumeBatches, frameTime, &amp;seq, &amp;inputEvent);</span><br><span class="line">        ......</span><br><span class="line">        <span class="keyword">if</span> (!skipCallbacks) &#123;</span><br><span class="line">            ......</span><br><span class="line">            jobject inputEventObj;</span><br><span class="line">            <span class="keyword">switch</span> (inputEvent-&gt;<span class="built_in">getType</span>()) &#123;</span><br><span class="line">                ......</span><br><span class="line">                <span class="keyword">case</span> AINPUT_EVENT_TYPE_MOTION: &#123;</span><br><span class="line">                    MotionEvent* motionEvent = <span class="built_in">static_cast</span>&lt;MotionEvent*&gt;(inputEvent);</span><br><span class="line">                    <span class="keyword">if</span> ((motionEvent-&gt;<span class="built_in">getAction</span>() &amp; AMOTION_EVENT_ACTION_MOVE) &amp;&amp; outConsumedBatch) &#123;</span><br><span class="line">                        *outConsumedBatch = <span class="literal">true</span>;</span><br><span class="line">                    &#125;</span><br><span class="line">                    <span class="comment">// 通过JNI创建java层的MotionEvent对象</span></span><br><span class="line">                    inputEventObj = <span class="built_in">android_view_MotionEvent_obtainAsCopy</span>(env, motionEvent);</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                &#125;        </span><br><span class="line">                ......</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">if</span> (inputEventObj) &#123;</span><br><span class="line">                <span class="comment">// [3.4] 通过JNI调用dispatchInputEvent将Input事件分发给应用java层的View</span></span><br><span class="line">                env-&gt;<span class="built_in">CallVoidMethod</span>(receiverObj.<span class="built_in">get</span>(),</span><br><span class="line">                        gInputEventReceiverClassInfo.dispatchInputEvent, seq, inputEventObj);</span><br><span class="line">                ......</span><br><span class="line">                <span class="comment">// 此次Input事件使用之后就回收</span></span><br><span class="line">                env-&gt;<span class="built_in">DeleteLocalRef</span>(inputEventObj);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>consumeEvents就是接收socket数据，将input事件封装成对应类型的对象，如触摸事件对应MotionEvent，按键事件对应KeyEvent. 然后通过JNI创建对应java层的input事件对象，最后调用InputEventReceiver.dispatchInputEvent将Input事件分发给应用java层的View。</p>
+<h2 id="3-3-InputConsumer-consume"><a href="#3-3-InputConsumer-consume" class="headerlink" title="3.3 InputConsumer.consume"></a>3.3 InputConsumer.consume</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">InputConsumer::consume</span><span class="params">(InputEventFactoryInterface* factory, <span class="type">bool</span> consumeBatches,</span></span></span><br><span class="line"><span class="params"><span class="function">                                <span class="type">nsecs_t</span> frameTime, <span class="type">uint32_t</span>* outSeq, InputEvent** outEvent)</span> </span>&#123;</span><br><span class="line">    ......</span><br><span class="line">    *outSeq = <span class="number">0</span>;</span><br><span class="line">    *outEvent = <span class="literal">nullptr</span>;</span><br><span class="line">    <span class="keyword">while</span> (!*outEvent) &#123;</span><br><span class="line">        ......</span><br><span class="line">            <span class="comment">// [3.3.1] 通过recv函数接收Socket数据</span></span><br><span class="line">            <span class="type">status_t</span> result = mChannel-&gt;<span class="built_in">receiveMessage</span>(&amp;mMsg);</span><br><span class="line">        ......</span><br><span class="line">        <span class="keyword">switch</span> (mMsg.header.type) &#123;</span><br><span class="line">            ......</span><br><span class="line">            <span class="keyword">case</span> InputMessage::Type::MOTION: &#123;</span><br><span class="line">                ......</span><br><span class="line">                <span class="comment">// 创建MotionEvent</span></span><br><span class="line">                MotionEvent* motionEvent = factory-&gt;<span class="built_in">createMotionEvent</span>();</span><br><span class="line">                <span class="keyword">if</span> (!motionEvent) <span class="keyword">return</span> NO_MEMORY;</span><br><span class="line">                <span class="comment">// 更新触摸状态信息</span></span><br><span class="line">                <span class="built_in">updateTouchState</span>(mMsg);</span><br><span class="line">                <span class="comment">// 使用收到的InputMessage填充创建的MotionEvent</span></span><br><span class="line">                <span class="built_in">initializeMotionEvent</span>(motionEvent, &amp;mMsg);</span><br><span class="line">            &#125;</span><br><span class="line">            ......</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里首先在InputChannel中通过recv函数接收来自Input系统的Socket数据(InputMessage), 然后根据input类型分别封装成对应的input事件，比如MotionEvent、KeyEvent等。</p>
+<h3 id="3-3-1-InputChannel-receiveMessage"><a href="#3-3-1-InputChannel-receiveMessage" class="headerlink" title="3.3.1 InputChannel.receiveMessage"></a>3.3.1 InputChannel.receiveMessage</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">status_t</span> <span class="title">InputChannel::receiveMessage</span><span class="params">(InputMessage* msg)</span> </span>&#123;</span><br><span class="line">    <span class="type">ssize_t</span> nRead;</span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="comment">// 通过recv函数接收Socket数据</span></span><br><span class="line">        nRead = ::<span class="built_in">recv</span>(<span class="built_in">getFd</span>(), msg, <span class="built_in">sizeof</span>(InputMessage), MSG_DONTWAIT);</span><br><span class="line">    &#125; <span class="keyword">while</span> (nRead == <span class="number">-1</span> &amp;&amp; errno == EINTR);</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>通过recv函数接收Socket数据, 还原成InputMessage.</p>
+<h2 id="3-4-WindowInputEventReceiver-dispatchInputEvent"><a href="#3-4-WindowInputEventReceiver-dispatchInputEvent" class="headerlink" title="3.4 WindowInputEventReceiver.dispatchInputEvent"></a>3.4 WindowInputEventReceiver.dispatchInputEvent</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Called from native code.</span></span><br><span class="line"><span class="meta">@SuppressWarnings(&quot;unused&quot;)</span></span><br><span class="line"><span class="meta">@UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">dispatchInputEvent</span><span class="params">(<span class="type">int</span> seq, InputEvent event)</span> &#123;</span><br><span class="line">    mSeqMap.put(event.getSequenceNumber(), seq);</span><br><span class="line">    onInputEvent(event);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>注意这里JNI注册的InputEventReceiver其实是ViewRootImpl中的WindowInputEventReceiver, 所以onInputEvent其实是调用了被Override的子类函数。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// WindowInputEventReceiver.java</span></span><br><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">onInputEvent</span><span class="params">(InputEvent event)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        enqueueInputEvent(event, <span class="built_in">this</span>, <span class="number">0</span>, <span class="literal">true</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>后面将事件分发给对应的View组件的过程，其实也不难猜测，因为View是树形结构，只需要前序遍历该树找到input事件坐标所在的最叶子节点的View，如果该View消耗了此次事件，也就是设置了对应的Listener并实现了接口返回true, 那么该事件就不继续分发了。否则沿着树形结构依次遍历父View，看是否需要使用该事件。</p>
+<p>到这里，Input和窗口的关系分析就告一段落了。接下来分析窗口对应的View和SurfaceFlinger通信过程。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/" title="WMS(9)-Input事件分发给窗口的过程">https://swallowjoe.github.io/2022/05/09/WMS(9)-Input事件分发给窗口的过程/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/WMS/" rel="tag"># WMS</a>
+              <a href="/tags/Input/" rel="tag"># Input</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/05/08/WMS(8)-%E7%AA%97%E5%8F%A3%E4%BF%A1%E6%81%AF%E4%BC%A0%E9%80%92%E7%BB%99Input%E7%B3%BB%E7%BB%9F/" rel="prev" title="WMS(8)-窗口信息传递给Input系统">
+      <i class="fa fa-chevron-left"></i> WMS(8)-窗口信息传递给Input系统
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-%E6%9F%A5%E6%89%BEInput%E4%BA%8B%E4%BB%B6%E7%9A%84%E7%9B%AE%E6%A0%87%E7%AA%97%E5%8F%A3"><span class="nav-text">一. 查找Input事件的目标窗口</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-InputDispatcher-dispatchMotionLocked"><span class="nav-text">1.1 InputDispatcher.dispatchMotionLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-InputDispatcher-findTouchedWindowTargetsLocked"><span class="nav-text">1.2 InputDispatcher.findTouchedWindowTargetsLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-InputDispatcher-findTouchedWindowAtLocked"><span class="nav-text">1.3 InputDispatcher.findTouchedWindowAtLocked</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-1-InputDispatcher-getWindowHandlesLocked"><span class="nav-text">1.3.1 InputDispatcher.getWindowHandlesLocked</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-2-InputWindowInfo-touchableRegionContainsPoint"><span class="nav-text">1.3.2 InputWindowInfo.touchableRegionContainsPoint</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-TouchState-addOrUpdateWindow"><span class="nav-text">1.4 TouchState.addOrUpdateWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-InputDispatcher-addWindowTargetLocked"><span class="nav-text">1.5 InputDispatcher.addWindowTargetLocked</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91"><span class="nav-text">二. Input事件分发</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-InputDispatcher-dispatchEventLocked"><span class="nav-text">2.1 InputDispatcher.dispatchEventLocked</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-1-InputDispatcher-getConnectionLocked"><span class="nav-text">2.1.1 InputDispatcher.getConnectionLocked</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-InputDispatcher-prepareDispatchCycleLocked"><span class="nav-text">2.2 InputDispatcher.prepareDispatchCycleLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-InputDispatcher-startDispatchCycleLocked"><span class="nav-text">2.3 InputDispatcher.startDispatchCycleLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-InputPublisher-publishMotionEvent"><span class="nav-text">2.4 InputPublisher.publishMotionEvent</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-InputChannel-sendMessage"><span class="nav-text">2.5 InputChannel.sendMessage</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%89-%E5%BA%94%E7%94%A8%E8%BF%9B%E7%A8%8B%E6%94%B6%E5%88%B0Input%E4%BA%8B%E4%BB%B6"><span class="nav-text">三. 应用进程收到Input事件</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#3-1-NativeInputEventReceiver-handleEvent"><span class="nav-text">3.1 NativeInputEventReceiver.handleEvent</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-2-NativeInputEventReceiver-consumeEvents"><span class="nav-text">3.2 NativeInputEventReceiver.consumeEvents</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-3-InputConsumer-consume"><span class="nav-text">3.3 InputConsumer.consume</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-1-InputChannel-receiveMessage"><span class="nav-text">3.3.1 InputChannel.receiveMessage</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-4-WindowInputEventReceiver-dispatchInputEvent"><span class="nav-text">3.4 WindowInputEventReceiver.dispatchInputEvent</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">39</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

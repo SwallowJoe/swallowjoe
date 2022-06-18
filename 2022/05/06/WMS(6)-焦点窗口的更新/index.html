@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="---  以下分析基于Android S. 简述这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口:   adb shell dumpsys window |grep -iE “mCurr*”  我们知道一个实体显示器对应一个DisplayId, 相应的有一个DisplayContent，如同我们人眼或者相机的对焦">
+<meta property="og:type" content="article">
+<meta property="og:title" content="WMS(6)-焦点窗口的更新">
+<meta property="og:url" content="https://swallowjoe.github.io/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/index.html">
+<meta property="og:site_name" content="SwallowJoe的博客">
+<meta property="og:description" content="---  以下分析基于Android S. 简述这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口:   adb shell dumpsys window |grep -iE “mCurr*”  我们知道一个实体显示器对应一个DisplayId, 相应的有一个DisplayContent，如同我们人眼或者相机的对焦">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/6_1.png">
+<meta property="article:published_time" content="2022-05-05T17:35:34.000Z">
+<meta property="article:modified_time" content="2022-06-18T09:50:37.397Z">
+<meta property="article:author" content="SwallowJoe">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="WMS">
+<meta property="article:tag" content="Input">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/6_1.png">
+
+<link rel="canonical" href="https://swallowjoe.github.io/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>WMS(6)-焦点窗口的更新 | SwallowJoe的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="SwallowJoe的博客" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">SwallowJoe的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Be a real go-getter,<br>NEVER SETTLE!</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/swallowjoe" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://swallowjoe.github.io/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="SwallowJoe">
+      <meta itemprop="description" content="君子知命不惧，日日自新">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="SwallowJoe的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          WMS(6)-焦点窗口的更新
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-06 01:35:34" itemprop="dateCreated datePublished" datetime="2022-05-06T01:35:34+08:00">2022-05-06</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-18 17:50:37" itemprop="dateModified" datetime="2022-06-18T17:50:37+08:00">2022-06-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/" itemprop="url" rel="index"><span itemprop="name">Android</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android/WMS/" itemprop="url" rel="index"><span itemprop="name">WMS</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/" class="post-meta-item leancloud_visitors" data-flag-title="WMS(6)-焦点窗口的更新" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div style="page-break-after: always;"></div>
+---
+
+<p><strong>以下分析基于Android S.</strong></p>
+<h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口: </p>
+<blockquote>
+<p>adb shell dumpsys window |grep -iE “mCurr*”</p>
+</blockquote>
+<p>我们知道一个实体显示器对应一个DisplayId, 相应的有一个DisplayContent，如同我们人眼或者相机的对焦，同一时刻只能有一个焦点，那么对应一个Display一般来说也只有一个焦点窗口了。</p>
+<p>我们之前一直分析的WMS.addWindow，在应用进程调用setView传入对应窗口属性之后，当然也会有焦点窗口的重新计算了：</p>
+<span id="more"></span>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">addWindow</span><span class="params">(Session session, IWindow client, LayoutParams attrs, <span class="type">int</span> viewVisibility,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> displayId, <span class="type">int</span> requestUserId, InsetsState requestedVisibility,</span></span><br><span class="line"><span class="params">        InputChannel outInputChannel, InsetsState outInsetsState,</span></span><br><span class="line"><span class="params">        InsetsSourceControl[] outActiveControls)</span> &#123;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 窗口类型保存在LayoutParams中</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">type</span> <span class="operator">=</span> attrs.type;</span><br><span class="line">    <span class="keyword">synchronized</span> (mGlobalLock) &#123;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 这里DisplayContent中至少包含该App的一个WindowToke，也就是Activity被start时创建的ActivityRecord!</span></span><br><span class="line">        <span class="type">WindowToken</span> <span class="variable">token</span> <span class="operator">=</span> displayContent.getWindowToken(</span><br><span class="line">                hasParent ? parentWindow.mAttrs.token : attrs.token);</span><br><span class="line">        ...</span><br><span class="line">        <span class="comment">// 初始化WindowState</span></span><br><span class="line">        <span class="keyword">final</span> <span class="type">WindowState</span> <span class="variable">win</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">WindowState</span>(<span class="built_in">this</span>, session, client, token, parentWindow,</span><br><span class="line">                appOp[<span class="number">0</span>], attrs, viewVisibility, session.mUid, userId,</span><br><span class="line">                session.mCanAddInternalSystemWindow);</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 创建SurfaceSession, 用来和SurfaceFlinger通信</span></span><br><span class="line">        win.attach();</span><br><span class="line">        <span class="comment">// 保存WindowState, key为ViewRoomImpl.W</span></span><br><span class="line">        mWindowMap.put(client.asBinder(), win);</span><br><span class="line">        <span class="comment">// 和应用窗口权限有关，后续分析</span></span><br><span class="line">        win.initAppOpsState();</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 将该WindowState保存在其mToken(ActivityRecord)中</span></span><br><span class="line">        win.mToken.addWindow(win);</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 标记焦点窗口是否更新</span></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">focusChanged</span> <span class="operator">=</span> <span class="literal">false</span>;</span><br><span class="line">        <span class="comment">// [1.1] 检查该窗口是否可以接收input事件</span></span><br><span class="line">        <span class="keyword">if</span> (win.canReceiveKeys()) &#123;</span><br><span class="line">            <span class="comment">// [1.2] 更新焦点窗口</span></span><br><span class="line">            focusChanged = updateFocusedWindowLocked(UPDATE_FOCUS_WILL_ASSIGN_LAYERS,</span><br><span class="line">                    <span class="literal">false</span> <span class="comment">/*updateInputWindows*/</span>);</span><br><span class="line">            <span class="keyword">if</span> (focusChanged) &#123;</span><br><span class="line">                imMayMove = <span class="literal">false</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// [2.1] 如果焦点窗口有更新，也需要更新input相关设置</span></span><br><span class="line">        <span class="keyword">if</span> (focusChanged) &#123;</span><br><span class="line">            displayContent.getInputMonitor().setInputFocusLw(displayContent.mCurrentFocus,</span><br><span class="line">                    <span class="literal">false</span> <span class="comment">/*updateInputWindows*/</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        ......</span><br><span class="line">        <span class="comment">// 该窗口成功被添加或者是可见的而且当前display需要更新方向时，更新display相关配置</span></span><br><span class="line">        <span class="keyword">if</span> (win.isVisibleOrAdding() &amp;&amp; displayContent.updateOrientation()) &#123;</span><br><span class="line">            displayContent.sendNewConfiguration();</span><br><span class="line">        &#125;</span><br><span class="line">    ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="一-焦点窗口更新"><a href="#一-焦点窗口更新" class="headerlink" title="一. 焦点窗口更新"></a>一. 焦点窗口更新</h1><p>应用的第一个addWindow应该是启动窗口的，所以我们以启动窗口为例分析焦点窗口更新。</p>
+<h2 id="1-1-WindowState-canReceiveKeys"><a href="#1-1-WindowState-canReceiveKeys" class="headerlink" title="1.1 WindowState.canReceiveKeys"></a>1.1 WindowState.canReceiveKeys</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">canReceiveKeys</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> canReceiveKeys(<span class="literal">false</span> <span class="comment">/* fromUserTouch */</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">canReceiveKeys</span><span class="params">(<span class="type">boolean</span> fromUserTouch)</span> &#123;</span><br><span class="line">    <span class="comment">// [1.1.1] 检查该窗口是否可见</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">boolean</span> <span class="variable">canReceiveKeys</span> <span class="operator">=</span> isVisibleOrAdding()</span><br><span class="line">            &amp;&amp; (mViewVisibility == View.VISIBLE) &amp;&amp; !mRemoveOnExit</span><br><span class="line">            &amp;&amp; ((mAttrs.flags &amp; WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == <span class="number">0</span>)</span><br><span class="line">            <span class="comment">// [1.1.2] 确认该ActivityRecord是否可聚焦</span></span><br><span class="line">            &amp;&amp; (mActivityRecord == <span class="literal">null</span> || mActivityRecord.windowsAreFocusable(fromUserTouch))</span><br><span class="line">            <span class="comment">// [1.1.3] 判断该WindowState是否允许接收input事件</span></span><br><span class="line">            &amp;&amp; canReceiveTouchInput();</span><br><span class="line">    <span class="keyword">if</span> (!canReceiveKeys) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 除非用户有意触摸显示器，否则不允许不受信任的虚拟显示接收input事件</span></span><br><span class="line">    <span class="keyword">return</span> fromUserTouch || getDisplayContent().isOnTop()</span><br><span class="line">            || getDisplayContent().isTrusted();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里检查了一堆参数，我们一一分析：</p>
+<ol>
+<li>isVisibleOrAdding(): 判断当前窗口是否可见或者被添加</li>
+<li>mViewVisibility &#x3D;&#x3D; View.VISIBLE: 窗口可见属性为VISIBLE</li>
+<li>!mRemoveOnExit: 该窗口没有移除或者退出</li>
+<li>((mAttrs.flags &amp; WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) &#x3D;&#x3D; 0): 该窗口的属性不带有FLAG_NOT_FOCUSABLE，是可聚焦的</li>
+<li>(mActivityRecord &#x3D;&#x3D; null || mActivityRecord.windowsAreFocusable(fromUserTouch)):该窗口不是Activity对应的窗口，如果是那么需要满足windowsAreFocusable</li>
+<li>canReceiveTouchInput(): 该窗口可以接收touch事件</li>
+</ol>
+<p>只有当上述条件都满足且窗口所处的DisplayContent是最上层的并且该Display是受信任的，该窗口才可能接收事件。</p>
+<h3 id="1-1-1-WindowState-isVisibleOrAdding"><a href="#1-1-1-WindowState-isVisibleOrAdding" class="headerlink" title="1.1.1 WindowState.isVisibleOrAdding"></a>1.1.1 WindowState.isVisibleOrAdding</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">isVisibleOrAdding</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// 该窗口不一定对应Activity,比如启动窗口</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">ActivityRecord</span> <span class="variable">atoken</span> <span class="operator">=</span> mActivityRecord;</span><br><span class="line">    <span class="keyword">return</span> (mHasSurface || (!mRelayoutCalled &amp;&amp; mViewVisibility == View.VISIBLE))</span><br><span class="line">            &amp;&amp; isVisibleByPolicy() &amp;&amp; !isParentWindowHidden()</span><br><span class="line">            &amp;&amp; (atoken == <span class="literal">null</span> || atoken.mVisibleRequested)</span><br><span class="line">            &amp;&amp; !mAnimatingExit &amp;&amp; !mDestroying;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">boolean</span> <span class="title function_">isVisibleByPolicy</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// 判断mPolicyVisibility中的POLICY_VISIBILITY_ALL位是否被设置了</span></span><br><span class="line">    <span class="comment">// mPolicyVisibility默认就是POLICY_VISIBILITY_ALL</span></span><br><span class="line">    <span class="keyword">return</span> (mPolicyVisibility &amp; POLICY_VISIBILITY_ALL) == POLICY_VISIBILITY_ALL;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">boolean</span> <span class="title function_">isParentWindowHidden</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// 当前窗口的父窗口是否被隐藏了</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">WindowState</span> <span class="variable">parent</span> <span class="operator">=</span> getParentWindow();</span><br><span class="line">    <span class="keyword">return</span> parent != <span class="literal">null</span> &amp;&amp; parent.mHidden;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>判断该窗口是否可见或者处于被添加状态。</p>
+<ol>
+<li>(mHasSurface || (!mRelayoutCalled &amp;&amp; mViewVisibility &#x3D;&#x3D; View.VISIBLE))：<ol>
+<li>mHasSurface：该窗口是否有对应Surface，该Surface会在该窗口对应的启动或退出动画时创建</li>
+<li>(!mRelayoutCalled &amp;&amp; mViewVisibility &#x3D;&#x3D; View.VISIBLE):<ol>
+<li>!mRelayoutCalled: 该窗口被调用了relayoutWindow</li>
+<li>mViewVisibility &#x3D;&#x3D; View.VISIBLE: 窗口View属性对应的是VISIBLE</li>
+</ol>
+</li>
+<li>如果该窗口已经有Surface或者没有被relayoutWindow但窗口可见属性是VISIBLE的时</li>
+</ol>
+</li>
+<li>isVisibleByPolicy()：判断mPolicyVisibility中的POLICY_VISIBILITY_ALL位都被设置了</li>
+<li>!isParentWindowHidden(): 判断父窗口没有被隐藏</li>
+<li>(atoken &#x3D;&#x3D; null || atoken.mVisibleRequested)：<ol>
+<li>atoken &#x3D;&#x3D; null：该窗口不对应ActivityRecord</li>
+<li>atoken.mVisibleRequested: 如果对应，需要mVisibleRequested被设置为true</li>
+<li>!mAnimatingExit：该窗口当前没有执行退出动画</li>
+<li>!mDestroying：该窗口没有被销毁</li>
+</ol>
+</li>
+</ol>
+<h3 id="1-1-2-ActivityRecord-windowsAreFocusable"><a href="#1-1-2-ActivityRecord-windowsAreFocusable" class="headerlink" title="1.1.2 ActivityRecord.windowsAreFocusable"></a>1.1.2 ActivityRecord.windowsAreFocusable</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">windowsAreFocusable</span><span class="params">(<span class="type">boolean</span> fromUserTouch)</span> &#123;</span><br><span class="line">    <span class="comment">// fromUserTouch为false</span></span><br><span class="line">    <span class="keyword">if</span> (!fromUserTouch &amp;&amp; mTargetSdk &lt; Build.VERSION_CODES.Q) &#123;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">int</span> <span class="variable">pid</span> <span class="operator">=</span> getPid();</span><br><span class="line">        <span class="keyword">final</span> <span class="type">ActivityRecord</span> <span class="variable">topFocusedAppOfMyProcess</span> <span class="operator">=</span></span><br><span class="line">                mWmService.mRoot.mTopFocusedAppByProcess.get(pid);</span><br><span class="line">        <span class="keyword">if</span> (topFocusedAppOfMyProcess != <span class="literal">null</span> &amp;&amp; topFocusedAppOfMyProcess != <span class="built_in">this</span>) &#123;</span><br><span class="line">            <span class="comment">// 对于Q以下的应用程序，每个进程只能有一个具有聚焦窗口的应用程序，因为以往的应用程序可能无法用于多聚焦系统</span></span><br><span class="line">            <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 确认该ActivityRecord是否已经attach了</span></span><br><span class="line">    <span class="comment">// isAttached是其父类的父类WindowContainer中的方法，用于判断该ActivityRecord的parent的DisplayArea是否为null</span></span><br><span class="line">    <span class="keyword">return</span> (canReceiveKeys() || isAlwaysFocusable()) &amp;&amp; isAttached();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">boolean</span> <span class="title function_">canReceiveKeys</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="comment">// 确定该ActivityRecord对应的窗口配置是否允许接收input事件</span></span><br><span class="line">    <span class="keyword">return</span> getWindowConfiguration().canReceiveKeys()</span><br><span class="line">            &amp;&amp; (task == <span class="literal">null</span> || task.getWindowConfiguration().canReceiveKeys());</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="type">boolean</span> <span class="title function_">isAlwaysFocusable</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> (info.flags &amp; FLAG_ALWAYS_FOCUSABLE) != <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>windowsAreFocusable用于判断该ActivityRecord对应窗口是否可以接收input事件。</p>
+<h3 id="1-1-3-WindowState-canReceiveTouchInput"><a href="#1-1-3-WindowState-canReceiveTouchInput" class="headerlink" title="1.1.3 WindowState.canReceiveTouchInput"></a>1.1.3 WindowState.canReceiveTouchInput</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">canReceiveTouchInput</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mActivityRecord == <span class="literal">null</span>  || mActivityRecord.getTask() == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> !mActivityRecord.getTask().getRootTask().shouldIgnoreInput()</span><br><span class="line">            &amp;&amp; mActivityRecord.mVisibleRequested</span><br><span class="line">            &amp;&amp; !isRecentsAnimationConsumingAppInput();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里可以看到如果是非ActivityRecord对应的Window那么直接返回true，如果该ActivityRecord还没有被加入task也直接返回true.</p>
+<ol>
+<li>!mActivityRecord.getTask().getRootTask().shouldIgnoreInput()：该ActivityRecord的task所处的rootTask没有被设置忽略input事件</li>
+<li>mActivityRecord.mVisibleRequested: 该ActivityRecord被设置了VISIBLE</li>
+<li>!isRecentsAnimationConsumingAppInput():该窗口没有作为最近任务窗口的动画的一部分时</li>
+</ol>
+<h2 id="1-2-WMS-updateFocusedWindowLocked"><a href="#1-2-WMS-updateFocusedWindowLocked" class="headerlink" title="1.2 WMS.updateFocusedWindowLocked"></a>1.2 WMS.updateFocusedWindowLocked</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">updateFocusedWindowLocked</span><span class="params">(<span class="type">int</span> mode, <span class="type">boolean</span> updateInputWindows)</span> &#123;</span><br><span class="line">    Trace.traceBegin(TRACE_TAG_WINDOW_MANAGER, <span class="string">&quot;wmUpdateFocus&quot;</span>);</span><br><span class="line">    <span class="type">boolean</span> <span class="variable">changed</span> <span class="operator">=</span> mRoot.updateFocusedWindowLocked(mode, updateInputWindows);</span><br><span class="line">    Trace.traceEnd(TRACE_TAG_WINDOW_MANAGER);</span><br><span class="line">    <span class="keyword">return</span> changed;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里传入的mode是UPDATE_FOCUS_WILL_ASSIGN_LAYERS，而且updateInputWindows为false. WMS.mRoot就是RootWindowContainer.</p>
+<h2 id="1-3-RootWindowContainer-updateFocusedWindowLocked"><a href="#1-3-RootWindowContainer-updateFocusedWindowLocked" class="headerlink" title="1.3 RootWindowContainer.updateFocusedWindowLocked"></a>1.3 RootWindowContainer.updateFocusedWindowLocked</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">updateFocusedWindowLocked</span><span class="params">(<span class="type">int</span> mode, <span class="type">boolean</span> updateInputWindows)</span> &#123;</span><br><span class="line">    <span class="comment">// 首先清除mTopFocusedAppByProcess中的元素：ArrayMap&lt;Integer, ActivityRecord&gt; mTopFocusedAppByProcess</span></span><br><span class="line">    mTopFocusedAppByProcess.clear();</span><br><span class="line">    <span class="type">boolean</span> <span class="variable">changed</span> <span class="operator">=</span> <span class="literal">false</span>;</span><br><span class="line">    <span class="type">int</span> <span class="variable">topFocusedDisplayId</span> <span class="operator">=</span> INVALID_DISPLAY;</span><br><span class="line">    <span class="comment">// 遍历所有DisplayContent, 并依次更新焦点窗口, 注意这里是倒序更新计算</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> mChildren.size() - <span class="number">1</span>; i &gt;= <span class="number">0</span>; --i) &#123;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">DisplayContent</span> <span class="variable">dc</span> <span class="operator">=</span> mChildren.get(i);</span><br><span class="line">        <span class="comment">// [1.4] 更新单个DisplayContent的焦点窗口</span></span><br><span class="line">        changed |= dc.updateFocusedWindowLocked(mode, updateInputWindows, topFocusedDisplayId);</span><br><span class="line">        <span class="keyword">final</span> <span class="type">WindowState</span> <span class="variable">newFocus</span> <span class="operator">=</span> dc.mCurrentFocus;</span><br><span class="line">        <span class="comment">// DC存在新的焦点窗口时</span></span><br><span class="line">        <span class="keyword">if</span> (newFocus != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">final</span> <span class="type">int</span> <span class="variable">pidOfNewFocus</span> <span class="operator">=</span> newFocus.mSession.mPid;</span><br><span class="line">            <span class="comment">// 将新焦点窗口的ActivityRecord保存在mTopFocusedAppByProcess中</span></span><br><span class="line">            <span class="keyword">if</span> (mTopFocusedAppByProcess.get(pidOfNewFocus) == <span class="literal">null</span>) &#123;</span><br><span class="line">                mTopFocusedAppByProcess.put(pidOfNewFocus, newFocus.mActivityRecord);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 更新topFocusedDisplayId为该DC的DisplayId</span></span><br><span class="line">            <span class="keyword">if</span> (topFocusedDisplayId == INVALID_DISPLAY) &#123;</span><br><span class="line">                topFocusedDisplayId = dc.getDisplayId();</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (topFocusedDisplayId == INVALID_DISPLAY &amp;&amp; dc.mFocusedApp != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="comment">// 即使应用窗口还没有准备好(未附加进程或未添加窗口)，具有焦点应用的顶部显示仍然应该是焦点顶部显示</span></span><br><span class="line">            topFocusedDisplayId = dc.getDisplayId();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (topFocusedDisplayId == INVALID_DISPLAY) &#123;</span><br><span class="line">        topFocusedDisplayId = DEFAULT_DISPLAY;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 当焦点所处的display有变化时</span></span><br><span class="line">    <span class="keyword">if</span> (mTopFocusedDisplayId != topFocusedDisplayId) &#123;</span><br><span class="line">        mTopFocusedDisplayId = topFocusedDisplayId;</span><br><span class="line">        <span class="comment">// [2.1] 通知input系统更新displayId</span></span><br><span class="line">        mWmService.mInputManager.setFocusedDisplay(topFocusedDisplayId);</span><br><span class="line">        <span class="comment">// 将PhoneWindowManager中的mTopFocusedDisplayId更新为新焦点窗口所处的DisplayId</span></span><br><span class="line">        mWmService.mPolicy.setTopFocusedDisplay(topFocusedDisplayId);</span><br><span class="line">        ProtoLog.d(WM_DEBUG_FOCUS_LIGHT, <span class="string">&quot;New topFocusedDisplayId=%d&quot;</span>, topFocusedDisplayId);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> changed;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>计算更新焦点窗口是对所有DisplayContent的依次计算更新焦点窗口。首先清除mTopFocusedAppByProcess中的元素，然后依次更新所有DisplayContent的焦点窗口。</p>
+<h2 id="1-4-DisplayContent-updateFocusedWindowLocked"><a href="#1-4-DisplayContent-updateFocusedWindowLocked" class="headerlink" title="1.4 DisplayContent.updateFocusedWindowLocked"></a>1.4 DisplayContent.updateFocusedWindowLocked</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">updateFocusedWindowLocked</span><span class="params">(<span class="type">int</span> mode, <span class="type">boolean</span> updateInputWindows,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> topFocusedDisplayId)</span> &#123;</span><br><span class="line">    <span class="comment">// [1.4.1] 计算当前DisplayContent的焦点窗口，注意传入的topFocusedDisplayId是INVALID_DISPLAY</span></span><br><span class="line">    <span class="type">WindowState</span> <span class="variable">newFocus</span> <span class="operator">=</span> findFocusedWindowIfNeeded(topFocusedDisplayId);</span><br><span class="line">    <span class="comment">// 如果计算的新焦点窗口和当前焦点窗口是同一个，则无需额外动作</span></span><br><span class="line">    <span class="keyword">if</span> (mCurrentFocus == newFocus) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="type">boolean</span> <span class="variable">imWindowChanged</span> <span class="operator">=</span> <span class="literal">false</span>;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">WindowState</span> <span class="variable">imWindow</span> <span class="operator">=</span> mInputMethodWindow;</span><br><span class="line">    <span class="comment">// 如果当前存在输入法窗口，这里我们先假设不存在</span></span><br><span class="line">    <span class="keyword">if</span> (imWindow != <span class="literal">null</span>) &#123;</span><br><span class="line">        ......</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ProtoLog.d(WM_DEBUG_FOCUS_LIGHT, <span class="string">&quot;Changing focus from %s to %s displayId=%d Callers=%s&quot;</span>,</span><br><span class="line">            mCurrentFocus, newFocus, getDisplayId(), Debug.getCallers(<span class="number">4</span>));</span><br><span class="line">    <span class="comment">// 更新焦点窗口</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">WindowState</span> <span class="variable">oldFocus</span> <span class="operator">=</span> mCurrentFocus;</span><br><span class="line">    mCurrentFocus = newFocus;</span><br><span class="line">    <span class="comment">// 如果新的焦点窗口不为null</span></span><br><span class="line">    <span class="keyword">if</span> (newFocus != <span class="literal">null</span>) &#123;</span><br><span class="line">        mWinAddedSinceNullFocus.clear();</span><br><span class="line">        mWinRemovedSinceNullFocus.clear();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (newFocus.canReceiveKeys()) &#123;</span><br><span class="line">            <span class="comment">// 隐式地显示一个窗口将导致取消调度</span></span><br><span class="line">            <span class="comment">// 这是为了防止有人暂停调度但忘记resume</span></span><br><span class="line">            newFocus.mToken.paused = <span class="literal">false</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// [1.4.2] 通知其他模组焦点窗口更新了,主要是更新两个Task的阴影</span></span><br><span class="line">    onWindowFocusChanged(oldFocus, newFocus);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// [1.4.3] 更新DisplayPolicy中相关参数</span></span><br><span class="line">    <span class="type">int</span> <span class="variable">focusChanged</span> <span class="operator">=</span> getDisplayPolicy().focusChangedLw(oldFocus, newFocus);</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> ((focusChanged &amp; FINISH_LAYOUT_REDO_LAYOUT) != <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 焦点的变化导致需要做一个布局， SystemUI状态栏或者导航栏可见性有变化了</span></span><br><span class="line">        <span class="comment">// 将参数mLayoutNeeded置位true</span></span><br><span class="line">        setLayoutNeeded();</span><br><span class="line">        <span class="comment">// 这里传入的mode为UPDATE_FOCUS_WILL_ASSIGN_LAYERS</span></span><br><span class="line">        <span class="keyword">if</span> (mode == UPDATE_FOCUS_PLACING_SURFACES) &#123;</span><br><span class="line">            performLayout(<span class="literal">true</span> <span class="comment">/*initial*/</span>, updateInputWindows);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (mode == UPDATE_FOCUS_REMOVING_FOCUS) &#123;</span><br><span class="line">            mWmService.mRoot.performSurfacePlacement();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 将没有焦点的窗口的toast在超时时间后移除，防止其覆盖UI</span></span><br><span class="line">    scheduleToastWindowsTimeoutIfNeededLocked(oldFocus, newFocus);</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 记录新焦点窗口</span></span><br><span class="line">    mLastFocus = mCurrentFocus;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>DisplayContent更新焦点窗口的流程如下:</p>
+<ol>
+<li>计算当前DisplayContent的焦点窗口</li>
+<li>如果计算的新焦点窗口和当前焦点窗口是同一个，则无需额外动作</li>
+<li>如果当前存在输入法窗口,执行相关操作(后续分析输入法窗口)</li>
+<li>更新焦点窗口，保存在mCurrentFocus中<ol>
+<li>清空mWinAddedSinceNullFocus、mWinRemovedSinceNullFocus</li>
+</ol>
+</li>
+<li>通知其他模组焦点窗口更新了,主要是更新两个Task（当前焦点窗口和新的焦点窗口所处的Task）的阴影</li>
+<li>更新DisplayPolicy中相关参数<ol>
+<li>更新DisplayFoldController中的mFocusedApp(焦点窗口包名)，然后根据需要更新SystemUI的可见性</li>
+</ol>
+</li>
+<li>如果因焦点窗口变化导致SystemUI状态栏或者导航栏可见性有变化了，将参数mLayoutNeeded置位true</li>
+<li>将没有焦点的窗口的toast在超时时间后移除，防止其覆盖UI</li>
+<li>记录新焦点窗口，保存在mLastFocus中</li>
+</ol>
+<h3 id="1-4-1-DisplayContent-findFocusedWindowIfNeeded"><a href="#1-4-1-DisplayContent-findFocusedWindowIfNeeded" class="headerlink" title="1.4.1 DisplayContent.findFocusedWindowIfNeeded"></a>1.4.1 DisplayContent.findFocusedWindowIfNeeded</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">WindowState <span class="title function_">findFocusedWindowIfNeeded</span><span class="params">(<span class="type">int</span> topFocusedDisplayId)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> (mWmService.mPerDisplayFocusEnabled || topFocusedDisplayId == INVALID_DISPLAY)</span><br><span class="line">                ? findFocusedWindow() : <span class="literal">null</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">WindowState <span class="title function_">findFocusedWindow</span><span class="params">()</span> &#123;</span><br><span class="line">    mTmpWindow = <span class="literal">null</span>;</span><br><span class="line">    <span class="comment">// [1.4.1.1] 从上到下遍历所有的ActivityRecord，并对每一个执行mFindFocusedWindow方法</span></span><br><span class="line">    forAllWindows(mFindFocusedWindow, <span class="literal">true</span> <span class="comment">/* traverseTopToBottom */</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mTmpWindow == <span class="literal">null</span>) &#123;</span><br><span class="line">        ProtoLog.v(WM_DEBUG_FOCUS_LIGHT, <span class="string">&quot;findFocusedWindow: No focusable windows, display=%d&quot;</span>,</span><br><span class="line">                getDisplayId());</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> mTmpWindow;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>注意这里的mFindFocusedWindow其实是一个函数: ToBooleanFunction<WindowState> mFindFocusedWindow, 这里又是使用了函数式编程的方法。我们先看forAllWindows方法，这个是被继承的祖父类WindowContainer中的方法。</WindowState></p>
+<h4 id="1-4-1-1-WindowContainer-forAllWindows"><a href="#1-4-1-1-WindowContainer-forAllWindows" class="headerlink" title="1.4.1.1 WindowContainer.forAllWindows"></a>1.4.1.1 WindowContainer.forAllWindows</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">boolean</span> <span class="title function_">forAllWindows</span><span class="params">(ToBooleanFunction&lt;WindowState&gt; callback, <span class="type">boolean</span> traverseTopToBottom)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (traverseTopToBottom) &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> mChildren.size() - <span class="number">1</span>; i &gt;= <span class="number">0</span>; --i) &#123;</span><br><span class="line">            <span class="keyword">if</span> (mChildren.get(i).forAllWindows(callback, traverseTopToBottom)) &#123;</span><br><span class="line">                <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">final</span> <span class="type">int</span> <span class="variable">count</span> <span class="operator">=</span> mChildren.size();</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; count; i++) &#123;</span><br><span class="line">            <span class="keyword">if</span> (mChildren.get(i).forAllWindows(callback, traverseTopToBottom)) &#123;</span><br><span class="line">                <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>对该WindowContainer的mChildren中的每一个元素执行forAllWindows，调用callback。traverseTopToBottom参数如果为true，则按z顺序从上到下遍历层次结构，否则从下到上遍历。如果因为传入的函数callback执行后的返回值为true,那么会中止遍历直接返回true。</p>
+<p>回顾下DisplayContent的类图:</p>
+<p><img src="/images/WMS%E7%B3%BB%E5%88%97/6_1.png" alt="6-1"></p>
+<p>可以看到DisplayContent的是从WindowContainer<WindowContainer>一路继承下来的，所以其mChildren就是 WindowList<DisplayArea>。</DisplayArea></WindowContainer></p>
+<p>而DisplayArea也是继承了WindowContainer，所以到底这个DisplayContent里存储了什么元素呢？ 回到之前我们研究过的DisplayContent的创建 <em><strong>WMS(2)-WMS中RootDisplayArea的创建</strong></em>， 在这里我们知道DisplayContent的mChildren中存储的是DisplayArea的对象，所以而DisplayArea又是继承了WindowContainer，然而DisplayArea中的mChildren存储的是ActivityRecord或者WindowState.</p>
+<h4 id="1-4-1-2-WindowState-forAllWindows"><a href="#1-4-1-2-WindowState-forAllWindows" class="headerlink" title="1.4.1.2 WindowState.forAllWindows"></a>1.4.1.2 WindowState.forAllWindows</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="type">boolean</span> <span class="title function_">forAllWindows</span><span class="params">(ToBooleanFunction&lt;WindowState&gt; callback, <span class="type">boolean</span> traverseTopToBottom)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (mChildren.isEmpty()) &#123;</span><br><span class="line">        <span class="comment">// The window has no children so we just return it.</span></span><br><span class="line">        <span class="keyword">return</span> applyInOrderWithImeWindows(callback, traverseTopToBottom);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (traverseTopToBottom) &#123;</span><br><span class="line">        <span class="keyword">return</span> forAllWindowTopToBottom(callback);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> forAllWindowBottomToTop(callback);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里我们假设该mChildren为null:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="type">boolean</span> <span class="title function_">applyInOrderWithImeWindows</span><span class="params">(ToBooleanFunction&lt;WindowState&gt; callback,</span></span><br><span class="line"><span class="params">        <span class="type">boolean</span> traverseTopToBottom)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (traverseTopToBottom) &#123;</span><br><span class="line">        <span class="comment">// applyImeWindowsIfNeeded是用于处理输入法窗口的，暂时先不管。</span></span><br><span class="line">        <span class="keyword">if</span> (applyImeWindowsIfNeeded(callback, traverseTopToBottom)</span><br><span class="line">                <span class="comment">// [1.5] 对该Window执行传入的函数,即mFindFocusedWindow</span></span><br><span class="line">                || callback.apply(<span class="built_in">this</span>)) &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (callback.apply(<span class="built_in">this</span>)</span><br><span class="line">                || applyImeWindowsIfNeeded(callback, traverseTopToBottom)) &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-4-2-DisplayContent-onWindowFocusChanged"><a href="#1-4-2-DisplayContent-onWindowFocusChanged" class="headerlink" title="1.4.2 DisplayContent.onWindowFocusChanged"></a>1.4.2 DisplayContent.onWindowFocusChanged</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">onWindowFocusChanged</span><span class="params">(WindowState oldFocus, WindowState newFocus)</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">focusedTask</span> <span class="operator">=</span> newFocus != <span class="literal">null</span> ? newFocus.getTask() : <span class="literal">null</span>;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">Task</span> <span class="variable">unfocusedTask</span> <span class="operator">=</span> oldFocus != <span class="literal">null</span> ? oldFocus.getTask() : <span class="literal">null</span>;</span><br><span class="line">    <span class="comment">// 如果是同一个task就不需要额外动作</span></span><br><span class="line">    <span class="keyword">if</span> (focusedTask == unfocusedTask) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 通知新的焦点窗口所处的Task有焦点了</span></span><br><span class="line">    <span class="keyword">if</span> (focusedTask != <span class="literal">null</span>) &#123;</span><br><span class="line">        focusedTask.onWindowFocusChanged(<span class="literal">true</span> <span class="comment">/* hasFocus */</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 之前焦点窗口所处的Task失去焦点</span></span><br><span class="line">    <span class="keyword">if</span> (unfocusedTask != <span class="literal">null</span>) &#123;</span><br><span class="line">        unfocusedTask.onWindowFocusChanged(<span class="literal">false</span> <span class="comment">/* hasFocus */</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>从WindowState中拿到的Task其实是其对应的ActivityRecord所在的Task：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// WindowState.java</span></span><br><span class="line">Task <span class="title function_">getTask</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> mActivityRecord != <span class="literal">null</span> ? mActivityRecord.getTask() : <span class="literal">null</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ActivityRecord.java</span></span><br><span class="line">Task <span class="title function_">getTask</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> task;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这个ActivityRecord.task就是 <em><strong>WMS(3)-ActivityRecord和WindowToken</strong></em> 中 [1.7.1]里赋值的，其实就是该ActivityRecord的mParent（创建的新Task）。</p>
+<h4 id="1-4-2-1-Task-onWindowFocusChanged"><a href="#1-4-2-1-Task-onWindowFocusChanged" class="headerlink" title="1.4.2.1 Task.onWindowFocusChanged"></a>1.4.2.1 Task.onWindowFocusChanged</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> <span class="title function_">onWindowFocusChanged</span><span class="params">(<span class="type">boolean</span> hasFocus)</span> &#123;</span><br><span class="line">    updateShadowsRadius(hasFocus, getSyncTransaction());</span><br><span class="line">    <span class="comment">// TODO(b/180525887): Un-comment once there is resolution on the bug.</span></span><br><span class="line">    <span class="comment">// dispatchTaskInfoChangedIfNeeded(false /* force */);</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">updateShadowsRadius</span><span class="params">(<span class="type">boolean</span> taskIsFocused,</span></span><br><span class="line"><span class="params">        SurfaceControl.Transaction pendingTransaction)</span> &#123;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">if</span> (!mWmService.mRenderShadowsInCompositor || !isRootTask()) <span class="keyword">return</span>;</span><br><span class="line">    <span class="comment">// 根据窗口模式和任务焦点状态更新阴影的长度</span></span><br><span class="line">    <span class="keyword">final</span> <span class="type">float</span> <span class="variable">newShadowRadius</span> <span class="operator">=</span> getShadowRadius(taskIsFocused);</span><br><span class="line">    <span class="keyword">if</span> (mShadowRadius != newShadowRadius) &#123;</span><br><span class="line">        mShadowRadius = newShadowRadius;</span><br><span class="line">        pendingTransaction.setShadowRadius(getSurfaceControl(), mShadowRadius);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里根据该task是否持有焦点来更新阴影，后续研究</p>
+<h3 id="1-4-3-DisplayPolicy-focusChangedLw"><a href="#1-4-3-DisplayPolicy-focusChangedLw" class="headerlink" title="1.4.3 DisplayPolicy.focusChangedLw"></a>1.4.3 DisplayPolicy.focusChangedLw</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">focusChangedLw</span><span class="params">(WindowState lastFocus, WindowState newFocus)</span> &#123;</span><br><span class="line">    mFocusedWindow = newFocus;</span><br><span class="line">    mLastFocusedWindow = lastFocus;</span><br><span class="line">    <span class="keyword">if</span> (mDisplayContent.isDefaultDisplay) &#123;</span><br><span class="line">        <span class="comment">// 更新PhoneWindowManager中相关参数，就是更新DisplayFoldController中的mFocusedApp(焦点窗口包名)</span></span><br><span class="line">        mService.mPolicy.onDefaultDisplayFocusChangedLw(newFocus);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 更新SystemUi的可见与否，比如状态栏等，后续研究</span></span><br><span class="line">    <span class="keyword">if</span> (updateSystemUiVisibilityLw()) &#123;</span><br><span class="line">        <span class="comment">// 如果导航栏已经被隐藏或显示，需要做另一个布局传递来更新窗口</span></span><br><span class="line">        <span class="keyword">return</span> FINISH_LAYOUT_REDO_LAYOUT;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里更新DisplayPolicy中存储的焦点窗口相关信息，包括更新DisplayFoldController中的mFocusedApp(焦点窗口包名)，然后根据需要更新SystemUI的可见性。</p>
+<h2 id="1-5-DisplayContent-mFindFocusedWindow"><a href="#1-5-DisplayContent-mFindFocusedWindow" class="headerlink" title="1.5 DisplayContent.mFindFocusedWindow"></a>1.5 DisplayContent.mFindFocusedWindow</h2><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> ToBooleanFunction&lt;WindowState&gt; mFindFocusedWindow = w -&gt; &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">ActivityRecord</span> <span class="variable">focusedApp</span> <span class="operator">=</span> mFocusedApp;</span><br><span class="line">    ProtoLog.v(WM_DEBUG_FOCUS, <span class="string">&quot;Looking for focus: %s, flags=%d, canReceive=%b, reason=%s&quot;</span>,</span><br><span class="line">            w, w.mAttrs.flags, w.canReceiveKeys(),</span><br><span class="line">            w.canReceiveKeysReason(<span class="literal">false</span> <span class="comment">/* fromUserTouch */</span>));</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 检查该窗口是否可以接收input事件</span></span><br><span class="line">    <span class="comment">// 无法接收输入事件的窗口没有资格作为焦点窗口</span></span><br><span class="line">    <span class="keyword">if</span> (!w.canReceiveKeys()) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">ActivityRecord</span> <span class="variable">activity</span> <span class="operator">=</span> w.mActivityRecord;</span><br><span class="line">    <span class="comment">// 如果当前没有焦点窗口，那么遍历的第一个可接受input事件的窗口就是焦点窗口了</span></span><br><span class="line">    <span class="keyword">if</span> (focusedApp == <span class="literal">null</span>) &#123;</span><br><span class="line">        ProtoLog.v(WM_DEBUG_FOCUS_LIGHT,</span><br><span class="line">                <span class="string">&quot;findFocusedWindow: focusedApp=null using new focus @ %s&quot;</span>, w);</span><br><span class="line">        mTmpWindow = w;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果当前焦点窗口已经不在可聚焦了，那么也是遍历的第一个可接受input事件的窗口作为焦点窗口</span></span><br><span class="line">    <span class="keyword">if</span> (!focusedApp.windowsAreFocusable()) &#123;</span><br><span class="line">        ProtoLog.v(WM_DEBUG_FOCUS_LIGHT, <span class="string">&quot;findFocusedWindow: focusedApp windows not&quot;</span></span><br><span class="line">                + <span class="string">&quot; focusable using new focus @ %s&quot;</span>, w);</span><br><span class="line">        mTmpWindow = w;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 遍历所有app的token, 找到第一个符合要求的作为焦点窗口(从上到下遍历所有的ActivityRecord,所以第一个符合的token对应窗口Z轴最大)</span></span><br><span class="line">    <span class="keyword">if</span> (activity != <span class="literal">null</span> &amp;&amp; w.mAttrs.type != TYPE_APPLICATION_STARTING) &#123;</span><br><span class="line">        <span class="comment">// WindowState对应的有Activity, 而且类型不能是启动窗口</span></span><br><span class="line">        <span class="comment">// [1.6] 对比计算Z轴大小</span></span><br><span class="line">        <span class="keyword">if</span> (focusedApp.compareTo(activity) &gt; <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="comment">// 当前焦点窗口Z轴比该Activity窗口大</span></span><br><span class="line">            ProtoLog.v(WM_DEBUG_FOCUS_LIGHT,</span><br><span class="line">                    <span class="string">&quot;findFocusedWindow: Reached focused app=%s&quot;</span>, focusedApp);</span><br><span class="line">            mTmpWindow = <span class="literal">null</span>;</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 找到了新的焦点窗口，暂存在mTmpWindow中</span></span><br><span class="line">    ProtoLog.v(WM_DEBUG_FOCUS_LIGHT, <span class="string">&quot;findFocusedWindow: Found new focus @ %s&quot;</span>, w);</span><br><span class="line">    mTmpWindow = w;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>更新焦点窗口的步骤也不复杂：</p>
+<ol>
+<li>遍历该DisplayContent中mChildren中的所有DisplayArea</li>
+<li>依次对比DisplayArea中的mChildren集合里面的Window(ActivityRecord或WindowState)<ol>
+<li>检查该Window是否符合要求</li>
+<li>无法接收输入事件的窗口没有资格作为焦点窗口</li>
+<li>如果当前没有焦点窗口，那么遍历的第一个可接受input事件的窗口就是焦点窗口了</li>
+<li>如果当前焦点窗口已经不在可聚焦了，那么也是遍历的第一个可接受input事件的窗口作为焦点窗口</li>
+<li>遍历所有app的token, 找到第一个符合要求的作为焦点窗口<ol>
+<li>WindowState对应的有Activity, 而且类型不能是启动窗口</li>
+<li>该Activity窗口Z轴比当前焦点窗口大</li>
+<li>更新mTmpWindow为当前Activity窗口，否则置为null</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+<h2 id="1-6-ActivityRecord-compareTo"><a href="#1-6-ActivityRecord-compareTo" class="headerlink" title="1.6 ActivityRecord.compareTo"></a>1.6 ActivityRecord.compareTo</h2><p>ActivityRecord其实是调用了父类WindowContainer中的方法:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">compareTo</span><span class="params">(WindowContainer other)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">this</span> == other) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果该Activity的mParent是同一个，那么就对比两个在其中所处的位置</span></span><br><span class="line">    <span class="comment">// 序号就代表了Z轴，可以理解为序号大的在上层，盖住序号小的</span></span><br><span class="line">    <span class="keyword">if</span> (mParent != <span class="literal">null</span> &amp;&amp; mParent == other.mParent) &#123;</span><br><span class="line">        <span class="keyword">final</span> WindowList&lt;WindowContainer&gt; list = mParent.mChildren;</span><br><span class="line">        <span class="keyword">return</span> list.indexOf(<span class="built_in">this</span>) &gt; list.indexOf(other) ? <span class="number">1</span> : -<span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果两个WindowContainer不是同一个mParent, 那么先找到z轴最大的包含两个WC的父容器，然后对比z轴大小</span></span><br><span class="line">    <span class="keyword">final</span> LinkedList&lt;WindowContainer&gt; thisParentChain = mTmpChain1;</span><br><span class="line">    <span class="keyword">final</span> LinkedList&lt;WindowContainer&gt; otherParentChain = mTmpChain2;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="comment">// [1.6.1] 获取当前WindowContainer的所有父容器</span></span><br><span class="line">        getParents(thisParentChain);</span><br><span class="line">        other.getParents(otherParentChain);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 找到z轴最大的且包含两个WC的父容器</span></span><br><span class="line">        <span class="type">WindowContainer</span> <span class="variable">commonAncestor</span> <span class="operator">=</span> <span class="literal">null</span>;</span><br><span class="line">        <span class="type">WindowContainer</span> <span class="variable">thisTop</span> <span class="operator">=</span> thisParentChain.peekLast();</span><br><span class="line">        <span class="type">WindowContainer</span> <span class="variable">otherTop</span> <span class="operator">=</span> otherParentChain.peekLast();</span><br><span class="line">        <span class="keyword">while</span> (thisTop != <span class="literal">null</span> &amp;&amp; otherTop != <span class="literal">null</span> &amp;&amp; thisTop == otherTop) &#123;</span><br><span class="line">            <span class="comment">// 移除拿到最后一个父容器</span></span><br><span class="line">            commonAncestor = thisParentChain.removeLast();</span><br><span class="line">            otherParentChain.removeLast();</span><br><span class="line">            thisTop = thisParentChain.peekLast();</span><br><span class="line">            otherTop = otherParentChain.peekLast();</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        ......</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 子容器总是被认为比父容器大，所以如果将一个容器与另一个容器的父容器进行比较，那么无论如何都是子容器更大。</span></span><br><span class="line">        <span class="keyword">if</span> (commonAncestor == <span class="built_in">this</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> -<span class="number">1</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (commonAncestor == other) &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 各自对比两个WC在Z轴最大的父容器中的位置</span></span><br><span class="line">        <span class="keyword">final</span> WindowList&lt;WindowContainer&gt; list = commonAncestor.mChildren;</span><br><span class="line">        <span class="keyword">return</span> list.indexOf(thisParentChain.peekLast()) &gt; list.indexOf(otherParentChain.peekLast())</span><br><span class="line">                ? <span class="number">1</span> : -<span class="number">1</span>;</span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">        mTmpChain1.clear();</span><br><span class="line">        mTmpChain2.clear();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以将WC的整个结构理解为树形结构，对比两个WC的Z轴大小就是对比这两个WC与最近的共同父节点的距离大小，距离越大，说明Z轴越大。</p>
+<h3 id="1-6-1-WindowContainer-getParents"><a href="#1-6-1-WindowContainer-getParents" class="headerlink" title="1.6.1 WindowContainer.getParents"></a>1.6.1 WindowContainer.getParents</h3><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">getParents</span><span class="params">(LinkedList&lt;WindowContainer&gt; parents)</span> &#123;</span><br><span class="line">    parents.clear();</span><br><span class="line">    <span class="type">WindowContainer</span> <span class="variable">current</span> <span class="operator">=</span> <span class="built_in">this</span>;</span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        parents.addLast(current);</span><br><span class="line">        current = current.mParent;</span><br><span class="line">    &#125; <span class="keyword">while</span> (current != <span class="literal">null</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>依次遍历，将该WindowContainer的所有mParent添加到队列中.</p>
+<h1 id="二-小结"><a href="#二-小结" class="headerlink" title="二. 小结"></a>二. 小结</h1><p>总的来说，更新焦点窗口就是对所有DisplayContent倒序遍历，依次计算新的焦点窗口：</p>
+<ol>
+<li>计算当前DisplayContent的焦点窗口<ol>
+<li>遍历该DisplayContent中mChildren中的所有DisplayArea</li>
+<li>依次对比DisplayArea中的mChildren集合里面的Window(ActivityRecord或WindowState)<ol>
+<li>检查该Window是否符合要求</li>
+<li>无法接收输入事件的窗口没有资格作为焦点窗口</li>
+<li>如果当前没有焦点窗口，那么遍历的第一个可接受input事件的窗口就是焦点窗口了</li>
+<li>如果当前焦点窗口已经不在可聚焦了，那么也是遍历的第一个可接受input事件的窗口作为焦点窗口</li>
+<li>遍历所有app的token, 找到第一个符合要求的作为焦点窗口<ol>
+<li>WindowState对应的有Activity, 而且类型不能是启动窗口</li>
+<li>该Activity窗口Z轴比当前焦点窗口大</li>
+<li>更新mTmpWindow为当前Activity窗口，否则置为null</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+<li>如果计算的新焦点窗口和当前焦点窗口是同一个，则无需额外动作</li>
+<li>如果当前存在输入法窗口,执行相关操作(后续分析输入法窗口)</li>
+<li>更新焦点窗口，保存在mCurrentFocus中<ol>
+<li>清空mWinAddedSinceNullFocus、mWinRemovedSinceNullFocus</li>
+</ol>
+</li>
+<li>通知其他模组焦点窗口更新了,主要是更新两个Task（当前焦点窗口和新的焦点窗口所处的Task）的阴影</li>
+<li>更新DisplayPolicy中相关参数<ol>
+<li>更新DisplayFoldController中的mFocusedApp(焦点窗口包名)，然后根据需要更新SystemUI的可见性</li>
+</ol>
+</li>
+<li>如果因焦点窗口变化导致SystemUI状态栏或者导航栏可见性有变化了，将参数mLayoutNeeded置位true</li>
+<li>将没有焦点的窗口的toast在超时时间后移除，防止其覆盖UI</li>
+<li>记录新焦点窗口，保存在mLastFocus中</li>
+</ol>
+<h2 id="2-1-通知input系统更新焦点窗口"><a href="#2-1-通知input系统更新焦点窗口" class="headerlink" title="2.1 通知input系统更新焦点窗口"></a>2.1 通知input系统更新焦点窗口</h2><p>在WMS计算更新完焦点窗口之后，需要同步通知给input系统:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// [2.1] 如果焦点窗口有更新，也需要更新input相关设置</span></span><br><span class="line"><span class="keyword">if</span> (focusChanged) &#123;</span><br><span class="line">    displayContent.getInputMonitor().setInputFocusLw(displayContent.mCurrentFocus,</span><br><span class="line">            <span class="literal">false</span> <span class="comment">/*updateInputWindows*/</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里很自然就有疑问，窗口可大可小，不同的窗口层叠起来，input系统是如何判断分发事件到正确的窗口呢？ 接下来我们先看看应用窗口和input的关系。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>SwallowJoe
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://swallowjoe.github.io/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/" title="WMS(6)-焦点窗口的更新">https://swallowjoe.github.io/2022/05/06/WMS(6)-焦点窗口的更新/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/WMS/" rel="tag"># WMS</a>
+              <a href="/tags/Input/" rel="tag"># Input</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/05/05/WMS(5)-%E5%90%AF%E5%8A%A8%E7%AA%97%E5%8F%A3/" rel="prev" title="WMS(5)-启动窗口">
+      <i class="fa fa-chevron-left"></i> WMS(5)-启动窗口
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/05/07/WMS(7)-%E7%AA%97%E5%8F%A3%E5%92%8CInputChannel%E7%9A%84%E8%81%94%E7%B3%BB/" rel="next" title="WMS(7)-窗口和InputChannel的联系">
+      WMS(7)-窗口和InputChannel的联系 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%AE%80%E8%BF%B0"><span class="nav-text">简述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%B8%80-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E6%9B%B4%E6%96%B0"><span class="nav-text">一. 焦点窗口更新</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-WindowState-canReceiveKeys"><span class="nav-text">1.1 WindowState.canReceiveKeys</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-1-WindowState-isVisibleOrAdding"><span class="nav-text">1.1.1 WindowState.isVisibleOrAdding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-2-ActivityRecord-windowsAreFocusable"><span class="nav-text">1.1.2 ActivityRecord.windowsAreFocusable</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-3-WindowState-canReceiveTouchInput"><span class="nav-text">1.1.3 WindowState.canReceiveTouchInput</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-WMS-updateFocusedWindowLocked"><span class="nav-text">1.2 WMS.updateFocusedWindowLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-RootWindowContainer-updateFocusedWindowLocked"><span class="nav-text">1.3 RootWindowContainer.updateFocusedWindowLocked</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-4-DisplayContent-updateFocusedWindowLocked"><span class="nav-text">1.4 DisplayContent.updateFocusedWindowLocked</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-1-DisplayContent-findFocusedWindowIfNeeded"><span class="nav-text">1.4.1 DisplayContent.findFocusedWindowIfNeeded</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-4-1-1-WindowContainer-forAllWindows"><span class="nav-text">1.4.1.1 WindowContainer.forAllWindows</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#1-4-1-2-WindowState-forAllWindows"><span class="nav-text">1.4.1.2 WindowState.forAllWindows</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-2-DisplayContent-onWindowFocusChanged"><span class="nav-text">1.4.2 DisplayContent.onWindowFocusChanged</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-4-2-1-Task-onWindowFocusChanged"><span class="nav-text">1.4.2.1 Task.onWindowFocusChanged</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-3-DisplayPolicy-focusChangedLw"><span class="nav-text">1.4.3 DisplayPolicy.focusChangedLw</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-5-DisplayContent-mFindFocusedWindow"><span class="nav-text">1.5 DisplayContent.mFindFocusedWindow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-6-ActivityRecord-compareTo"><span class="nav-text">1.6 ActivityRecord.compareTo</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-6-1-WindowContainer-getParents"><span class="nav-text">1.6.1 WindowContainer.getParents</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BA%8C-%E5%B0%8F%E7%BB%93"><span class="nav-text">二. 小结</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-%E9%80%9A%E7%9F%A5input%E7%B3%BB%E7%BB%9F%E6%9B%B4%E6%96%B0%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3"><span class="nav-text">2.1 通知input系统更新焦点窗口</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="SwallowJoe"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">SwallowJoe</p>
+  <div class="site-description" itemprop="description">君子知命不惧，日日自新</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">39</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/swallowjoe" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;swallowjoe" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:swallowjoe@foxmail.com" title="E-Mail → mailto:swallowjoe@foxmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.linkedin.cn/injobs/in/joseph-huang-9597b822b" title="LinkedIn → https:&#x2F;&#x2F;www.linkedin.cn&#x2F;injobs&#x2F;in&#x2F;joseph-huang-9597b822b" rel="noopener" target="_blank"><i class="fab fa-linkedin fa-fw"></i>LinkedIn</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SwallowJoe</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+<script>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz","app_key":"J0WdcjIXqW9jxT4zOpMG5BeE","server_url":"https://rflcpyiw.lc-cn-n1-shared.com","security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script>
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'RfLcPyiwrSaXOBtMHLnzE6S4-gzGzoHsz',
+      appKey     : 'J0WdcjIXqW9jxT4zOpMG5BeE',
+      placeholder: "Say something...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://rflcpyiw.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
