@@ -20,15 +20,15 @@
     var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
   </script>
 
-  <meta name="description" content="---  以下分析基于Android S. 简述在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。 事件要分发，首先是需要找到被分发的事件和对应的目标窗口。 一. 查找Input事件的目标窗口Input事">
+  <meta name="description" content="以下分析基于Android S. 简述在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。 事件要分发，首先是需要找到被分发的事件和对应的目标窗口。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="WMS(9)-Input事件分发给窗口的过程">
 <meta property="og:url" content="https://swallowjoe.github.io/2022/05/09/WMS(9)-Input%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E7%BB%99%E7%AA%97%E5%8F%A3%E7%9A%84%E8%BF%87%E7%A8%8B/index.html">
 <meta property="og:site_name" content="SwallowJoe的博客">
-<meta property="og:description" content="---  以下分析基于Android S. 简述在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。 事件要分发，首先是需要找到被分发的事件和对应的目标窗口。 一. 查找Input事件的目标窗口Input事">
+<meta property="og:description" content="以下分析基于Android S. 简述在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。 事件要分发，首先是需要找到被分发的事件和对应的目标窗口。">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2022-05-08T17:35:34.000Z">
-<meta property="article:modified_time" content="2022-06-18T09:50:47.407Z">
+<meta property="article:modified_time" content="2022-06-18T09:57:24.664Z">
 <meta property="article:author" content="SwallowJoe">
 <meta property="article:tag" content="Android">
 <meta property="article:tag" content="WMS">
@@ -225,7 +225,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-18 17:50:47" itemprop="dateModified" datetime="2022-06-18T17:50:47+08:00">2022-06-18</time>
+                <time title="修改时间：2022-06-18 17:57:24" itemprop="dateModified" datetime="2022-06-18T17:57:24+08:00">2022-06-18</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -278,11 +278,12 @@
 
       
         <div style="page-break-after: always;"></div>
----
 
 <p><strong>以下分析基于Android S.</strong></p>
 <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>在前面两篇文章中我们打通了应用进程和Input进程，这两者通过一对名为InputChannel实际是通过socket实现的通道来通信。然后我们又梳理了窗口信息是如何更新并传递给Input进程的。现在我们简单梳理一下一次触摸事件分发给窗口的过程。</p>
 <p>事件要分发，首先是需要找到被分发的事件和对应的目标窗口。</p>
+<span id="more"></span>
+
 <h1 id="一-查找Input事件的目标窗口"><a href="#一-查找Input事件的目标窗口" class="headerlink" title="一. 查找Input事件的目标窗口"></a>一. 查找Input事件的目标窗口</h1><p>Input事件是显示屏驱动收到中断后通知给InputReader，由其打包交给InputDispatcher分发的，我们直接看InputDispatcher的MotionEvent分发过程。</p>
 <h2 id="1-1-InputDispatcher-dispatchMotionLocked"><a href="#1-1-InputDispatcher-dispatchMotionLocked" class="headerlink" title="1.1 InputDispatcher.dispatchMotionLocked"></a>1.1 InputDispatcher.dispatchMotionLocked</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">bool</span> <span class="title">InputDispatcher::dispatchMotionLocked</span><span class="params">(<span class="type">nsecs_t</span> currentTime, std::shared_ptr&lt;MotionEntry&gt; entry,</span></span></span><br><span class="line"><span class="params"><span class="function">                                        DropReason* dropReason, <span class="type">nsecs_t</span>* nextWakeupTime)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// 通过输入源确认是否为点击触摸事件</span></span><br><span class="line">    <span class="type">bool</span> isPointerEvent = entry-&gt;source &amp; AINPUT_SOURCE_CLASS_POINTER;</span><br><span class="line">    <span class="comment">// 输入事件的目标窗口集合</span></span><br><span class="line">    std::vector&lt;InputTarget&gt; inputTargets;</span><br><span class="line">    <span class="comment">// 触摸屏事件</span></span><br><span class="line">    <span class="keyword">if</span> (isPointerEvent) &#123;</span><br><span class="line">        <span class="comment">// [1.2] 找到此次触摸事件的目标窗口    </span></span><br><span class="line">        injectionResult =</span><br><span class="line">                <span class="built_in">findTouchedWindowTargetsLocked</span>(currentTime, *entry, inputTargets, nextWakeupTime,</span><br><span class="line">                                               &amp;conflictingPointerActions);</span><br><span class="line">    &#125;</span><br><span class="line">    ......</span><br><span class="line">    <span class="comment">// [2.1] Input事件的分发</span></span><br><span class="line">    <span class="built_in">dispatchEventLocked</span>(currentTime, entry, inputTargets);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 

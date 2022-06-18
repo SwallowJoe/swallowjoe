@@ -20,16 +20,16 @@
     var CONFIG = {"hostname":"swallowjoe.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitment","storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
   </script>
 
-  <meta name="description" content="---  以下分析基于Android S. 简述这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口:   adb shell dumpsys window |grep -iE “mCurr*”  我们知道一个实体显示器对应一个DisplayId, 相应的有一个DisplayContent，如同我们人眼或者相机的对焦">
+  <meta name="description" content="以下分析基于Android S. 简述这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口:   adb shell dumpsys window |grep -iE “mCurr*”  我们知道一个实体显示器对应一个DisplayId, 相应的有一个DisplayContent，如同我们人眼或者相机的对焦，同一时">
 <meta property="og:type" content="article">
 <meta property="og:title" content="WMS(6)-焦点窗口的更新">
 <meta property="og:url" content="https://swallowjoe.github.io/2022/05/06/WMS(6)-%E7%84%A6%E7%82%B9%E7%AA%97%E5%8F%A3%E7%9A%84%E6%9B%B4%E6%96%B0/index.html">
 <meta property="og:site_name" content="SwallowJoe的博客">
-<meta property="og:description" content="---  以下分析基于Android S. 简述这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口:   adb shell dumpsys window |grep -iE “mCurr*”  我们知道一个实体显示器对应一个DisplayId, 相应的有一个DisplayContent，如同我们人眼或者相机的对焦">
+<meta property="og:description" content="以下分析基于Android S. 简述这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口:   adb shell dumpsys window |grep -iE “mCurr*”  我们知道一个实体显示器对应一个DisplayId, 相应的有一个DisplayContent，如同我们人眼或者相机的对焦，同一时">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="https://swallowjoe.github.io/images/WMS%E7%B3%BB%E5%88%97/6_1.png">
 <meta property="article:published_time" content="2022-05-05T17:35:34.000Z">
-<meta property="article:modified_time" content="2022-06-18T09:50:37.397Z">
+<meta property="article:modified_time" content="2022-06-18T09:57:10.732Z">
 <meta property="article:author" content="SwallowJoe">
 <meta property="article:tag" content="Android">
 <meta property="article:tag" content="WMS">
@@ -227,7 +227,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-18 17:50:37" itemprop="dateModified" datetime="2022-06-18T17:50:37+08:00">2022-06-18</time>
+                <time title="修改时间：2022-06-18 17:57:10" itemprop="dateModified" datetime="2022-06-18T17:57:10+08:00">2022-06-18</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -276,7 +276,6 @@
 
       
         <div style="page-break-after: always;"></div>
----
 
 <p><strong>以下分析基于Android S.</strong></p>
 <h1 id="简述"><a href="#简述" class="headerlink" title="简述"></a>简述</h1><p>这篇文章中我们重点关注焦点窗口的更新，所谓焦点窗口就是当前选择的窗口。在Android里可以通过下面的adb命令来查看当前的焦点窗口: </p>
